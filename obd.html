@@ -1,0 +1,117 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>OBD2 Fan Monitor (Web Bluetooth)</title>
+<style>
+  body{font-family:Arial;padding:20px}
+  h1{margin-top:0}
+  .row{margin:6px 0;font-size:18px}
+  #led{width:40px;height:40px;border-radius:50%;background:#bbb;display:inline-block;margin-left:8px}
+  input[type=number]{width:80px}
+</style>
+
+<h1>OBD2 Fan Monitor (BLE)</h1>
+<button id="btnConnect">Connect BLE</button>
+<span id="status">Disconnected</span>
+
+<div class="row">RPM: <span id="rpm">--</span></div>
+<div class="row">Throttle: <span id="thr">--</span>%</div>
+<div class="row">MAP: <span id="map">--</span></div>
+<div class="row">Voltage: <span id="vol">--</span> V</div>
+<div class="row">Threshold: <span id="th">--</span></div>
+
+<div class="row">
+  <input type="number" id="thInput" value="40" min="0" max="255">
+  <button id="btnSet">Set Threshold</button>
+  <span id="msg"></span>
+</div>
+
+<div class="row">Fan LED: <span id="led"></span></div>
+
+<script>
+const NAME_FILTER = 'PICO2W-OBD2';
+// 與韌體一致的 UUID（大小寫不拘，但建議小寫）
+const SVC_UUID  = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+const DATA_UUID = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
+const CTRL_UUID = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
+
+let device, server, service, dataChar, ctrlChar;
+let blinkTimer = null;
+
+const $ = s => document.querySelector(s);
+
+$('button#btnConnect').onclick = async () => {
+  try {
+    device = await navigator.bluetooth.requestDevice({
+      filters: [{ name: NAME_FILTER }],
+      optionalServices: [SVC_UUID]
+    });
+    server = await device.gatt.connect();
+    $('#status').textContent = 'Connected';
+    service = await server.getPrimaryService(SVC_UUID);
+    dataChar = await service.getCharacteristic(DATA_UUID);
+    ctrlChar = await service.getCharacteristic(CTRL_UUID);
+
+    // 啟用通知
+    await dataChar.startNotifications();
+    dataChar.addEventListener('characteristicvaluechanged', onData);
+
+    // 讀取初始門檻
+    const v = await ctrlChar.readValue();
+    const txt = new TextDecoder().decode(v);
+    $('#th').textContent = txt;
+    $('#thInput').value = txt;
+
+    device.addEventListener('gattserverdisconnected', () => {
+      $('#status').textContent = 'Disconnected';
+      clearInterval(blinkTimer);
+      $('#led').style.background = '#bbb';
+    });
+  } catch (e) {
+    console.error(e);
+    $('#status').textContent = 'Error';
+  }
+};
+
+$('#btnSet').onclick = async () => {
+  if (!ctrlChar) return;
+  const val = Math.max(0, Math.min(255, parseInt($('#thInput').value || '40', 10)));
+  try {
+    await ctrlChar.writeValue(new TextEncoder().encode(String(val)));
+    // 寫完讀一次同步顯示
+    const v = await ctrlChar.readValue();
+    const txt = new TextDecoder().decode(v);
+    $('#th').textContent = txt;
+    $('#msg').textContent = 'Saved';
+    setTimeout(()=>$('#msg').textContent='', 1200);
+  } catch (e) {
+    $('#msg').textContent = 'Error';
+  }
+};
+
+function onData(ev){
+  const txt = new TextDecoder().decode(ev.target.value);
+  try{
+    const j = JSON.parse(txt);
+    $('#rpm').textContent = j.RPM;
+    $('#thr').textContent = j.Throttle;
+    $('#map').textContent = j.MAP;
+    $('#vol').textContent = j.Voltage;
+    $('#th').textContent  = j.Threshold;
+
+    if (j.MAP > j.Threshold){
+      clearInterval(blinkTimer);
+      let on = false;
+      const interval = Math.max(100, 1000 - j.Throttle*8);
+      blinkTimer = setInterval(()=>{
+        $('#led').style.background = on ? 'lime' : '#bbb';
+        on = !on;
+      }, interval);
+    } else {
+      clearInterval(blinkTimer);
+      $('#led').style.background = '#bbb';
+    }
+  }catch(err){
+    console.log('Invalid JSON:', txt);
+  }
+}
+</script>
