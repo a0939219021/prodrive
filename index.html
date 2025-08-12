@@ -15,6 +15,7 @@
   .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
   button { appearance: none; border: 0; border-radius: 12px; padding: 10px 14px; font-weight: 600; cursor: pointer; color:#0b1220; background: var(--acc); }
   button.secondary { background:#374151; color: var(--fg); }
+  button.alt { background:#10b981; color:#0b1220; }
   button:disabled { opacity:.5; cursor: not-allowed; }
   input[type="number"], input[type="text"] { background:#0b1020; color:var(--fg); border:1px solid #1f2937; border-radius:10px; padding:10px 12px; width:120px; }
   .grid { display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:10px; }
@@ -28,16 +29,18 @@
 <body>
   <header>
     <h1>THRUSTER — OBD‑II / BLE Monitor</h1>
-    <small>適用 Bluefy / Web Bluetooth。先按 Connect 再允許通知。</small>
+    <small>Bluefy / Web Bluetooth。請先按 Connect。</small>
   </header>
 
   <main>
     <section class="card">
       <div class="row">
-        <button id="btnConnect">🔌 Connect</button>
+        <button id="btnConnect">🔌 Connect（用名稱過濾）</button>
+        <button id="btnConnectAll" class="alt">🟢 Connect（顯示所有）</button>
         <button id="btnDisconnect" class="secondary" disabled>❌ Disconnect</button>
         <span id="status"><small>未連線</small></span>
       </div>
+      <small>若第一顆按鈕找不到裝置，改用「顯示所有」再從清單選「THRUSTER」。</small>
     </section>
 
     <section class="card">
@@ -68,60 +71,55 @@
   </main>
 
   <footer>
-    <small>Service/Chars UUID 與韌體一致：NUS-like 6E40xxxx。建議於 iOS 使用 Bluefy。</small>
+    <small>UUID 與韌體一致：Service=6E400001，DATA=6E400003（Notify），CTRL=6E400002（R/W）。</small>
   </footer>
 
 <script>
 (() => {
-  // ===== 必須與韌體一致的 UUID（NUS 風格）=====
+  // 與韌體一致的 UUID
   const SVC_UUID   = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
   const DATA_UUID  = '6e400003-b5a3-f393-e0a9-e50e24dcca9e'; // Notify/Read JSON
   const CTRL_UUID  = '6e400002-b5a3-f393-e0a9-e50e24dcca9e'; // Read/Write threshold
+  const NAME_PREFIX = 'THRUSTER';
 
   const $ = (id)=>document.getElementById(id);
   const logEl = $('log');
   const setText = (id, v) => { $(id).textContent = v; };
 
-  let device = null;
-  let server = null;
-  let svc = null;
-  let chrData = null;   // Notify JSON
-  let chrCtrl = null;   // R/W threshold
-
-  const enc = new TextEncoder();
-  const dec = new TextDecoder();
+  let device = null, server = null, svc = null, chrData = null, chrCtrl = null;
+  const enc = new TextEncoder(), dec = new TextDecoder();
 
   function log(msg) {
     const t = new Date().toLocaleTimeString();
     logEl.textContent = `[${t}] ${msg}\n` + logEl.textContent;
   }
-
   function setConnectedUI(connected) {
     $('btnConnect').disabled    = connected;
+    $('btnConnectAll').disabled = connected;
     $('btnDisconnect').disabled = !connected;
     $('btnWrite').disabled      = !connected;
     $('inpThreshold').disabled  = !connected;
     $('status').innerHTML = connected ? '<small style="color:#22d3ee">已連線</small>' : '<small>未連線</small>';
   }
 
-  async function connect() {
+  async function connectByName() {
+    return navigator.bluetooth.requestDevice({
+      filters: [{ namePrefix: NAME_PREFIX }],   // 不用 service 過濾，避免漏掉
+      optionalServices: [SVC_UUID]
+    });
+  }
+  async function connectAll() {
+    return navigator.bluetooth.requestDevice({
+      acceptAllDevices: true,
+      optionalServices: [SVC_UUID]
+    });
+  }
+
+  async function connect(useAll=false) {
     try {
       setConnectedUI(false);
       log('Requesting device…');
-
-      // Bluefy 建議用 filters 指定 service；若配對不到，可改 acceptAllDevices
-      const optionsPrimary = {
-        filters: [{ services: [SVC_UUID] }, { namePrefix: 'THRUSTER' }],
-        optionalServices: [SVC_UUID]
-      };
-      const optionsFallback = {
-        acceptAllDevices: true,
-        optionalServices: [SVC_UUID]
-      };
-
-      device = await navigator.bluetooth.requestDevice(optionsPrimary).catch(async () => {
-        return await navigator.bluetooth.requestDevice(optionsFallback);
-      });
+      device = await (useAll ? connectAll() : connectByName());
 
       device.addEventListener('gattserverdisconnected', onDisconnected);
       setText('devname', device.name || 'Unknown');
@@ -134,7 +132,7 @@
       chrData = await svc.getCharacteristic(DATA_UUID);
       chrCtrl = await svc.getCharacteristic(CTRL_UUID);
 
-      // 讀一次目前 Threshold，更新 UI
+      // 讀一次目前 Threshold
       try {
         const cur = await chrCtrl.readValue();
         const txt = dec.decode(cur);
@@ -145,15 +143,13 @@
         log('Read threshold failed (non-fatal): ' + e);
       }
 
-      // 啟用通知
       await chrData.startNotifications();
       chrData.addEventListener('characteristicvaluechanged', onNotify);
       setConnectedUI(true);
       log('Ready. Receiving notifications…');
-
     } catch (err) {
       log('Connect error: ' + err);
-      await disconnect(); // 保險清理
+      await disconnect();
     }
   }
 
@@ -162,12 +158,11 @@
     setConnectedUI(false);
     setText('devname', '—');
   }
-
   async function disconnect() {
     try {
       if (chrData) {
         try { await chrData.stopNotifications(); } catch {}
-        chrData.removeEventListener('characteristicvaluechanged', onNotify);
+        chrData?.removeEventListener('characteristicvaluechanged', onNotify);
       }
       if (device?.gatt?.connected) device.gatt.disconnect();
     } catch {}
@@ -177,21 +172,14 @@
 
   function onNotify(ev) {
     try {
-      const v = ev.target.value;
-      const txt = dec.decode(v);
+      const txt = dec.decode(ev.target.value);
       log('JSON: ' + txt);
-      const obj = JSON.parse(txt);
-
-      // 更新卡片數值
-      if ('RPM' in obj)       setText('rpm', obj.RPM);
-      if ('Throttle' in obj)  setText('thr', obj.Throttle);
-      if ('MAP' in obj)       setText('map', obj.MAP);
-      if ('Voltage' in obj)   setText('vbat', obj.Voltage);
-      if ('Threshold' in obj) { 
-        setText('thres', obj.Threshold);
-        // 不強改 input，避免你正在輸入；若要跟隨可取消註解
-        // $('inpThreshold').value = obj.Threshold;
-      }
+      const o = JSON.parse(txt);
+      if ('RPM' in o)       setText('rpm', o.RPM);
+      if ('Throttle' in o)  setText('thr', o.Throttle);
+      if ('MAP' in o)       setText('map', o.MAP);
+      if ('Voltage' in o)   setText('vbat', o.Voltage);
+      if ('Threshold' in o) setText('thres', o.Threshold);
     } catch (e) {
       log('Parse error: ' + e);
     }
@@ -201,8 +189,7 @@
     if (!chrCtrl) return;
     let v = parseInt($('inpThreshold').value, 10);
     if (isNaN(v)) v = 40;
-    if (v < 0) v = 0;
-    if (v > 255) v = 255;
+    v = Math.max(0, Math.min(255, v));
     try {
       await chrCtrl.writeValue(enc.encode(String(v)));
       log('Write Threshold: ' + v);
@@ -212,18 +199,17 @@
     }
   }
 
-  // 綁定 UI
+  // 綁定 UI（一定要在使用者手勢後呼叫 requestDevice）
   $('btnConnect').addEventListener('click', () => {
-    if (!navigator.bluetooth) {
-      alert('此瀏覽器不支援 Web Bluetooth，請用 Bluefy 或 Chrome（Android）');
-      return;
-    }
-    connect();
+    if (!navigator.bluetooth) { alert('此瀏覽器不支援 Web Bluetooth，請用 Bluefy 或 Android Chrome'); return; }
+    connect(false);
+  });
+  $('btnConnectAll').addEventListener('click', () => {
+    if (!navigator.bluetooth) { alert('此瀏覽器不支援 Web Bluetooth，請用 Bluefy 或 Android Chrome'); return; }
+    connect(true);
   });
   $('btnDisconnect').addEventListener('click', disconnect);
   $('btnWrite').addEventListener('click', writeThreshold);
-
-  // iOS/Bluefy 小貼士：請在使用者手勢（點擊）之後再呼叫 requestDevice；本頁已遵守。
 })();
 </script>
 </body>
