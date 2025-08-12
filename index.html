@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>PICO2W OBD-II 面板</title>
+<title>THRUSTER PANNEL</title>
 <style>
   :root{
     --bg:#0b0f14; --card:#121923; --muted:#7d8ca1; --text:#eaf2ff; --accent:#6aa6ff;
@@ -105,7 +105,7 @@
           🚗
         </div>
         <div>
-          <div style="font-size:20px;font-weight:800;letter-spacing:.2px">PICO2W OBD‑II 控制面板</div>
+          <div style="font-size:20px;font-weight:800;letter-spacing:.2px">THRUSTER PANNEL</div>
           <div class="muted">BLE：6E40… / 即時顯示 + 門檻控制</div>
         </div>
       </div>
@@ -269,7 +269,7 @@ async function connectBLE(){
   try{
     setBleState(false);
     const dev = await navigator.bluetooth.requestDevice({
-      filters:[{ namePrefix:'PICO2W-OBD2' }],
+      filters:[{ namePrefix:'THRUSTER' }],
       optionalServices:[SVC_UUID]
     });
     device = dev;
@@ -291,7 +291,7 @@ async function connectBLE(){
     $('#thVal').textContent = String(thNum);
 
     setBleState(true);
-    log('已連線到：' + (device.name || 'PICO2W-OBD2'));
+    log('已連線到：' + (device.name || 'THRUSTER'));
   }catch(e){
     log('連線失敗：' + e);
     setBleState(false);
