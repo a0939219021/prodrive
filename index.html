@@ -39,7 +39,7 @@
   button{ appearance:none; border:0; border-radius:12px; padding:10px 14px; font-weight:700; cursor:pointer; color:#0b1220; background:var(--acc); }
   button.secondary{ background:#374151; color:var(--fg); }
   button.alt{ background:var(--ok); color:#062; }
-  button.ghost{ background:transparent; color:var(--fg); border:1px solid rgba(255,255,255,.12); }
+  button.ghost{ background:transparent; color:#fg; border:1px solid rgba(255,255,255,.12); }
   button:disabled{ opacity:.5; cursor:not-allowed; }
   .field{ display:flex; align-items:center; gap:10px; background:#0b1020; border:1px solid #1f2937; border-radius:12px; padding:8px 10px; }
   .field input[type="number"]{ border:0; outline:none; background:transparent; color:var(--fg); width:110px; font-size:16px; }
@@ -66,15 +66,17 @@
 </style>
 </head>
 <body>
+  <!-- App Bar -->
   <div class="appbar">
     <div>
-      <div class="title">THRUSTER — OBD-II / BLE</div>
+      <div class="title">THRUSTER — OBD‑II / BLE</div>
       <div class="sub">6E40xxxx UUID · Bluefy / Web Bluetooth</div>
     </div>
     <div id="statusChip" class="chip">未連線</div>
   </div>
 
   <main>
+    <!-- 連線控制 -->
     <section class="card">
       <div class="row">
         <button id="btnConnect">🔌 連線（名稱過濾）</button>
@@ -85,6 +87,7 @@
       </div>
     </section>
 
+    <!-- 快速狀態 -->
     <section class="grid">
       <div class="stat"><label>RPM</label><b id="rpm">—</b><small id="rpmNote" class="hint"></small></div>
       <div class="stat"><label>Throttle (%)</label><b id="thr">—</b></div>
@@ -104,6 +107,7 @@
     </section>
   </main>
 
+  <!-- Bottom Bar（Threshold 控制） -->
   <div class="bottombar">
     <div class="wrap">
       <div class="left">
@@ -119,11 +123,202 @@
     </div>
   </div>
 
+  <!-- FAB（未連線時顯示，快速連線） -->
   <button id="fabConnect" class="fab" title="Connect">🔌</button>
+
+  <!-- Toast -->
   <div id="toast" class="toast"></div>
 
 <script>
-// 原本 JS 程式碼保留（略）...
+(() => {
+  // ===== 與韌體一致的 UUID =====
+  const SVC_UUID   = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+  const DATA_UUID  = '6e400003-b5a3-f393-e0a9-e50e24dcca9e'; // Notify/Read JSON
+  const CTRL_UUID  = '6e400002-b5a3-f393-e0a9-e50e24dcca9e'; // Read/Write threshold
+  const NAME_PREFIX = 'THRUSTER';
+
+  const $ = (id)=>document.getElementById(id);
+  const setText = (id, v) => { const el=$(id); if(el) el.textContent = v; };
+
+  // UI 元件
+  const logEl = $('log'); const chip = $('statusChip'); const fab = $('fabConnect');
+  const btnConnect = $('btnConnect'), btnConnectAll = $('btnConnectAll'), btnDisconnect = $('btnDisconnect');
+  const btnWrite = $('btnWrite'), inpThreshold = $('inpThreshold'); const btnClear = $('btnClear');
+
+  // BLE 物件
+  let device=null, server=null, svc=null, chrData=null, chrCtrl=null;
+  const enc = new TextEncoder(), dec = new TextDecoder();
+
+  // Wake Lock（常亮），在支援時使用
+  let wakeLock = null;
+  async function keepAwake(on){
+    if(!('wakeLock' in navigator)) return; // iOS 可能暫不支援
+    try{
+      if(on && !wakeLock){ wakeLock = await navigator.wakeLock.request('screen'); }
+      if(!on && wakeLock){ await wakeLock.release(); wakeLock = null; }
+    }catch(e){ /* ignore */ }
+  }
+
+  // Toast
+  let toastTimer=null;
+  function toast(msg){
+    const t=$('toast'); t.textContent=msg; t.classList.add('show');
+    clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove('show'), 1800);
+  }
+
+  // 狀態與 UI 切換
+  function setConnectedUI(connected) {
+    btnConnect.disabled = connected;
+    btnConnectAll.disabled = connected;
+    btnDisconnect.disabled = !connected;
+    btnWrite.disabled = !connected;
+    inpThreshold.disabled = !connected;
+    chip.className = 'chip ' + (connected ? 'ok' : '');
+    chip.textContent = connected ? '已連線' : '未連線';
+    fab.style.display = connected ? 'none' : 'grid';
+  }
+
+  function log(msg) {
+    const t = new Date().toLocaleTimeString();
+    if (logEl) logEl.textContent = `[${t}] ${msg}\n` + logEl.textContent;
+  }
+
+  // 連線流程（名稱過濾）
+  async function connectByName() {
+    return navigator.bluetooth.requestDevice({
+      filters: [{ namePrefix: NAME_PREFIX }],
+      optionalServices: [SVC_UUID]
+    });
+  }
+  // 連線流程（顯示所有）
+  async function connectAll() {
+    return navigator.bluetooth.requestDevice({
+      acceptAllDevices: true,
+      optionalServices: [SVC_UUID]
+    });
+  }
+
+  async function connect(useAll=false) {
+    try {
+      setConnectedUI(false);
+      log('Requesting device…');
+      toast('搜尋裝置中…');
+
+      if (!navigator.bluetooth) {
+        toast('此瀏覽器不支援 Web Bluetooth');
+        alert('此瀏覽器不支援 Web Bluetooth，請用 Bluefy（iOS）或 Chrome（Android）');
+        return;
+      }
+
+      device = await (useAll ? connectAll() : connectByName());
+      device.addEventListener('gattserverdisconnected', onDisconnected);
+      setText('devname', device.name || 'Unknown');
+
+      log('Connecting GATT…');
+      server = await device.gatt.connect();
+
+      log('Getting service & characteristics…');
+      svc = await server.getPrimaryService(SVC_UUID);
+      chrData = await svc.getCharacteristic(DATA_UUID);
+      chrCtrl = await svc.getCharacteristic(CTRL_UUID);
+
+      // 讀一次目前 Threshold
+      try {
+        const cur = await chrCtrl.readValue();
+        const txt = dec.decode(cur);
+        const val = parseInt(txt || '40', 10) || 40;
+        inpThreshold.value = val; setText('thres', val);
+        log(`Current Threshold: ${val}`);
+      } catch (e) { log('Read threshold failed (non-fatal): ' + e); }
+
+      await chrData.startNotifications();
+      chrData.addEventListener('characteristicvaluechanged', onNotify);
+
+      setConnectedUI(true);
+      toast('已連線 ✅');
+      log('Ready. Receiving notifications…');
+      keepAwake(true);
+    } catch (err) {
+      log('Connect error: ' + err);
+      toast('連線失敗');
+      await disconnect();
+    }
+  }
+
+  function onDisconnected() {
+    log('Disconnected.');
+    toast('已中斷連線');
+    setConnectedUI(false);
+    setText('devname', '—');
+    keepAwake(false);
+  }
+
+  async function disconnect() {
+    try {
+      if (chrData) {
+        try { await chrData.stopNotifications(); } catch {}
+        chrData.removeEventListener('characteristicvaluechanged', onNotify);
+      }
+      if (device?.gatt?.connected) device.gatt.disconnect();
+    } catch {}
+    device = server = svc = chrData = chrCtrl = null;
+    onDisconnected();
+  }
+
+  function onNotify(ev) {
+    try {
+      const txt = new TextDecoder().decode(ev.target.value);
+      log('JSON: ' + txt);
+      const o = JSON.parse(txt);
+      if ('RPM' in o)       setText('rpm', o.RPM);
+      if ('Throttle' in o)  setText('thr', o.Throttle);
+      if ('MAP' in o)       setText('map', o.MAP);
+      if ('Voltage' in o)   setText('vbat', o.Voltage);
+      if ('Threshold' in o) setText('thres', o.Threshold);
+      const rn = $('rpmNote');
+      if(rn && typeof o.RPM === 'number'){
+        rn.textContent = o.RPM > 2000 ? '⚡ 負載中' : (o.RPM>0 ? '怠速/低負載' : '');
+      }
+    } catch (e) {
+      log('Parse error: ' + e);
+    }
+  }
+
+  async function writeThreshold() {
+    if (!chrCtrl) return;
+    let v = parseInt(inpThreshold.value, 10);
+    if (isNaN(v)) v = 40;
+    v = Math.max(0, Math.min(255, v));
+    try {
+      await chrCtrl.writeValue(new TextEncoder().encode(String(v)));
+      toast('Threshold 已寫入：' + v);
+      setText('thres', v);
+      log('Write Threshold: ' + v);
+    } catch (e) {
+      toast('寫入失敗');
+      log('Write error: ' + e);
+    }
+  }
+
+  // 綁定 UI（一定要在使用者手勢後呼叫 requestDevice）
+  function checkSupport(){
+    if (!navigator.bluetooth) {
+      alert('此瀏覽器不支援 Web Bluetooth，請用 Bluefy（iOS）或 Chrome（Android）');
+      return false;
+    }
+    return true;
+  }
+
+  $('btnConnect').addEventListener('click', () => { if(checkSupport()) connect(false); });
+  $('btnConnectAll').addEventListener('click', () => { if(checkSupport()) connect(true); });
+  $('btnDisconnect').addEventListener('click', disconnect);
+  $('btnWrite').addEventListener('click', writeThreshold);
+  $('btnClear').addEventListener('click', ()=>{ if (logEl) { logEl.textContent=''; toast('已清除'); } });
+  $('fabConnect').addEventListener('click', () => { if(checkSupport()) connect(false); });
+
+  // 初始 UI
+  setConnectedUI(false);
+})();
 </script>
 </body>
 </html>
