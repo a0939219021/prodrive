@@ -2,31 +2,36 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#0b0f14" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
 <title>THRUSTER PANEL</title>
 <style>
   :root{
     --bg:#0b0f14; --card:#121923; --muted:#7d8ca1; --text:#eaf2ff; --accent:#6aa6ff;
     --ok:#35d07f; --warn:#ffd166; --bad:#ff6b6b;
+    --space: clamp(10px, 2vw, 16px);
+    --radius: 20px;
   }
-  *{box-sizing:border-box}
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
   html,body{height:100%}
   body{
     margin:0; background:linear-gradient(160deg,#0b0f14 0%,#0e1420 40%,#0b0f14 100%);
-    color:var(--text); font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans",sans-serif;
+    color:var(--text);
+    font-family: ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans",sans-serif;
     display:grid; place-items:center; padding:24px;
   }
   .card{
-    width:min(920px,94vw); background:linear-gradient(180deg,#151f2c 0%, #101826 100%);
-    border:1px solid #263041; border-radius:20px; box-shadow:0 10px 30px rgba(0,0,0,.35);
-    padding:20px 20px 16px;
+    width:min(960px,96vw); background:linear-gradient(180deg,#151f2c 0%, #101826 100%);
+    border:1px solid #263041; border-radius:var(--radius); box-shadow:0 10px 30px rgba(0,0,0,.35);
+    padding: clamp(14px, 2.5vw, 20px);
   }
   .header{
-    display:flex; gap:12px; align-items:center; justify-content:space-between; margin-bottom:10px;
+    display:flex; gap:12px; align-items:center; justify-content:space-between; margin-bottom:6px;
   }
   .title{ display:flex; align-items:center; gap:12px; }
   .badge{
-    font-size:12px; color:#0b0f14; background:var(--accent); padding:4px 8px; border-radius:999px; font-weight:600;
+    font-size:12px; color:#0b0f14; background:var(--accent); padding:6px 10px; border-radius:999px; font-weight:700;
   }
   .status{ display:flex; align-items:center; gap:10px; flex-wrap:wrap }
   .dot{
@@ -35,24 +40,25 @@
   .dot.on{ background:var(--ok); box-shadow:0 0 12px 2px rgba(53,208,127,.6) }
   .muted{ color:var(--muted); font-size:14px }
   .btn{
-    background:#1b2737; color:var(--text); border:1px solid #2b3a51; padding:10px 14px; border-radius:12px;
-    font-weight:600; cursor:pointer; transition:.2s ease;
+    background:#1b2737; color:var(--text); border:1px solid #2b3a51; padding:12px 16px; border-radius:12px;
+    font-weight:700; cursor:pointer; transition:.18s ease; min-height:44px; min-width:44px;
   }
   .btn:hover{ transform:translateY(-1px); border-color:#3d5272 }
   .btn:active{ transform:translateY(0) }
+  .btn[disabled]{ opacity:.5; cursor:not-allowed }
   .btn.primary{ background:linear-gradient(180deg,#2a69ff,#2256d9); border:0 }
-  .grid{ display:grid; grid-template-columns: 1.1fr 1fr; gap:16px; margin-top:14px; }
+  .grid{ display:grid; grid-template-columns: 1.1fr 1fr; gap:16px; margin-top:12px; }
   .panel{ background:rgba(13,20,31,.6); border:1px solid #263041; border-radius:16px; padding:14px; }
   .section-title{
-    font-size:13px; letter-spacing:.06em; text-transform:uppercase; color:#a7b6cc; margin:2px 0 12px;
+    font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:#a7b6cc; margin:2px 0 10px;
   }
   .kv{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; }
   .metric{
-    background:linear-gradient(180deg,#122033,#0f1a2a); border:1px solid #24334a; border-radius:14px; padding:10px 12px;
+    background:linear-gradient(180deg,#122033,#0f1a2a); border:1px solid #24334a; border-radius:14px; padding:12px;
   }
   .metric .label{ font-size:12px; color:#9cb0c9; letter-spacing:.02em }
-  .metric .value{ font-weight:800; font-size:24px; margin-top:6px }
-  .unit{ font-size:12px; color:#8fa3be; margin-left:4px; font-weight:600 }
+  .metric .value{ font-weight:800; font-size:clamp(18px, 4.2vw, 24px); margin-top:6px; line-height:1.1 }
+  .value .unit{ font-size:12px; color:#8fa3be; margin-left:4px; font-weight:700 }
   .row{ display:flex; align-items:center; gap:12px; flex-wrap:wrap }
   .led{
     width:64px; height:64px; border-radius:50%;
@@ -65,37 +71,37 @@
     box-shadow: 0 0 16px 4px rgba(0,255,0,.65), inset 0 0 14px rgba(0,0,0,.25);
   }
   .mono{
-    width:100%; min-height:88px; max-height:160px; overflow:auto;
+    width:100%; min-height:88px; max-height:200px; overflow:auto;
     background:linear-gradient(180deg,#0c1420,#0a111b); border:1px solid #223049; border-radius:12px;
     padding:10px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; color:#b9c7dd;
   }
   .slider{
-    -webkit-appearance:none; appearance:none; width:100%; height:6px; border-radius:999px;
+    -webkit-appearance:none; appearance:none; width:100%; height:8px; border-radius:999px;
     background:linear-gradient(90deg,#2e3b52,#244f93); outline:none;
   }
   .slider::-webkit-slider-thumb{
-    -webkit-appearance:none; appearance:none; width:18px; height:18px; border-radius:50%;
-    background:var(--accent); border:2px solid #d7e6ff; cursor:pointer;
-    box-shadow:0 2px 8px rgba(0,0,0,.35);
+    -webkit-appearance:none; appearance:none; width:24px; height:24px; border-radius:50%;
+    background:var(--accent); border:2px solid #d7e6ff; cursor:pointer; box-shadow:0 2px 8px rgba(0,0,0,.35);
   }
   .pill{
-    background:#172337; border:1px solid #273756; padding:6px 10px; border-radius:999px; color:#c4d3ea; font-size:13px; font-weight:700;
+    background:#172337; border:1px solid #273756; padding:8px 12px; border-radius:999px; color:#c4d3ea; font-size:13px; font-weight:800;
   }
   .hint{ color:#98aac4; font-size:12px }
 
-  /* Mobile optimizations */
-  @media (max-width:800px){
-    body{ padding:12px }
-    .grid{ grid-template-columns:1fr }
-    .kv{ grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
-    .btn{ padding:14px 18px; font-size:16px }
-    .badge{ font-size:14px; padding:6px 10px }
-    .metric .value{ font-size:28px }
-    .metric .label{ font-size:14px }
-    .section-title{ font-size:15px }
-    .muted, .hint{ font-size:14px }
-    .pill{ font-size:15px; padding:8px 14px }
-    .led{ width:72px; height:72px }
+  /* ====== Mobile tweaks ====== */
+  @media (max-width: 880px){
+    body{ padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); }
+    .grid{ grid-template-columns:1fr; gap:12px }
+    .status{ width:100%; justify-content:flex-end }
+    .kv{ grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px }
+    .led{ width:56px; height:56px }
+    .btn{ padding:13px 18px; border-radius:14px }
+    .mono{ max-height: 160px }
+  }
+  @media (max-width: 420px){
+    .kv{ grid-template-columns:1fr 1fr }
+    .title div:first-child{ transform: scale(.95) }
+    .badge{ font-size:11px; padding:6px 10px }
   }
 </style>
 </head>
@@ -108,7 +114,7 @@
           🚗
         </div>
         <div>
-          <div style="font-size:20px;font-weight:800;letter-spacing:.2px">THRUSTER PANEL</div>
+          <div style="font-size:clamp(18px,4.8vw,20px);font-weight:800;letter-spacing:.2px">THRUSTER PANEL</div>
           <div class="muted">BLE: 6E40… / Realtime Display + Threshold Control</div>
         </div>
       </div>
@@ -134,10 +140,10 @@
         <div style="height:12px"></div>
 
         <div class="row">
-          <div style="display:flex;flex-direction:column;gap:6px;min-width:200px;flex:1">
+          <div style="display:flex;flex-direction:column;gap:8px;min-width:220px;flex:1">
             <div class="section-title" style="margin:0">Threshold Setting</div>
             <input id="thSlider" class="slider" type="range" min="0" max="255" value="40" />
-            <div style="display:flex;justify-content:space-between;align-items:center">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
               <div class="hint">MAP above threshold will trigger LED blinking</div>
               <div class="pill">Threshold: <span id="thVal">40</span></div>
             </div>
@@ -149,7 +155,7 @@
         </div>
 
         <div style="height:10px"></div>
-        <div class="mono" id="log"></div>
+        <div class="mono" id="log" role="log" aria-live="polite"></div>
       </div>
 
       <!-- Right: Device Info -->
@@ -158,19 +164,19 @@
         <div style="display:grid;gap:10px">
           <div class="metric">
             <div class="label">THRUSTER Name</div>
-            <div class="value" style="font-size:18px"><span id="devName">—</span></div>
+            <div class="value" style="font-size:clamp(15px,3.8vw,18px)"><span id="devName">—</span></div>
           </div>
           <div class="metric">
             <div class="label">Service UUID</div>
-            <div class="value" style="font-size:14px;word-break:break-all">6e400001-b5a3-f393-e0a9-e50e24dcca9e</div>
+            <div class="value" style="font-size:13px;word-break:break-all">6e400001-b5a3-f393-e0a9-e50e24dcca9e</div>
           </div>
           <div class="metric">
             <div class="label">Data Characteristic</div>
-            <div class="value" style="font-size:14px;word-break:break-all">6e400003-b5a3-f393-e0a9-e50e24dcca9e</div>
+            <div class="value" style="font-size:13px;word-break:break-all">6e400003-b5a3-f393-e0a9-e50e24dcca9e</div>
           </div>
           <div class="metric">
             <div class="label">Control Characteristic</div>
-            <div class="value" style="font-size:14px;word-break:break-all">6e400002-b5a3-f393-e0a9-e50e24dcca9e</div>
+            <div class="value" style="font-size:13px;word-break:break-all">6e400002-b5a3-f393-e0a9-e50e24dcca9e</div>
           </div>
           <div class="hint">Tip: Web Bluetooth works only over HTTPS or <code>localhost</code>.</div>
         </div>
@@ -232,7 +238,7 @@ function onNotify(ev) {
     $('#rpm').textContent  = j.RPM ?? 0;
     $('#thr').textContent  = j.Throttle ?? 0;
     $('#map').textContent  = j.MAP ?? 0;
-    $('#volt').textContent = (j.Voltage ?? 0).toFixed ? j.Voltage.toFixed(2) : j.Voltage;
+    $('#volt').textContent = (j.Voltage ?? 0).toFixed ? Number(j.Voltage).toFixed(2) : j.Voltage;
     updateLED(j);
   } catch (e) {
     log('JSON parse error: ' + e);
@@ -242,6 +248,7 @@ function onNotify(ev) {
 async function connectBLE(){
   try{
     setBleState(false);
+    // Bluefy 支援 Web Bluetooth；使用 namePrefix 快速過濾 THRUSTER 裝置
     const dev = await navigator.bluetooth.requestDevice({
       filters:[{ namePrefix:'THRUSTER' }],
       optionalServices:[SVC_UUID]
