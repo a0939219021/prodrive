@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
 <title>THRUSTER PANEL</title>
 <style>
   :root{
@@ -28,7 +28,7 @@
   .badge{
     font-size:12px; color:#0b0f14; background:var(--accent); padding:4px 8px; border-radius:999px; font-weight:600;
   }
-  .status{ display:flex; align-items:center; gap:10px; }
+  .status{ display:flex; align-items:center; gap:10px; flex-wrap:wrap }
   .dot{
     width:10px; height:10px; border-radius:50%; background:#576279; box-shadow:0 0 0 2px #222c3a inset;
   }
@@ -42,13 +42,11 @@
   .btn:active{ transform:translateY(0) }
   .btn.primary{ background:linear-gradient(180deg,#2a69ff,#2256d9); border:0 }
   .grid{ display:grid; grid-template-columns: 1.1fr 1fr; gap:16px; margin-top:14px; }
-  @media (max-width:800px){ .grid{ grid-template-columns:1fr } }
   .panel{ background:rgba(13,20,31,.6); border:1px solid #263041; border-radius:16px; padding:14px; }
   .section-title{
     font-size:13px; letter-spacing:.06em; text-transform:uppercase; color:#a7b6cc; margin:2px 0 12px;
   }
   .kv{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; }
-  @media (max-width:800px){ .kv{ grid-template-columns:repeat(2,minmax(0,1fr)) } }
   .metric{
     background:linear-gradient(180deg,#122033,#0f1a2a); border:1px solid #24334a; border-radius:14px; padding:10px 12px;
   }
@@ -84,6 +82,21 @@
     background:#172337; border:1px solid #273756; padding:6px 10px; border-radius:999px; color:#c4d3ea; font-size:13px; font-weight:700;
   }
   .hint{ color:#98aac4; font-size:12px }
+
+  /* Mobile optimizations */
+  @media (max-width:800px){
+    body{ padding:12px }
+    .grid{ grid-template-columns:1fr }
+    .kv{ grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
+    .btn{ padding:14px 18px; font-size:16px }
+    .badge{ font-size:14px; padding:6px 10px }
+    .metric .value{ font-size:28px }
+    .metric .label{ font-size:14px }
+    .section-title{ font-size:15px }
+    .muted, .hint{ font-size:14px }
+    .pill{ font-size:15px; padding:8px 14px }
+    .led{ width:72px; height:72px }
+  }
 </style>
 </head>
 <body>
