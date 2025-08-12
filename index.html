@@ -1,324 +1,265 @@
 <!doctype html>
 <html lang="zh-Hant">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>THRUSTER OBD-II BLE Console</title>
-<style>
-  :root{
-    --bg:#0b1220; --bg2:#0f172a; --card:#111827; --fg:#e5e7eb; --muted:#9ca3af; --acc:#22d3ee; --ok:#10b981; --warn:#f59e0b; --err:#ef4444;
-    --br:16px; --gap:12px;
-    --safe-top: env(safe-area-inset-top, 0px);
-    --safe-bot: env(safe-area-inset-bottom, 0px);
-  }
-  *{ box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html,body{ height:100%; }
-  body{ margin:0; background: linear-gradient(180deg, var(--bg), var(--bg2)); color:var(--fg); font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial; }
-  .appbar{
-    position:sticky; top:0; z-index:50; padding: calc(10px + var(--safe-top)) 16px 10px;
-    background: linear-gradient(180deg, rgba(11,18,32,.95), rgba(15,23,42,.7));
-    backdrop-filter: blur(8px); border-bottom:1px solid rgba(255,255,255,.06);
-    display:flex; align-items:center; justify-content:space-between; gap:10px;
-  }
-  .title{ font-size:18px; font-weight:700; letter-spacing:.3px; }
-  .chip{ padding:6px 10px; border-radius:999px; font-size:12px; border:1px solid rgba(255,255,255,.08); background:#0b1020; color:var(--muted); }
-  .chip.ok{ color:#052; background:rgba(16,185,129,.15); border-color:rgba(16,185,129,.25); }
-  .chip.err{ color:#320; background:rgba(239,68,68,.12); border-color:rgba(239,68,68,.25); }
-  main{ padding:12px; max-width:980px; margin:0 auto; display:grid; gap:var(--gap); }
-  .card{ background: rgba(17,24,39,.85); border: 1px solid rgba(255,255,255,.06); border-radius: var(--br); padding: 14px; backdrop-filter: blur(6px); }
-  .row{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
-  .grid{ display:grid; grid-template-columns: 1fr; gap:var(--gap); }
-  @media (min-width: 560px){ .grid{ grid-template-columns: repeat(2, minmax(0,1fr)); } }
-  @media (min-width: 920px){ .grid{ grid-template-columns: repeat(3, minmax(0,1fr)); } }
-  .stat{ padding:14px; border-radius:12px; background:#0b1020; border:1px solid #1f2937; display:flex; flex-direction:column; gap:6px; min-height:84px; }
-  .stat label{ font-size:12px; color:var(--muted); }
-  .stat b{ font-size:24px; font-weight:800; letter-spacing:.2px; color:#a5b4fc; }
-  .stat small{ color:var(--muted); }
-  button{ appearance:none; border:0; border-radius:12px; padding:10px 14px; font-weight:700; cursor:pointer; color:#0b1220; background:var(--acc); }
-  button.secondary{ background:#374151; color:var(--fg); }
-  button.alt{ background:var(--ok); color:#062; }
-  button.ghost{ background:transparent; color:#fg; border:1px solid rgba(255,255,255,.12); }
-  button:disabled{ opacity:.5; cursor:not-allowed; }
-  .field{ display:flex; align-items:center; gap:10px; background:#0b1020; border:1px solid #1f2937; border-radius:12px; padding:8px 10px; }
-  .field input[type="number"]{ border:0; outline:none; background:transparent; color:var(--fg); width:110px; font-size:16px; }
-  .hint{ color:var(--muted); font-size:12px; }
-  .bottombar{
-    position:sticky; bottom:0; z-index:40; padding:10px 12px calc(10px + var(--safe-bot));
-    background: linear-gradient(0deg, rgba(11,18,32,.95), rgba(15,23,42,.7));
-    border-top:1px solid rgba(255,255,255,.06);
-    backdrop-filter: blur(8px);
-  }
-  .bottombar .wrap{ max-width:980px; margin:0 auto; display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap; }
-  .bottombar .left{ display:flex; gap:10px; align-items:center; }
-  .bottombar .right{ display:flex; gap:10px; }
-  .fab{
-    position:fixed; right:18px; bottom:calc(66px + var(--safe-bot)); z-index:45;
-    width:56px; height:56px; border-radius:50%; display:grid; place-items:center; font-size:20px; box-shadow: 0 10px 24px rgba(34,211,238,.35);
-  }
-  pre{ margin:0; background:#0b1020; border:1px solid #1f2937; border-radius:12px; padding:12px; max-height:260px; overflow:auto; font-size:12px; }
-  .toast{ position:fixed; left:50%; transform:translateX(-50%); bottom:calc(20px + var(--safe-bot)); background:#111827; color:var(--fg);
-          border:1px solid rgba(255,255,255,.12); border-radius:999px; padding:10px 14px; font-size:14px; opacity:0; pointer-events:none; transition:.25s; z-index:60; }
-  .toast.show{ opacity:1; transform:translateX(-50%) translateY(-6px); }
-  .spacer{ flex:1; }
-  .sub{ color:var(--muted); font-size:12px; }
-</style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>THRUSTER BLE Dashboard (Bluefy)</title>
+  <style>
+    :root{--bg:#0b0f14;--panel:#111722;--text:#e6ebf3;--muted:#8da1b9;--ok:#2ecc71;--warn:#f39c12;--bad:#e74c3c;--brand:#46a0ff;}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 system-ui, -apple-system, Segoe UI, Roboto, PingFang TC, Noto Sans TC, "Helvetica Neue", Arial}
+    header{padding:18px 16px;border-bottom:1px solid #1c2635;background:#0d1320;position:sticky;top:0;z-index:5}
+    h1{margin:0;font-size:18px;font-weight:700}
+    .wrap{padding:16px;display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+    .card{background:var(--panel);border:1px solid #1d2636;border-radius:14px;box-shadow:0 6px 24px rgb(0 0 0 / .3)}
+    .card>.hd{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border-bottom:1px solid #1c2635}
+    .card>.bd{padding:12px 14px}
+    button,select,input[type="number"],input[type="text"]{background:#0e1522;border:1px solid #203047;color:var(--text);padding:10px 12px;border-radius:10px}
+    button{cursor:pointer}
+    button.primary{background:linear-gradient(180deg,#1a68ff,#0e49b8);border-color:#0e49b8}
+    button:disabled{opacity:.5;cursor:not-allowed}
+    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    .kv{display:grid;grid-template-columns:auto 1fr;gap:6px 12px}
+    .kv .k{color:var(--muted)}
+    .big{font-size:28px;font-weight:700}
+    .led{width:18px;height:18px;border-radius:50%;background:#2c3e50;border:2px solid #1b2838;box-shadow:0 0 0 2px #0b121d inset}
+    .led.on{background:var(--ok);box-shadow:0 0 16px var(--ok)}
+    .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px}
+    .ok{background:#14341f;color:#7dffb0}
+    .warn{background:#2b230f;color:#ffd36b}
+    .bad{background:#3a1515;color:#ff9b9b}
+    .muted{color:var(--muted)}
+    .mono{font-family:ui-monospace,SFMono-Regular,Consolas,Menlo,monospace}
+    .hr{height:1px;background:#1c2635;margin:10px -14px}
+    .hint{font-size:12px;color:#93a7c2}
+    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    footer{padding:14px;color:#7b8ea8;text-align:center}
+  </style>
 </head>
 <body>
-  <!-- App Bar -->
-  <div class="appbar">
-    <div>
-      <div class="title">THRUSTER — OBD‑II / BLE</div>
-      <div class="sub">6E40xxxx UUID · Bluefy / Web Bluetooth</div>
-    </div>
-    <div id="statusChip" class="chip">未連線</div>
-  </div>
+  <header>
+    <h1>THRUSTER BLE Dashboard（Bluefy）</h1>
+  </header>
 
-  <main>
-    <!-- 連線控制 -->
-    <section class="card">
-      <div class="row">
-        <button id="btnConnect">🔌 連線（名稱過濾）</button>
-        <button id="btnConnectAll" class="alt">🟢 顯示所有裝置</button>
-        <button id="btnDisconnect" class="secondary" disabled>❌ 中斷</button>
-        <div class="spacer"></div>
-        <span class="hint">若找不到，改用「顯示所有」再選 <b>THRUSTER</b></span>
-      </div>
-    </section>
-
-    <!-- 快速狀態 -->
-    <section class="grid">
-      <div class="stat"><label>RPM</label><b id="rpm">—</b><small id="rpmNote" class="hint"></small></div>
-      <div class="stat"><label>Throttle (%)</label><b id="thr">—</b></div>
-      <div class="stat"><label>MAP (kPa)</label><b id="map">—</b></div>
-      <div class="stat"><label>Voltage (V)</label><b id="vbat">—</b></div>
-      <div class="stat"><label>Threshold</label><b id="thres">—</b></div>
-      <div class="stat"><label>Device</label><b id="devname">—</b><small class="hint" id="advHint">以名稱配對</small></div>
-    </section>
-
-    <!-- Log（預設隱藏） -->
-    <section class="card" id="rawJsonSection" style="display:none;">
-      <div class="row" style="justify-content:space-between;">
-        <b>Raw JSON</b>
-        <button id="btnClear" class="ghost">🧹 清除</button>
-      </div>
-      <pre id="log"></pre>
-    </section>
-  </main>
-
-  <!-- Bottom Bar（Threshold 控制） -->
-  <div class="bottombar">
-    <div class="wrap">
-      <div class="left">
-        <div class="field">
-          <span>Threshold</span>
-          <input id="inpThreshold" type="number" min="0" max="255" step="1" value="40" />
+  <div class="wrap">
+    <!-- 連線 / 狀態 -->
+    <section class="card" id="connCard">
+      <div class="hd"><div>連線</div><div class="row"><span class="badge ok" id="status">未連線</span></div></div>
+      <div class="bd">
+        <div class="row" style="gap:12px">
+          <button id="btnConnect" class="primary">🔗 連線</button>
+          <button id="btnDisconnect" disabled>⏏️ 中斷</button>
+          <span class="muted mono" id="devName"></span>
         </div>
-        <span class="hint" id="hint">寫入後會存入裝置 <code>config.json</code></span>
+        <div class="hint" style="margin-top:8px">使用 <b>Bluefy</b> 開啟本頁，點「連線」選擇 <b>THRUSTER</b> 裝置。</div>
       </div>
-      <div class="right">
-        <button id="btnWrite">➡️ 寫入</button>
+    </section>
+
+    <!-- 即時資料 -->
+    <section class="card">
+      <div class="hd"><div>即時資料</div><div class="row"><div class="led" id="fanLed" title="Fan"></div></div></div>
+      <div class="bd">
+        <div class="kv">
+          <div class="k">RPM</div><div id="rpm" class="big">—</div>
+          <div class="k">Throttle (%)</div><div id="thr" class="big">—</div>
+          <div class="k">MAP</div><div id="map" class="big">—</div>
+          <div class="k">Voltage (V)</div><div id="vbat">—</div>
+          <div class="k">門檻 Threshold</div><div id="th">—</div>
+          <div class="hr"></div><div class="hr"></div>
+          <div class="k">CAN 速率</div><div id="canbps">—</div>
+          <div class="k">PWM 頻率</div><div id="pwmhz">—</div>
+          <div class="k">BlinkInterval</div><div id="blink">—</div>
+        </div>
       </div>
-    </div>
+    </section>
+
+    <!-- 控制區 -->
+    <section class="card">
+      <div class="hd"><div>控制 / 設定</div></div>
+      <div class="bd" id="ctrls">
+        <div class="row" style="margin-bottom:10px">
+          <input id="inputTH" type="number" min="0" max="255" step="1" placeholder="門檻 0~255" style="width:110px" />
+          <button id="btnSetTH">寫入 TH</button>
+          <span class="hint">等同於寫入 CTRL：<span class="mono">TH:&lt;數值&gt;</span></span>
+        </div>
+        <div class="row" style="margin-bottom:10px">
+          <button data-cmd="CAN:250">CAN:250</button>
+          <button data-cmd="CAN:500">CAN:500</button>
+          <button data-cmd="PWM:1000">PWM:1000</button>
+          <button data-cmd="PWM:25000">PWM:25000</button>
+        </div>
+        <div class="row">
+          <input id="inputRaw" type="text" placeholder="手動指令（TH:55 / CAN:500 / PWM:25000）" style="flex:1" />
+          <button id="btnSendRaw">送出</button>
+        </div>
+        <div class="hint" style="margin-top:8px">支援指令：<span class="mono">TH:&lt;0~255&gt;</span>、<span class="mono">CAN:250|500</span>、<span class="mono">PWM:1000|25000</span>。也可直接寫入純數字做門檻。</div>
+      </div>
+    </section>
+
+    <!-- LED 示意 -->
+    <section class="card">
+      <div class="hd"><div>LED 閃爍（僅 MAP &gt; 門檻）</div></div>
+      <div class="bd">
+        <div class="row" style="align-items:center;gap:14px">
+          <div class="led" id="uiLed" title="UI LED"></div>
+          <div>
+            <div class="muted">依據 <span class="mono">BlinkInterval</span> 閃爍：值 &gt; 0 代表啟動，間隔（毫秒）越小越快；值 = 0 代表熄滅。</div>
+            <div class="hint">BlinkInterval = <span class="mono">max(100, 1000 - Throttle*8)</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
   </div>
 
-  <!-- FAB（未連線時顯示，快速連線） -->
-  <button id="fabConnect" class="fab" title="Connect">🔌</button>
+  <footer>© THRUSTER Demo — Web Bluetooth (NUS)</footer>
 
-  <!-- Toast -->
-  <div id="toast" class="toast"></div>
+  <script>
+  // === UUIDs (Nordic UART Service) ===
+  const UUID_SVC  = "6E400001-B5A3-F393-E0A9-E50E24DCCA9E";
+  const UUID_DATA = "6E400003-B5A3-F393-E0A9-E50E24DCCA9E"; // Notify/Read JSON
+  const UUID_CTRL = "6E400002-B5A3-F393-E0A9-E50E24DCCA9E"; // Read/Write commands
 
-<script>
-(() => {
-  // ===== 與韌體一致的 UUID =====
-  const SVC_UUID   = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
-  const DATA_UUID  = '6e400003-b5a3-f393-e0a9-e50e24dcca9e'; // Notify/Read JSON
-  const CTRL_UUID  = '6e400002-b5a3-f393-e0a9-e50e24dcca9e'; // Read/Write threshold
-  const NAME_PREFIX = 'THRUSTER';
+  // === DOM ===
+  const els = {
+    status: document.getElementById('status'),
+    devName: document.getElementById('devName'),
+    btnConnect: document.getElementById('btnConnect'),
+    btnDisconnect: document.getElementById('btnDisconnect'),
+    rpm: document.getElementById('rpm'),
+    thr: document.getElementById('thr'),
+    map: document.getElementById('map'),
+    vbat: document.getElementById('vbat'),
+    th: document.getElementById('th'),
+    canbps: document.getElementById('canbps'),
+    pwmhz: document.getElementById('pwmhz'),
+    blink: document.getElementById('blink'),
+    fanLed: document.getElementById('fanLed'),
+    uiLed: document.getElementById('uiLed'),
+    inputTH: document.getElementById('inputTH'),
+    btnSetTH: document.getElementById('btnSetTH'),
+    inputRaw: document.getElementById('inputRaw'),
+    btnSendRaw: document.getElementById('btnSendRaw'),
+    ctrls: document.getElementById('ctrls')
+  };
 
-  const $ = (id)=>document.getElementById(id);
-  const setText = (id, v) => { const el=$(id); if(el) el.textContent = v; };
+  let device, gatt, svc, chrData, chrCtrl;
+  let blinkTimer = null; // UI LED timer
+  const dec = new TextDecoder();
+  const enc = new TextEncoder();
 
-  // UI 元件
-  const logEl = $('log'); const chip = $('statusChip'); const fab = $('fabConnect');
-  const btnConnect = $('btnConnect'), btnConnectAll = $('btnConnectAll'), btnDisconnect = $('btnDisconnect');
-  const btnWrite = $('btnWrite'), inpThreshold = $('inpThreshold'); const btnClear = $('btnClear');
+  function setStatus(text, mode='ok'){ els.status.textContent = text; els.status.className = 'badge ' + (mode==='ok'?'ok':mode==='warn'?'warn':'bad'); }
+  function setConnectedUI(yes){
+    els.btnConnect.disabled = yes;
+    els.btnDisconnect.disabled = !yes;
+    els.ctrls.querySelectorAll('button,input').forEach(el=>{ if(el.id!=='btnConnect') el.disabled = !yes; });
+    if(!yes){
+      els.devName.textContent = '';
+      resetDataUI();
+      stopBlink();
+    }
+  }
+  function resetDataUI(){
+    ['rpm','thr','map','vbat','th','canbps','pwmhz','blink'].forEach(id=>els[id].textContent='—');
+    els.fanLed.classList.remove('on');
+    els.uiLed.classList.remove('on');
+  }
 
-  // BLE 物件
-  let device=null, server=null, svc=null, chrData=null, chrCtrl=null;
-  const enc = new TextEncoder(), dec = new TextDecoder();
-
-  // Wake Lock（常亮），在支援時使用
-  let wakeLock = null;
-  async function keepAwake(on){
-    if(!('wakeLock' in navigator)) return; // iOS 可能暫不支援
+  async function connect(){
     try{
-      if(on && !wakeLock){ wakeLock = await navigator.wakeLock.request('screen'); }
-      if(!on && wakeLock){ await wakeLock.release(); wakeLock = null; }
-    }catch(e){ /* ignore */ }
-  }
-
-  // Toast
-  let toastTimer=null;
-  function toast(msg){
-    const t=$('toast'); t.textContent=msg; t.classList.add('show');
-    clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove('show'), 1800);
-  }
-
-  // 狀態與 UI 切換
-  function setConnectedUI(connected) {
-    btnConnect.disabled = connected;
-    btnConnectAll.disabled = connected;
-    btnDisconnect.disabled = !connected;
-    btnWrite.disabled = !connected;
-    inpThreshold.disabled = !connected;
-    chip.className = 'chip ' + (connected ? 'ok' : '');
-    chip.textContent = connected ? '已連線' : '未連線';
-    fab.style.display = connected ? 'none' : 'grid';
-  }
-
-  function log(msg) {
-    const t = new Date().toLocaleTimeString();
-    if (logEl) logEl.textContent = `[${t}] ${msg}\n` + logEl.textContent;
-  }
-
-  // 連線流程（名稱過濾）
-  async function connectByName() {
-    return navigator.bluetooth.requestDevice({
-      filters: [{ namePrefix: NAME_PREFIX }],
-      optionalServices: [SVC_UUID]
-    });
-  }
-  // 連線流程（顯示所有）
-  async function connectAll() {
-    return navigator.bluetooth.requestDevice({
-      acceptAllDevices: true,
-      optionalServices: [SVC_UUID]
-    });
-  }
-
-  async function connect(useAll=false) {
-    try {
-      setConnectedUI(false);
-      log('Requesting device…');
-      toast('搜尋裝置中…');
-
-      if (!navigator.bluetooth) {
-        toast('此瀏覽器不支援 Web Bluetooth');
-        alert('此瀏覽器不支援 Web Bluetooth，請用 Bluefy（iOS）或 Chrome（Android）');
-        return;
-      }
-
-      device = await (useAll ? connectAll() : connectByName());
+      device = await navigator.bluetooth.requestDevice({
+        filters:[{ namePrefix: 'THRUSTER' }],
+        optionalServices:[UUID_SVC]
+      });
       device.addEventListener('gattserverdisconnected', onDisconnected);
-      setText('devname', device.name || 'Unknown');
-
-      log('Connecting GATT…');
-      server = await device.gatt.connect();
-
-      log('Getting service & characteristics…');
-      svc = await server.getPrimaryService(SVC_UUID);
-      chrData = await svc.getCharacteristic(DATA_UUID);
-      chrCtrl = await svc.getCharacteristic(CTRL_UUID);
-
-      // 讀一次目前 Threshold
-      try {
-        const cur = await chrCtrl.readValue();
-        const txt = dec.decode(cur);
-        const val = parseInt(txt || '40', 10) || 40;
-        inpThreshold.value = val; setText('thres', val);
-        log(`Current Threshold: ${val}`);
-      } catch (e) { log('Read threshold failed (non-fatal): ' + e); }
-
+      els.devName.textContent = device.name || device.id || '';
+      setStatus('連線中…','warn');
+      gatt = await device.gatt.connect();
+      svc = await gatt.getPrimaryService(UUID_SVC);
+      chrData = await svc.getCharacteristic(UUID_DATA);
+      chrCtrl = await svc.getCharacteristic(UUID_CTRL);
       await chrData.startNotifications();
       chrData.addEventListener('characteristicvaluechanged', onNotify);
-
+      setStatus('已連線');
       setConnectedUI(true);
-      toast('已連線 ✅');
-      log('Ready. Receiving notifications…');
-      keepAwake(true);
-    } catch (err) {
-      log('Connect error: ' + err);
-      toast('連線失敗');
-      await disconnect();
+      // 讀一次 CTRL（回顯可能是 TH:x）僅作為握手；不強制
+      try{ const v = await chrCtrl.readValue(); console.debug('CTRL read:', dec.decode(v)); }catch(_){ }
+    }catch(err){
+      console.error(err); setStatus('連線失敗','bad'); setConnectedUI(false);
     }
   }
 
-  function onDisconnected() {
-    log('Disconnected.');
-    toast('已中斷連線');
-    setConnectedUI(false);
-    setText('devname', '—');
-    keepAwake(false);
-  }
+  function onDisconnected(){ setStatus('未連線','bad'); setConnectedUI(false); }
 
-  async function disconnect() {
-    try {
-      if (chrData) {
-        try { await chrData.stopNotifications(); } catch {}
-        chrData.removeEventListener('characteristicvaluechanged', onNotify);
-      }
-      if (device?.gatt?.connected) device.gatt.disconnect();
-    } catch {}
-    device = server = svc = chrData = chrCtrl = null;
-    onDisconnected();
-  }
-
-  function onNotify(ev) {
-    try {
-      const txt = new TextDecoder().decode(ev.target.value);
-      log('JSON: ' + txt);
-      const o = JSON.parse(txt);
-      if ('RPM' in o)       setText('rpm', o.RPM);
-      if ('Throttle' in o)  setText('thr', o.Throttle);
-      if ('MAP' in o)       setText('map', o.MAP);
-      if ('Voltage' in o)   setText('vbat', o.Voltage);
-      if ('Threshold' in o) setText('thres', o.Threshold);
-      const rn = $('rpmNote');
-      if(rn && typeof o.RPM === 'number'){
-        rn.textContent = o.RPM > 2000 ? '⚡ 負載中' : (o.RPM>0 ? '怠速/低負載' : '');
-      }
-    } catch (e) {
-      log('Parse error: ' + e);
+  function onNotify(ev){
+    const v = ev.target.value;
+    let text = '';
+    try{ text = dec.decode(v); }catch{ return; }
+    try{
+      const obj = JSON.parse(text);
+      updateData(obj);
+    }catch(err){
+      // 不是 JSON 就忽略
     }
   }
 
-  async function writeThreshold() {
-    if (!chrCtrl) return;
-    let v = parseInt(inpThreshold.value, 10);
-    if (isNaN(v)) v = 40;
-    v = Math.max(0, Math.min(255, v));
-    try {
-      await chrCtrl.writeValue(new TextEncoder().encode(String(v)));
-      toast('Threshold 已寫入：' + v);
-      setText('thres', v);
-      log('Write Threshold: ' + v);
-    } catch (e) {
-      toast('寫入失敗');
-      log('Write error: ' + e);
+  function updateData(p){
+    if('RPM' in p) els.rpm.textContent = p.RPM;
+    if('Throttle' in p) els.thr.textContent = p.Throttle;
+    if('MAP' in p) els.map.textContent = p.MAP;
+    if('Voltage' in p) els.vbat.textContent = p.Voltage;
+    if('Threshold' in p) els.th.textContent = p.Threshold;
+    if('CANbps' in p) els.canbps.textContent = p.CANbps;
+    if('PWMhz' in p) els.pwmhz.textContent = p.PWMhz;
+
+    if('Fan' in p){
+      if(p.Fan) els.fanLed.classList.add('on'); else els.fanLed.classList.remove('on');
+    }
+
+    if('BlinkInterval' in p){
+      els.blink.textContent = p.BlinkInterval;
+      applyBlink(p.BlinkInterval|0);
     }
   }
 
-  // 綁定 UI（一定要在使用者手勢後呼叫 requestDevice）
-  function checkSupport(){
-    if (!navigator.bluetooth) {
-      alert('此瀏覽器不支援 Web Bluetooth，請用 Bluefy（iOS）或 Chrome（Android）');
-      return false;
+  function applyBlink(interval){
+    stopBlink();
+    if(interval>0){
+      let on=false; els.uiLed.classList.remove('on');
+      blinkTimer = setInterval(()=>{ on=!on; if(on) els.uiLed.classList.add('on'); else els.uiLed.classList.remove('on'); }, interval);
+    }else{
+      els.uiLed.classList.remove('on');
     }
-    return true;
+  }
+  function stopBlink(){ if(blinkTimer){ clearInterval(blinkTimer); blinkTimer=null; } }
+
+  async function writeCtrl(text){
+    if(!chrCtrl) return; // not connected
+    const payload = enc.encode(String(text));
+    await chrCtrl.writeValueWithoutResponse(payload);
   }
 
-  $('btnConnect').addEventListener('click', () => { if(checkSupport()) connect(false); });
-  $('btnConnectAll').addEventListener('click', () => { if(checkSupport()) connect(true); });
-  $('btnDisconnect').addEventListener('click', disconnect);
-  $('btnWrite').addEventListener('click', writeThreshold);
-  $('btnClear').addEventListener('click', ()=>{ if (logEl) { logEl.textContent=''; toast('已清除'); } });
-  $('fabConnect').addEventListener('click', () => { if(checkSupport()) connect(false); });
+  // === UI Events ===
+  els.btnConnect.addEventListener('click', connect);
+  els.btnDisconnect.addEventListener('click', ()=>{ if(device && device.gatt.connected) device.gatt.disconnect(); });
 
-  // 初始 UI
-  setConnectedUI(false);
-})();
-</script>
+  els.btnSetTH.addEventListener('click', async ()=>{
+    const n = Number(els.inputTH.value);
+    if(Number.isFinite(n) && n>=0 && n<=255){ await writeCtrl(`TH:${n}`); }
+  });
+
+  document.querySelectorAll('[data-cmd]').forEach(btn=>{
+    btn.addEventListener('click', ()=> writeCtrl(btn.dataset.cmd));
+  });
+
+  els.btnSendRaw.addEventListener('click', async ()=>{
+    const t = (els.inputRaw.value||'').trim();
+    if(t) await writeCtrl(t);
+  });
+
+  // Helpers: 在 Bluefy 上提醒 HTTPS/原生特性
+  if(!('bluetooth' in navigator)){
+    setStatus('此瀏覽器不支援 Web Bluetooth','bad');
+    els.btnConnect.disabled = true;
+  }
+  </script>
 </body>
 </html>
