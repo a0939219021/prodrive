@@ -20,7 +20,6 @@
   .val{font-size:28px;font-weight:800;line-height:1.25; margin-top:4px}
   .sub{font-size:13px;color:#a6b7d6;margin-top:6px}
   .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-  .wide{grid-column:span 2}
   .pill{font-size:12px;color:#9fb7ff;background:#132347;border:1px solid #264080;border-radius:999px;padding:4px 8px}
   .footer{margin-top:18px;color:var(--muted);font-size:12px}
 </style>
@@ -72,7 +71,7 @@
       </div>
     </div>
 
-    <div class="footer">提示：低速/怠速時，L/100km 會顯示「—」，請以 L/h 觀察耗油。</div>
+    <div class="footer">提示：怠速/低速時 L/100km 會顯示「—」，請以 L/h 觀察耗油。</div>
   </div>
 
 <script>
@@ -100,8 +99,8 @@ function applyCore(j){
   setText("vbat", fmt(state.vol,2));
 }
 function applyFuel(j){
-  if("maf" in j) state.maf = (j.maf===null)? null : Number(j.maf);
-  if("fr"  in j) state.fr  = (j.fr===null)?  null : Number(j.fr);
+  if("maf"   in j) state.maf   = (j.maf===null)? null : Number(j.maf);
+  if("fr"    in j) state.fr    = (j.fr===null)?  null : Number(j.fr);
   if("iL100" in j) state.iL100 = (j.iL100===null)? null : Number(j.iL100);
   if("iKML"  in j) state.iKML  = (j.iKML===null)?  null : Number(j.iKML);
   if("aL100" in j) state.aL100 = (j.aL100===null)? null : Number(j.aL100);
