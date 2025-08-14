@@ -5,29 +5,22 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
 <title>THRUSTER OBD‑II BLE Console</title>
 <style>
-  :root{
-    --bg:#0b1220; --card:#111827; --fg:#e5e7eb; --muted:#9ca3af; --acc:#22d3ee;
-    --ok:#10b981; --warn:#f59e0b; --err:#ef4444; --br:16px; --gap:12px;
-  }
+  :root{ --bg:#0b1220; --card:#0e1627; --fg:#e5e7eb; --muted:#9ca3af; --acc:#22d3ee; --ok:#10b981; --warn:#f59e0b; --err:#ef4444; --br:16px; --gap:12px; }
   *{box-sizing:border-box} html,body{height:100%}
-  body{margin:0;background:radial-gradient(1200px 600px at 30% -10%, #12203a 0%, #0b1220 40%, #060912 100%); color:var(--fg); font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;}
+  body{margin:0;background:radial-gradient(1000px 500px at 30% -10%, #12203a 0%, #0b1220 40%, #060912 100%); color:var(--fg); font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;}
   .wrap{max-width:980px;margin:0 auto;padding:16px 16px 32px}
   header{display:flex;gap:12px;align-items:center;justify-content:space-between;margin:8px 0 16px}
-  h1{font-size:20px;margin:0;font-weight:700;letter-spacing:.3px}
+  h1{font-size:20px;margin:0;font-weight:700}
   button{appearance:none;border:0;border-radius:12px;padding:12px 16px;background:linear-gradient(145deg,#1f2a44,#0f172a);color:#d6e3ff;font-weight:700}
-  button:active{transform:translateY(1px)}
   .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
   @media (min-width:880px){ .grid{grid-template-columns:repeat(4,minmax(0,1fr))} }
   @media (max-width:640px){ .grid{grid-template-columns:repeat(1,minmax(0,1fr))} }
-  .card{background:linear-gradient(180deg,#0e1627,#0c1423); border:1px solid #1f2a44; border-radius:var(--br); padding:14px 16px; box-shadow:0 1px 0 rgba(255,255,255,0.05) inset; min-height:92px}
+  .card{background:linear-gradient(180deg,#0e1627,#0c1423); border:1px solid #1f2a44; border-radius:var(--br); padding:14px 16px; min-height:92px}
   .label{font-size:12px;color:var(--muted);letter-spacing:.3px}
   .val{font-size:28px;font-weight:800;line-height:1.25; margin-top:4px}
   .sub{font-size:13px;color:#a6b7d6;margin-top:6px}
   .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
   .wide{grid-column:span 2}
-  .ok{color:var(--ok)} .warn{color:var(--warn)} .err{color:var(--err)}
-  .ctrl{display:flex;gap:10px;align-items:center;background:#0d1627;border:1px solid #223252;border-radius:12px;padding:10px 12px}
-  input[type=range]{width:160px}
   .pill{font-size:12px;color:#9fb7ff;background:#132347;border:1px solid #264080;border-radius:999px;padding:4px 8px}
   .footer{margin-top:18px;color:var(--muted);font-size:12px}
 </style>
@@ -53,13 +46,13 @@
         <div class="sub">= <span id="avgKML">—</span> km / L</div>
       </div>
 
-      <div class="card"><div class="label">車速</div>
-        <div class="val"><span id="spd">0.0</span> <span class="sub">km/h</span></div>
-      </div>
-
       <div class="card"><div class="label">燃油流量</div>
         <div class="val"><span id="fuel">—</span> <span class="sub">L / h</span></div>
         <div class="sub">MAF: <span id="maf">—</span> g/s</div>
+      </div>
+
+      <div class="card"><div class="label">車速</div>
+        <div class="val"><span id="spd">0.0</span> <span class="sub">km/h</span></div>
       </div>
 
       <div class="card"><div class="label">RPM</div>
@@ -77,105 +70,81 @@
       <div class="card"><div class="label">車電壓</div>
         <div class="val"><span id="vbat">0.00</span> <span class="sub">V</span></div>
       </div>
-
-      <div class="card wide">
-        <div class="row">
-          <div class="label">風扇門檻（寫入 BLE 控制特徵值）</div>
-        </div>
-        <div class="row" style="margin-top:8px">
-          <input type="range" id="thr" min="0" max="255" value="40">
-          <span class="pill">Threshold: <span id="thrVal">40</span></span>
-          <button id="btnSend">送出</button>
-        </div>
-        <div class="sub" style="margin-top:6px">寫入 UUID 6E400002…；裝置端會持久化到 config.json。</div>
-      </div>
     </div>
 
-    <div class="footer">提示：低速或怠速時，瞬時 L/100km 會顯示「—」，請以 L/h 觀察耗油。</div>
+    <div class="footer">提示：低速/怠速時，L/100km 會顯示「—」，請以 L/h 觀察耗油。</div>
   </div>
 
 <script>
 const SVC  = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
-const DATA = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"; // notify/read
-const CTRL = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"; // write/read
+const DATA = "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
+let dev=null, gatt=null, dataChar=null;
 
-let dev=null, gatt=null, dataChar=null, ctrlChar=null;
+const $ = s => document.querySelector(s);
+const setText = (id, v) => { const el=$("#"+id); if(el) el.textContent = v; };
+const fmt = (v,d=2)=> (v===null||v===undefined||Number.isNaN(v))? "—" : Number(v).toFixed(d);
 
-const $ = sel => document.querySelector(sel);
-const setText = (id, v) => { const el = $("#"+id); if(el) el.textContent = v; };
+const state = { rpm:0, tps:0, map:0, spd:0, vol:0, maf:null, fr:null, iL100:null, iKML:null, aL100:null, aKML:null };
 
-function fmtNum(v, digits=2){
-  if(v === null || v === undefined || Number.isNaN(v)) return "—";
-  return Number(v).toFixed(digits);
+function applyCore(j){
+  if(typeof j.rpm==="number") state.rpm=j.rpm;
+  if(typeof j.tps==="number") state.tps=j.tps;
+  if(typeof j.map==="number") state.map=j.map;
+  if(typeof j.spd==="number") state.spd=j.spd;
+  if(typeof j.vol==="number") state.vol=j.vol;
+
+  setText("rpm", state.rpm);
+  setText("tps", state.tps);
+  setText("map", state.map);
+  setText("spd", fmt(state.spd,1));
+  setText("vbat", fmt(state.vol,2));
+}
+function applyFuel(j){
+  if("maf" in j) state.maf = (j.maf===null)? null : Number(j.maf);
+  if("fr"  in j) state.fr  = (j.fr===null)?  null : Number(j.fr);
+  if("iL100" in j) state.iL100 = (j.iL100===null)? null : Number(j.iL100);
+  if("iKML"  in j) state.iKML  = (j.iKML===null)?  null : Number(j.iKML);
+  if("aL100" in j) state.aL100 = (j.aL100===null)? null : Number(j.aL100);
+  if("aKML"  in j) state.aKML  = (j.aKML===null)?  null : Number(j.aKML);
+
+  setText("maf",  state.maf==null ? "—" : fmt(state.maf,2));
+  setText("fuel", state.fr==null  ? "—" : fmt(state.fr,2));
+  setText("instL100", state.iL100==null ? "—" : fmt(state.iL100,2));
+  setText("instKML",  state.iKML==null  ? "—" : fmt(state.iKML,2));
+  setText("avgL100",  state.aL100==null ? "—" : fmt(state.aL100,2));
+  setText("avgKML",   state.aKML==null  ? "—" : fmt(state.aKML,2));
 }
 
-async function connect() {
+async function connect(){
   try{
-    $("#status").textContent = "Scanning…";
+    $("#status").textContent="Scanning…";
     dev = await navigator.bluetooth.requestDevice({
       filters: [{ namePrefix: "THRUSTER" }],
       optionalServices: [SVC]
     });
-    dev.addEventListener('gattserverdisconnected', onDisc);
-
-    $("#status").textContent = "Connecting…";
+    $("#status").textContent="Connecting…";
     gatt = await dev.gatt.connect();
-
     const svc = await gatt.getPrimaryService(SVC);
     dataChar = await svc.getCharacteristic(DATA);
-    ctrlChar = await svc.getCharacteristic(CTRL);
-
     await dataChar.startNotifications();
-    dataChar.addEventListener('characteristicvaluechanged', onNotify);
-
-    // 讀一次門檻值
-    try{
-      const v = await ctrlChar.readValue();
-      const s = new TextDecoder().decode(v);
-      const n = parseInt(s || "40") || 40;
-      $("#thr").value = n; $("#thrVal").textContent = n;
-    }catch(_){}
-
-    $("#status").textContent = "Connected";
-  }catch(err){
-    console.error(err);
-    $("#status").textContent = "Failed";
+    dataChar.addEventListener("characteristicvaluechanged", onNotify);
+    $("#status").textContent="Connected";
+  }catch(e){
+    console.error(e); $("#status").textContent="Failed";
   }
 }
-function onDisc(){ $("#status").textContent = "Disconnected"; }
-
 function onNotify(e){
   try{
     const s = new TextDecoder().decode(e.target.value);
     const j = JSON.parse(s);
-
-    setText("rpm", j.RPM ?? "0");
-    setText("tps", j.Throttle ?? "0");
-    setText("map", j.MAP ?? "0");
-    setText("spd", fmtNum(j.Speed_kmh, 1));
-    setText("vbat", fmtNum(j.Voltage, 2));
-    setText("maf", j.MAF_gps!=null ? fmtNum(j.MAF_gps,2) : "—");
-    setText("fuel", j.FuelRate_Lph!=null ? fmtNum(j.FuelRate_Lph,2) : "—");
-
-    setText("instL100", j.Inst_Lper100km!=null ? fmtNum(j.Inst_Lper100km,2) : "—");
-    setText("instKML",  j.Inst_km_per_L!=null ? fmtNum(j.Inst_km_per_L,2) : "—");
-
-    setText("avgL100", j.Avg_Lper100km!=null ? fmtNum(j.Avg_Lper100km,2) : "—");
-    setText("avgKML",  j.Avg_km_per_L!=null ? fmtNum(j.Avg_km_per_L,2) : "—");
+    if(j.t === "a") applyCore(j);
+    else if(j.t === "f") applyFuel(j);
   }catch(err){
-    console.warn("parse fail:", err);
+    // 偶發截斷/拼包失敗時略過
+    console.warn("parse fail", err);
   }
 }
-
 $("#btn").addEventListener("click", connect);
-$("#thr").addEventListener("input", e => { $("#thrVal").textContent = e.target.value; });
-$("#btnSend").addEventListener("click", async ()=>{
-  try{
-    if(!ctrlChar) return;
-    const n = $("#thr").value;
-    await ctrlChar.writeValue(new TextEncoder().encode(String(n)));
-  }catch(err){ console.error(err); }
-});
 </script>
 </body>
 </html>
