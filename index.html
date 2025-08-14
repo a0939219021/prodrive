@@ -1,228 +1,227 @@
 <!doctype html>
 <html lang="zh-Hant">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Pico OBD2 Fuel Monitor (Bluefy)</title>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Pico OBD-II Fuel Monitor (Bluefy)</title>
 <style>
-  body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Noto Sans TC", sans-serif; background:#0b0e13; color:#e6edf3; margin:0; }
-  header { padding:16px; display:flex; gap:12px; align-items:center; border-bottom:1px solid #1f2630; position:sticky; top:0; background:#0b0e13; z-index:10; }
-  button { background:#1f6feb; color:#fff; border:0; padding:10px 14px; border-radius:12px; font-weight:600; }
-  button:disabled { opacity:.6 }
-  input, select { background:#0f141c; color:#e6edf3; border:1px solid #283142; padding:8px 10px; border-radius:10px; }
-  .grid { display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:12px; padding:16px; }
-  .card { background:#0f141c; border:1px solid #283142; border-radius:16px; padding:14px; }
-  .title { font-size:14px; color:#91a4bf; margin-bottom:8px; letter-spacing:.4px; }
-  .big { font-size:28px; font-weight:800; }
-  .row { display:flex; justify-content:space-between; gap:10px; }
-  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
-  .ok{color:#3fb950}.warn{color:#f2cc60}.bad{color:#f85149}
-  footer{padding:12px; color:#8b98a5; text-align:center; border-top:1px solid #1f2630}
-  .pill{padding:2px 8px;border-radius:999px;border:1px solid #283142;background:#0b0e13;color:#9fb4d1}
-  .flex{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  :root{--bg:#0f172a;--card:#111827;--fg:#e5e7eb;--mute:#9ca3af;--ok:#10b981;--warn:#f59e0b;--bad:#ef4444;}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:#0b1020;color:var(--fg)}
+  header{padding:16px 20px;background:linear-gradient(90deg,#0b132b,#1c2541);position:sticky;top:0;z-index:10}
+  h1{margin:0;font-size:20px;font-weight:700}
+  .wrap{padding:16px;display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+  .card{background:var(--card);border-radius:14px;padding:14px;box-shadow:0 2px 14px rgba(0,0,0,.25)}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  button, input, select{background:#1f2937;color:var(--fg);border:1px solid #374151;border-radius:10px;padding:10px 12px}
+  button{cursor:pointer}
+  button.primary{background:#2563eb;border-color:#3b82f6}
+  button:disabled{opacity:.6;cursor:not-allowed}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .kv{display:flex;align-items:baseline;justify-content:space-between;padding:6px 0;border-bottom:1px dashed #243142}
+  .kv b{font-size:18px}
+  .kv small{color:var(--mute)}
+  .badge{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:4px 8px;font-size:12px;background:#0b1222;border:1px solid #243142}
+  .ok{color:var(--ok)} .warn{color:var(--warn)} .bad{color:var(--bad)}
+  .pill{display:inline-block;padding:2px 8px;border-radius:999px;background:#0b1222;border:1px solid #243142;color:#9ca3af}
+  footer{padding:12px;color:#9ca3af;text-align:center}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace}
+  .grow{flex:1}
 </style>
 </head>
 <body>
-<header>
-  <button id="btnConnect">Connect</button>
-  <div class="pill" id="status">DISCONNECTED</div>
-  <div class="pill" id="mtu">MTU -</div>
-  <div class="pill" id="uptime">up -</div>
-  <div class="pill" id="packets">seq -</div>
+<header class="row">
+  <h1 class="grow">Pico OBD-II Fuel Monitor</h1>
+  <span id="status" class="badge">未連線</span>
+  <button id="btnConnect" class="primary">連線</button>
+  <button id="btnDisconnect" disabled>中斷</button>
 </header>
 
-<div class="grid">
-  <div class="card">
-    <div class="title">Engine / Load</div>
-    <div class="row"><div>RPM</div><div class="big" id="rpm">-</div></div>
-    <div class="row"><div>Throttle (%)</div><div id="tps">-</div></div>
-    <div class="row"><div>MAP (kPa)</div><div id="map">-</div></div>
-    <div class="row"><div>IAT (°C)</div><div id="iat">-</div></div>
-    <div class="row"><div>λ (Lambda)</div><div id="lam">-</div></div>
-  </div>
-
-  <div class="card">
-    <div class="title">Speed / Electrical</div>
-    <div class="row"><div>Speed (km/h)</div><div class="big" id="spd">-</div></div>
-    <div class="row"><div>Battery (V)</div><div id="vol">-</div></div>
-    <div class="row"><div>Fan (MAP&gt;TH)</div><div id="fan">-</div></div>
-    <div class="row"><div>TH (kPa)</div><div id="thr">-</div></div>
-  </div>
-
-  <div class="card">
-    <div class="title">Fuel & Air</div>
-    <div class="row"><div>MAF (g/s)</div><div class="big" id="maf">-</div></div>
-    <div class="row"><div>Fuel rate (L/h)</div><div id="fr">-</div></div>
-    <div class="row"><div>Instant</div><div id="inst">-</div></div>
-    <div class="row"><div>Average</div><div id="avg">-</div></div>
-  </div>
-
-  <div class="card">
-    <div class="title">Trip</div>
-    <div class="row"><div>Distance (km)</div><div class="big" id="tripK">-</div></div>
-    <div class="row"><div>Fuel (L)</div><div id="tripL">-</div></div>
-    <div class="flex" style="margin-top:10px">
-      <button id="btnTrip">TRIP:CLR</button>
-      <span id="cfg" class="mono" style="font-size:12px"></span>
+<div class="wrap">
+  <section class="card">
+    <h3>核心資料</h3>
+    <div class="grid">
+      <div class="kv"><small>RPM</small><b id="rpm">‑</b></div>
+      <div class="kv"><small>TPS %</small><b id="tps">‑</b></div>
+      <div class="kv"><small>MAP kPa</small><b id="map">‑</b></div>
+      <div class="kv"><small>Speed km/h</small><b id="spd">‑</b></div>
+      <div class="kv"><small>Battery V</small><b id="vol">‑</b></div>
+      <div class="kv"><small>Fan</small><b id="fan" class="pill">‑</b></div>
+      <div class="kv"><small>Threshold</small><b id="thr">‑</b></div>
     </div>
-  </div>
+  </section>
 
-  <div class="card" style="grid-column:1/-1">
-    <div class="title">Control / Console</div>
-    <div class="flex">
-      <input id="cmd" placeholder="指令例如：TH:50 / CAN:500 / PWM:25000 / AFR:14.7 / VE:0.80" style="flex:1">
-      <button id="btnSend">Send</button>
+  <section class="card">
+    <h3>油耗</h3>
+    <div class="grid">
+      <div class="kv"><small>來源</small><b id="src" class="mono">‑</b></div>
+      <div class="kv"><small>Fuel Rate L/h</small><b id="fr">‑</b></div>
+      <div class="kv"><small>瞬間 L/100km</small><b id="iL100">‑</b></div>
+      <div class="kv"><small>瞬間 km/L</small><b id="iKML">‑</b></div>
+      <div class="kv"><small>平均 L/100km</small><b id="aL100">‑</b></div>
+      <div class="kv"><small>平均 km/L</small><b id="aKML">‑</b></div>
+      <div class="kv"><small>Trip Fuel L</small><b id="tripL">0.000</b></div>
+      <div class="kv"><small>Trip Dist km</small><b id="tripK">0.000</b></div>
     </div>
-    <div id="log" class="mono" style="margin-top:10px; white-space:pre-wrap; max-height:220px; overflow:auto; color:#9fb4d1;"></div>
-  </div>
+    <div class="grid" style="margin-top:8px">
+      <div class="kv"><small>MAF g/s</small><b id="maf">‑</b></div>
+      <div class="kv"><small>IAT °C</small><b id="iat">‑</b></div>
+      <div class="kv"><small>Abs Load %</small><b id="al">‑</b></div>
+      <div class="kv"><small>Lambda</small><b id="lam">‑</b></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h3>診斷</h3>
+    <div class="grid">
+      <div class="kv"><small>CAN kbps</small><b id="can">‑</b></div>
+      <div class="kv"><small>PWM Hz</small><b id="pwm">‑</b></div>
+      <div class="kv"><small>Notify Hz</small><b id="rate">‑</b></div>
+      <div class="kv"><small>Loop ms(avg)</small><b id="loop">‑</b></div>
+      <div class="kv"><small>RX OK</small><b id="rxok">‑</b></div>
+      <div class="kv"><small>RX TO</small><b id="rxto">‑</b></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h3>指令控制</h3>
+    <div class="row" style="gap:8px;margin-bottom:8px">
+      <input id="cmdInput" class="grow mono" placeholder="例如：TH:60 / CAN:500 / PWM:25000 / RATE:10 / RST / DISP:2.0 / VE:0.8 / AFR:14.1 / RHO:0.74 / LAM:1.02" />
+      <button id="btnSend">送出</button>
+    </div>
+    <div class="row" style="gap:8px">
+      <button data-cmd="RST">Trip 歸零</button>
+      <button data-cmd="CAN:500">CAN 500k</button>
+      <button data-cmd="CAN:250">CAN 250k</button>
+      <button data-cmd="PWM:25000">PWM 25k</button>
+      <button data-cmd="PWM:1000">PWM 1k</button>
+      <button data-cmd="RATE:8">RATE 8 Hz</button>
+      <button data-cmd="TH:60">TH 60</button>
+    </div>
+    <div style="margin-top:8px;color:#9ca3af" class="mono" id="echo">回顯：—</div>
+  </section>
 </div>
 
-<footer>UUID: 6E400001/2/3-B5A3-F393-E0A9-E50E24DCCA9E · Bluefy/Web Bluetooth</footer>
+<footer>UUID 服務：6E400001…　Notify：…003　Write：…002</footer>
 
 <script>
-const SVC  = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
-const RXTX = '6e400003-b5a3-f393-e0a9-e50e24dcca9e'; // notify/read (device->phone)
-const CTRL = '6e400002-b5a3-f393-e0a9-e50e24dcca9e'; // read/write (phone->device)
+const SVC_UUID  = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+const RX_UUID   = '6e400003-b5a3-f393-e0a9-e50e24dcca9e'; // from device → notify
+const TX_UUID   = '6e400002-b5a3-f393-e0a9-e50e24dcca9e'; // to device   → write
 
-const el = id => document.getElementById(id);
-const ui = {
-  status:el('status'), mtu:el('mtu'), uptime:el('uptime'), packets:el('packets'),
-  rpm:el('rpm'), tps:el('tps'), map:el('map'), iat:el('iat'), lam:el('lam'),
-  spd:el('spd'), vol:el('vol'), fan:el('fan'), thr:el('thr'),
-  maf:el('maf'), fr:el('fr'), inst:el('inst'), avg:el('avg'),
-  tripK:el('tripK'), tripL:el('tripL'),
-  cfg:el('cfg'), log:el('log'),
-  cmd:el('cmd'), btnSend:el('btnSend'), btnTrip:el('btnTrip'), btnConnect:el('btnConnect')
+const $ = id => document.getElementById(id);
+const ui = id => (val)=> { const el=$(id); if(el) el.textContent = (val ?? '‑'); };
+
+const setA = {
+  rpm:ui('rpm'), tps:ui('tps'), map:ui('map'), spd:ui('spd'),
+  vol:ui('vol'), thr:ui('thr'),
+  fan:(val)=>{ const el=$('fan'); el.textContent=val?'ON':'OFF'; el.className='pill ' + (val?'ok':'') }
 };
+const setF = {
+  src:ui('src'), fr:ui('fr'), iL100:ui('iL100'), iKML:ui('iKML'),
+  aL100:ui('aL100'), aKML:ui('aKML'),
+  tripL:ui('tripL'), tripK:ui('tripK'),
+  maf:ui('maf'), iat:ui('iat'), al:ui('al'), lam:ui('lam')
+};
+const setD = { can:ui('can'), pwm:ui('pwm'), rate:ui('rate'), loop:ui('loop'), rxok:ui('rxok'), rxto:ui('rxto') };
 
-let device, server, svc, chData, chCtrl;
-let lastSeq = 0;
+let device=null, server=null, rxChar=null, txChar=null;
+let connected=false;
 
-function log(s){ ui.log.textContent += s + '\n'; ui.log.scrollTop = ui.log.scrollHeight; }
-
-function setStatus(txt, cls){
-  ui.status.textContent = txt;
-  ui.status.className = 'pill ' + (cls||'');
-}
-
-function fmtNA(x, digits=2){
-  if(x===null || x===undefined) return '-';
-  if(typeof x==='number'){
-    if(isNaN(x)) return '-';
-    return (Math.round(x* (10**digits))/ (10**digits)).toFixed(digits);
-  }
-  return x;
-}
+function setStatus(s){ $('status').textContent=s; }
 
 async function connect(){
-  setStatus('REQUESTING...', 'warn');
   try{
-    device = await navigator.bluetooth.requestDevice({
-      filters:[{services:[SVC]}],
-      optionalServices:[SVC]
+    setStatus('掃描中…');
+    const dev = await navigator.bluetooth.requestDevice({
+      filters:[{ services:[SVC_UUID] }],
+      optionalServices:[SVC_UUID]
     });
-    device.addEventListener('gattserverdisconnected', onDisc);
+    device = dev;
+    device.addEventListener('gattserverdisconnected', onDisconnect);
+    setStatus('連線中…');
     server = await device.gatt.connect();
-    svc = await server.getPrimaryService(SVC);
-    chData = await svc.getCharacteristic(RXTX);
-    chCtrl = await svc.getCharacteristic(CTRL);
-
-    await chData.startNotifications();
-    chData.addEventListener('characteristicvaluechanged', onNotify);
-
-    // 讀一次控制特徵，拿到目前設定字串
-    try{
-      const v = await chCtrl.readValue();
-      const s = new TextDecoder().decode(v.buffer);
-      ui.cfg.textContent = s;
-      log(`[CTRL] ${s}`);
-    }catch(e){}
-
-    setStatus('CONNECTED','ok');
-    ui.mtu.textContent = 'MTU ~ ' + (device?.watchAdvertisements ? '~185' : '~185'); // 提示用
+    const svc = await server.getPrimaryService(SVC_UUID);
+    rxChar = await svc.getCharacteristic(RX_UUID);
+    txChar = await svc.getCharacteristic(TX_UUID);
+    await rxChar.startNotifications();
+    rxChar.addEventListener('characteristicvaluechanged', onNotify);
+    connected=true;
+    $('btnConnect').disabled=true; $('btnDisconnect').disabled=false;
+    setStatus('已連線');
   }catch(e){
     console.error(e);
-    setStatus('FAILED','bad');
-    log('Connect error: ' + e);
+    setStatus('連線失敗');
   }
 }
 
-function onDisc(){
-  setStatus('DISCONNECTED','bad');
+function onDisconnect(){
+  connected=false;
+  $('btnConnect').disabled=false; $('btnDisconnect').disabled=true;
+  setStatus('未連線');
+}
+
+async function disconnect(){
+  try{ if(device && device.gatt.connected) device.gatt.disconnect(); }catch(e){}
 }
 
 function onNotify(ev){
-  const v = ev.target.value;
-  const s = new TextDecoder().decode(v.buffer);
-  // 單包即是 JSON（t: "a"/"f"/"d"）
+  const dv = ev.target.value;
+  // 將 DataView 轉為字串（UTF-8）
+  let str = '';
+  for(let i=0;i<dv.byteLength;i++) str += String.fromCharCode(dv.getUint8(i));
   try{
-    const o = JSON.parse(s);
-    if(o.seq!==undefined){ ui.packets.textContent = 'seq ' + o.seq; lastSeq = o.seq; }
-    if(o.up!==undefined){ ui.uptime.textContent = 'up ' + o.up + 's'; }
+    const obj = JSON.parse(str);
+    if(!obj || !obj.t) return;
 
-    if(o.t==='a'){
-      if(o.rpm!==undefined) ui.rpm.textContent = o.rpm;
-      if(o.tps!==undefined) ui.tps.textContent = o.tps;
-      if(o.map!==undefined) ui.map.textContent = o.map;
-      if(o.spd!==undefined) ui.spd.textContent = fmtNA(o.spd,1);
-      if(o.vol!==undefined) ui.vol.textContent = fmtNA(o.vol,2);
-      if(o.thr!==undefined) ui.thr.textContent = o.thr;
-      if(o.fan!==undefined) ui.fan.innerHTML = o.fan ? '<span class="ok">ON</span>' : '<span class="bad">OFF</span>';
-    } else if(o.t==='f'){
-      if(o.maf!==undefined && o.maf!==null) ui.maf.textContent = fmtNA(o.maf,2); else ui.maf.textContent='-';
-      if(o.fr!==undefined && o.fr!==null) ui.fr.textContent = fmtNA(o.fr,2); else ui.fr.textContent='-';
-
-      // 即時/平均雙制：顯示 "X L/100km | Y km/L"
-      const iL = o.iL100, iK = o.iKML, aL = o.aL100, aK = o.aKML;
-      ui.inst.textContent = `${iL!==null && iL!==undefined?fmtNA(iL,2):'-'} L/100km  |  ${iK!==null && iK!==undefined?fmtNA(iK,2):'-'} km/L`;
-      ui.avg.textContent  = `${aL!==null && aL!==undefined?fmtNA(aL,2):'-'} L/100km  |  ${aK!==null && aK!==undefined?fmtNA(aK,2):'-'} km/L`;
-
-      if(o.tripK!==undefined) ui.tripK.textContent = fmtNA(o.tripK,3);
-      if(o.tripL!==undefined) ui.tripL.textContent = fmtNA(o.tripL,3);
-
-      if(o.iat!==undefined && o.iat!==null) ui.iat.textContent = o.iat;
-      if(o.lam!==undefined) ui.lam.textContent = fmtNA(o.lam,3);
-    } else if(o.t==='d'){
-      // 設定與統計
-      if(o.cfg){
-        const c = o.cfg;
-        ui.cfg.textContent = `AFR:${fmtNA(c.afr,3)} VE:${fmtNA(c.ve,2)} DISP:${fmtNA(c.disp,2)} RHO:${fmtNA(c.rho,3)}`;
-      }
+    if(obj.t === 'a'){
+      setA.rpm(obj.rpm); setA.tps(obj.tps); setA.map(obj.map);
+      setA.spd(obj.spd?.toFixed ? obj.spd.toFixed(1) : obj.spd);
+      setA.vol(obj.vol); setA.thr(obj.thr); setA.fan(obj.fan);
+    }else if(obj.t === 'f'){
+      setF.src(obj.src||'NA');
+      setF.fr(toFixedMaybe(obj.fr,2));
+      setF.iL100(toFixedMaybe(obj.iL100,2));
+      setF.iKML(toFixedMaybe(obj.iKML,2));
+      setF.aL100(toFixedMaybe(obj.aL100,2));
+      setF.aKML(toFixedMaybe(obj.aKML,2));
+      setF.tripL(toFixedMaybe(obj.tripL,3));
+      setF.tripK(toFixedMaybe(obj.tripK,3));
+      setF.maf(toFixedMaybe(obj.maf,2));
+      setF.iat(obj.iat ?? '‑');
+      setF.al(toFixedMaybe(obj.al,1));
+      setF.lam(toFixedMaybe(obj.lam,3));
+    }else if(obj.t === 'd'){
+      setD.can(obj.can); setD.pwm(obj.pwm); setD.rate(obj.rate);
+      setD.loop(obj.loop); setD.rxok(obj.rxok); setD.rxto(obj.rxto);
     }
   }catch(e){
-    // 若不是 JSON（例如 ctrl echo），就附加到 log
-    if(s && s.trim()){
-      if(s.startsWith('TH:') || s.startsWith('CAN:') || s.startsWith('PWM:') || s.startsWith('AFR:') || s.startsWith('VE:') || s.startsWith('DISP:') || s.startsWith('RHO:')){
-        ui.cfg.textContent = s.trim();
-      }
-      log('[RAW] ' + s.trim());
-    }
+    console.warn('parse notify fail:', e, str);
   }
 }
 
+function toFixedMaybe(v, n){ return (typeof v==='number' && isFinite(v)) ? v.toFixed(n) : '‑'; }
+
 async function sendCmd(txt){
-  if(!chCtrl) return;
-  const enc = new TextEncoder();
-  await chCtrl.writeValue(enc.encode(txt));
-  // 讀回當前狀態
+  if(!connected || !txChar) return;
   try{
-    const v = await chCtrl.readValue();
-    const s = new TextDecoder().decode(v.buffer);
-    ui.cfg.textContent = s;
-    log(`[ECHO] ${s}`);
-  }catch(e){}
+    const enc = new TextEncoder();
+    await txChar.writeValue(enc.encode(txt));
+    $('echo').textContent = '回顯：' + txt;
+  }catch(e){
+    console.error(e);
+  }
 }
 
-ui.btnConnect.addEventListener('click', connect);
-ui.btnSend.addEventListener('click', ()=>{
-  const t = ui.cmd.value.trim();
-  if(!t) return;
-  sendCmd(t);
+$('btnConnect').addEventListener('click', connect);
+$('btnDisconnect').addEventListener('click', disconnect);
+$('btnSend').addEventListener('click', ()=> {
+  const t = $('cmdInput').value.trim();
+  if(t) sendCmd(t);
 });
-ui.btnTrip.addEventListener('click', ()=> sendCmd('TRIP:CLR'));
-
-// 進入頁面自動提示用法
-log('提示：\n- 連線後會每 ~100~200ms 收到 t:"a"/t:"f" 封包，t:"d" 約2秒一次。\n- 指令：TH:x / CAN:250|500 / PWM:1000|25000 / AFR:14.7 / VE:0.80 / DISP:2.0 / RHO:0.745 / TRIP:CLR\n');
+document.querySelectorAll('button[data-cmd]').forEach(b=>{
+  b.addEventListener('click', ()=> sendCmd(b.dataset.cmd));
+});
 </script>
 </body>
 </html>
