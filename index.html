@@ -1,265 +1,181 @@
 <!doctype html>
 <html lang="zh-Hant">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>THRUSTER BLE Dashboard (Bluefy)</title>
-  <style>
-    :root{--bg:#0b0f14;--panel:#111722;--text:#e6ebf3;--muted:#8da1b9;--ok:#2ecc71;--warn:#f39c12;--bad:#e74c3c;--brand:#46a0ff;}
-    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 system-ui, -apple-system, Segoe UI, Roboto, PingFang TC, Noto Sans TC, "Helvetica Neue", Arial}
-    header{padding:18px 16px;border-bottom:1px solid #1c2635;background:#0d1320;position:sticky;top:0;z-index:5}
-    h1{margin:0;font-size:18px;font-weight:700}
-    .wrap{padding:16px;display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
-    .card{background:var(--panel);border:1px solid #1d2636;border-radius:14px;box-shadow:0 6px 24px rgb(0 0 0 / .3)}
-    .card>.hd{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border-bottom:1px solid #1c2635}
-    .card>.bd{padding:12px 14px}
-    button,select,input[type="number"],input[type="text"]{background:#0e1522;border:1px solid #203047;color:var(--text);padding:10px 12px;border-radius:10px}
-    button{cursor:pointer}
-    button.primary{background:linear-gradient(180deg,#1a68ff,#0e49b8);border-color:#0e49b8}
-    button:disabled{opacity:.5;cursor:not-allowed}
-    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-    .kv{display:grid;grid-template-columns:auto 1fr;gap:6px 12px}
-    .kv .k{color:var(--muted)}
-    .big{font-size:28px;font-weight:700}
-    .led{width:18px;height:18px;border-radius:50%;background:#2c3e50;border:2px solid #1b2838;box-shadow:0 0 0 2px #0b121d inset}
-    .led.on{background:var(--ok);box-shadow:0 0 16px var(--ok)}
-    .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px}
-    .ok{background:#14341f;color:#7dffb0}
-    .warn{background:#2b230f;color:#ffd36b}
-    .bad{background:#3a1515;color:#ff9b9b}
-    .muted{color:var(--muted)}
-    .mono{font-family:ui-monospace,SFMono-Regular,Consolas,Menlo,monospace}
-    .hr{height:1px;background:#1c2635;margin:10px -14px}
-    .hint{font-size:12px;color:#93a7c2}
-    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-    footer{padding:14px;color:#7b8ea8;text-align:center}
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
+<title>THRUSTER OBD‑II BLE Console</title>
+<style>
+  :root{
+    --bg:#0b1220; --card:#111827; --fg:#e5e7eb; --muted:#9ca3af; --acc:#22d3ee;
+    --ok:#10b981; --warn:#f59e0b; --err:#ef4444; --br:16px; --gap:12px;
+  }
+  *{box-sizing:border-box} html,body{height:100%}
+  body{margin:0;background:radial-gradient(1200px 600px at 30% -10%, #12203a 0%, #0b1220 40%, #060912 100%); color:var(--fg); font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;}
+  .wrap{max-width:980px;margin:0 auto;padding:16px 16px 32px}
+  header{display:flex;gap:12px;align-items:center;justify-content:space-between;margin:8px 0 16px}
+  h1{font-size:20px;margin:0;font-weight:700;letter-spacing:.3px}
+  button{appearance:none;border:0;border-radius:12px;padding:12px 16px;background:linear-gradient(145deg,#1f2a44,#0f172a);color:#d6e3ff;font-weight:700}
+  button:active{transform:translateY(1px)}
+  .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+  @media (min-width:880px){ .grid{grid-template-columns:repeat(4,minmax(0,1fr))} }
+  @media (max-width:640px){ .grid{grid-template-columns:repeat(1,minmax(0,1fr))} }
+  .card{background:linear-gradient(180deg,#0e1627,#0c1423); border:1px solid #1f2a44; border-radius:var(--br); padding:14px 16px; box-shadow:0 1px 0 rgba(255,255,255,0.05) inset; min-height:92px}
+  .label{font-size:12px;color:var(--muted);letter-spacing:.3px}
+  .val{font-size:28px;font-weight:800;line-height:1.25; margin-top:4px}
+  .sub{font-size:13px;color:#a6b7d6;margin-top:6px}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .wide{grid-column:span 2}
+  .ok{color:var(--ok)} .warn{color:var(--warn)} .err{color:var(--err)}
+  .ctrl{display:flex;gap:10px;align-items:center;background:#0d1627;border:1px solid #223252;border-radius:12px;padding:10px 12px}
+  input[type=range]{width:160px}
+  .pill{font-size:12px;color:#9fb7ff;background:#132347;border:1px solid #264080;border-radius:999px;padding:4px 8px}
+  .footer{margin-top:18px;color:var(--muted);font-size:12px}
+</style>
 </head>
 <body>
-  <header>
-    <h1>THRUSTER BLE Dashboard（Bluefy）</h1>
-  </header>
-
   <div class="wrap">
-    <!-- 連線 / 狀態 -->
-    <section class="card" id="connCard">
-      <div class="hd"><div>連線</div><div class="row"><span class="badge ok" id="status">未連線</span></div></div>
-      <div class="bd">
-        <div class="row" style="gap:12px">
-          <button id="btnConnect" class="primary">🔗 連線</button>
-          <button id="btnDisconnect" disabled>⏏️ 中斷</button>
-          <span class="muted mono" id="devName"></span>
-        </div>
-        <div class="hint" style="margin-top:8px">使用 <b>Bluefy</b> 開啟本頁，點「連線」選擇 <b>THRUSTER</b> 裝置。</div>
+    <header>
+      <h1>THRUSTER OBD‑II</h1>
+      <div class="row">
+        <span id="status" class="pill">Disconnected</span>
+        <button id="btn">Connect</button>
       </div>
-    </section>
+    </header>
 
-    <!-- 即時資料 -->
-    <section class="card">
-      <div class="hd"><div>即時資料</div><div class="row"><div class="led" id="fanLed" title="Fan"></div></div></div>
-      <div class="bd">
-        <div class="kv">
-          <div class="k">RPM</div><div id="rpm" class="big">—</div>
-          <div class="k">Throttle (%)</div><div id="thr" class="big">—</div>
-          <div class="k">MAP</div><div id="map" class="big">—</div>
-          <div class="k">Voltage (V)</div><div id="vbat">—</div>
-          <div class="k">門檻 Threshold</div><div id="th">—</div>
-          <div class="hr"></div><div class="hr"></div>
-          <div class="k">CAN 速率</div><div id="canbps">—</div>
-          <div class="k">PWM 頻率</div><div id="pwmhz">—</div>
-          <div class="k">BlinkInterval</div><div id="blink">—</div>
-        </div>
+    <div class="grid">
+      <div class="card"><div class="label">即時油耗</div>
+        <div class="val"><span id="instL100">—</span> <span class="sub">L / 100 km</span></div>
+        <div class="sub">= <span id="instKML">—</span> km / L</div>
       </div>
-    </section>
 
-    <!-- 控制區 -->
-    <section class="card">
-      <div class="hd"><div>控制 / 設定</div></div>
-      <div class="bd" id="ctrls">
-        <div class="row" style="margin-bottom:10px">
-          <input id="inputTH" type="number" min="0" max="255" step="1" placeholder="門檻 0~255" style="width:110px" />
-          <button id="btnSetTH">寫入 TH</button>
-          <span class="hint">等同於寫入 CTRL：<span class="mono">TH:&lt;數值&gt;</span></span>
-        </div>
-        <div class="row" style="margin-bottom:10px">
-          <button data-cmd="CAN:250">CAN:250</button>
-          <button data-cmd="CAN:500">CAN:500</button>
-          <button data-cmd="PWM:1000">PWM:1000</button>
-          <button data-cmd="PWM:25000">PWM:25000</button>
-        </div>
+      <div class="card"><div class="label">平均油耗（本次）</div>
+        <div class="val"><span id="avgL100">—</span> <span class="sub">L / 100 km</span></div>
+        <div class="sub">= <span id="avgKML">—</span> km / L</div>
+      </div>
+
+      <div class="card"><div class="label">車速</div>
+        <div class="val"><span id="spd">0.0</span> <span class="sub">km/h</span></div>
+      </div>
+
+      <div class="card"><div class="label">燃油流量</div>
+        <div class="val"><span id="fuel">—</span> <span class="sub">L / h</span></div>
+        <div class="sub">MAF: <span id="maf">—</span> g/s</div>
+      </div>
+
+      <div class="card"><div class="label">RPM</div>
+        <div class="val" id="rpm">0</div>
+      </div>
+
+      <div class="card"><div class="label">Throttle</div>
+        <div class="val"><span id="tps">0</span> <span class="sub">%</span></div>
+      </div>
+
+      <div class="card"><div class="label">MAP</div>
+        <div class="val"><span id="map">0</span> <span class="sub">kPa</span></div>
+      </div>
+
+      <div class="card"><div class="label">車電壓</div>
+        <div class="val"><span id="vbat">0.00</span> <span class="sub">V</span></div>
+      </div>
+
+      <div class="card wide">
         <div class="row">
-          <input id="inputRaw" type="text" placeholder="手動指令（TH:55 / CAN:500 / PWM:25000）" style="flex:1" />
-          <button id="btnSendRaw">送出</button>
+          <div class="label">風扇門檻（寫入 BLE 控制特徵值）</div>
         </div>
-        <div class="hint" style="margin-top:8px">支援指令：<span class="mono">TH:&lt;0~255&gt;</span>、<span class="mono">CAN:250|500</span>、<span class="mono">PWM:1000|25000</span>。也可直接寫入純數字做門檻。</div>
+        <div class="row" style="margin-top:8px">
+          <input type="range" id="thr" min="0" max="255" value="40">
+          <span class="pill">Threshold: <span id="thrVal">40</span></span>
+          <button id="btnSend">送出</button>
+        </div>
+        <div class="sub" style="margin-top:6px">寫入 UUID 6E400002…；裝置端會持久化到 config.json。</div>
       </div>
-    </section>
+    </div>
 
-    <!-- LED 示意 -->
-    <section class="card">
-      <div class="hd"><div>LED 閃爍（僅 MAP &gt; 門檻）</div></div>
-      <div class="bd">
-        <div class="row" style="align-items:center;gap:14px">
-          <div class="led" id="uiLed" title="UI LED"></div>
-          <div>
-            <div class="muted">依據 <span class="mono">BlinkInterval</span> 閃爍：值 &gt; 0 代表啟動，間隔（毫秒）越小越快；值 = 0 代表熄滅。</div>
-            <div class="hint">BlinkInterval = <span class="mono">max(100, 1000 - Throttle*8)</span></div>
-          </div>
-        </div>
-      </div>
-    </section>
+    <div class="footer">提示：低速或怠速時，瞬時 L/100km 會顯示「—」，請以 L/h 觀察耗油。</div>
   </div>
 
-  <footer>© THRUSTER Demo — Web Bluetooth (NUS)</footer>
+<script>
+const SVC  = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
+const DATA = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"; // notify/read
+const CTRL = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"; // write/read
 
-  <script>
-  // === UUIDs (Nordic UART Service) ===
-  const UUID_SVC  = "6E400001-B5A3-F393-E0A9-E50E24DCCA9E";
-  const UUID_DATA = "6E400003-B5A3-F393-E0A9-E50E24DCCA9E"; // Notify/Read JSON
-  const UUID_CTRL = "6E400002-B5A3-F393-E0A9-E50E24DCCA9E"; // Read/Write commands
+let dev=null, gatt=null, dataChar=null, ctrlChar=null;
 
-  // === DOM ===
-  const els = {
-    status: document.getElementById('status'),
-    devName: document.getElementById('devName'),
-    btnConnect: document.getElementById('btnConnect'),
-    btnDisconnect: document.getElementById('btnDisconnect'),
-    rpm: document.getElementById('rpm'),
-    thr: document.getElementById('thr'),
-    map: document.getElementById('map'),
-    vbat: document.getElementById('vbat'),
-    th: document.getElementById('th'),
-    canbps: document.getElementById('canbps'),
-    pwmhz: document.getElementById('pwmhz'),
-    blink: document.getElementById('blink'),
-    fanLed: document.getElementById('fanLed'),
-    uiLed: document.getElementById('uiLed'),
-    inputTH: document.getElementById('inputTH'),
-    btnSetTH: document.getElementById('btnSetTH'),
-    inputRaw: document.getElementById('inputRaw'),
-    btnSendRaw: document.getElementById('btnSendRaw'),
-    ctrls: document.getElementById('ctrls')
-  };
+const $ = sel => document.querySelector(sel);
+const setText = (id, v) => { const el = $("#"+id); if(el) el.textContent = v; };
 
-  let device, gatt, svc, chrData, chrCtrl;
-  let blinkTimer = null; // UI LED timer
-  const dec = new TextDecoder();
-  const enc = new TextEncoder();
+function fmtNum(v, digits=2){
+  if(v === null || v === undefined || Number.isNaN(v)) return "—";
+  return Number(v).toFixed(digits);
+}
 
-  function setStatus(text, mode='ok'){ els.status.textContent = text; els.status.className = 'badge ' + (mode==='ok'?'ok':mode==='warn'?'warn':'bad'); }
-  function setConnectedUI(yes){
-    els.btnConnect.disabled = yes;
-    els.btnDisconnect.disabled = !yes;
-    els.ctrls.querySelectorAll('button,input').forEach(el=>{ if(el.id!=='btnConnect') el.disabled = !yes; });
-    if(!yes){
-      els.devName.textContent = '';
-      resetDataUI();
-      stopBlink();
-    }
-  }
-  function resetDataUI(){
-    ['rpm','thr','map','vbat','th','canbps','pwmhz','blink'].forEach(id=>els[id].textContent='—');
-    els.fanLed.classList.remove('on');
-    els.uiLed.classList.remove('on');
-  }
+async function connect() {
+  try{
+    $("#status").textContent = "Scanning…";
+    dev = await navigator.bluetooth.requestDevice({
+      filters: [{ namePrefix: "THRUSTER" }],
+      optionalServices: [SVC]
+    });
+    dev.addEventListener('gattserverdisconnected', onDisc);
 
-  async function connect(){
+    $("#status").textContent = "Connecting…";
+    gatt = await dev.gatt.connect();
+
+    const svc = await gatt.getPrimaryService(SVC);
+    dataChar = await svc.getCharacteristic(DATA);
+    ctrlChar = await svc.getCharacteristic(CTRL);
+
+    await dataChar.startNotifications();
+    dataChar.addEventListener('characteristicvaluechanged', onNotify);
+
+    // 讀一次門檻值
     try{
-      device = await navigator.bluetooth.requestDevice({
-        filters:[{ namePrefix: 'THRUSTER' }],
-        optionalServices:[UUID_SVC]
-      });
-      device.addEventListener('gattserverdisconnected', onDisconnected);
-      els.devName.textContent = device.name || device.id || '';
-      setStatus('連線中…','warn');
-      gatt = await device.gatt.connect();
-      svc = await gatt.getPrimaryService(UUID_SVC);
-      chrData = await svc.getCharacteristic(UUID_DATA);
-      chrCtrl = await svc.getCharacteristic(UUID_CTRL);
-      await chrData.startNotifications();
-      chrData.addEventListener('characteristicvaluechanged', onNotify);
-      setStatus('已連線');
-      setConnectedUI(true);
-      // 讀一次 CTRL（回顯可能是 TH:x）僅作為握手；不強制
-      try{ const v = await chrCtrl.readValue(); console.debug('CTRL read:', dec.decode(v)); }catch(_){ }
-    }catch(err){
-      console.error(err); setStatus('連線失敗','bad'); setConnectedUI(false);
-    }
+      const v = await ctrlChar.readValue();
+      const s = new TextDecoder().decode(v);
+      const n = parseInt(s || "40") || 40;
+      $("#thr").value = n; $("#thrVal").textContent = n;
+    }catch(_){}
+
+    $("#status").textContent = "Connected";
+  }catch(err){
+    console.error(err);
+    $("#status").textContent = "Failed";
   }
+}
+function onDisc(){ $("#status").textContent = "Disconnected"; }
 
-  function onDisconnected(){ setStatus('未連線','bad'); setConnectedUI(false); }
+function onNotify(e){
+  try{
+    const s = new TextDecoder().decode(e.target.value);
+    const j = JSON.parse(s);
 
-  function onNotify(ev){
-    const v = ev.target.value;
-    let text = '';
-    try{ text = dec.decode(v); }catch{ return; }
-    try{
-      const obj = JSON.parse(text);
-      updateData(obj);
-    }catch(err){
-      // 不是 JSON 就忽略
-    }
+    setText("rpm", j.RPM ?? "0");
+    setText("tps", j.Throttle ?? "0");
+    setText("map", j.MAP ?? "0");
+    setText("spd", fmtNum(j.Speed_kmh, 1));
+    setText("vbat", fmtNum(j.Voltage, 2));
+    setText("maf", j.MAF_gps!=null ? fmtNum(j.MAF_gps,2) : "—");
+    setText("fuel", j.FuelRate_Lph!=null ? fmtNum(j.FuelRate_Lph,2) : "—");
+
+    setText("instL100", j.Inst_Lper100km!=null ? fmtNum(j.Inst_Lper100km,2) : "—");
+    setText("instKML",  j.Inst_km_per_L!=null ? fmtNum(j.Inst_km_per_L,2) : "—");
+
+    setText("avgL100", j.Avg_Lper100km!=null ? fmtNum(j.Avg_Lper100km,2) : "—");
+    setText("avgKML",  j.Avg_km_per_L!=null ? fmtNum(j.Avg_km_per_L,2) : "—");
+  }catch(err){
+    console.warn("parse fail:", err);
   }
+}
 
-  function updateData(p){
-    if('RPM' in p) els.rpm.textContent = p.RPM;
-    if('Throttle' in p) els.thr.textContent = p.Throttle;
-    if('MAP' in p) els.map.textContent = p.MAP;
-    if('Voltage' in p) els.vbat.textContent = p.Voltage;
-    if('Threshold' in p) els.th.textContent = p.Threshold;
-    if('CANbps' in p) els.canbps.textContent = p.CANbps;
-    if('PWMhz' in p) els.pwmhz.textContent = p.PWMhz;
-
-    if('Fan' in p){
-      if(p.Fan) els.fanLed.classList.add('on'); else els.fanLed.classList.remove('on');
-    }
-
-    if('BlinkInterval' in p){
-      els.blink.textContent = p.BlinkInterval;
-      applyBlink(p.BlinkInterval|0);
-    }
-  }
-
-  function applyBlink(interval){
-    stopBlink();
-    if(interval>0){
-      let on=false; els.uiLed.classList.remove('on');
-      blinkTimer = setInterval(()=>{ on=!on; if(on) els.uiLed.classList.add('on'); else els.uiLed.classList.remove('on'); }, interval);
-    }else{
-      els.uiLed.classList.remove('on');
-    }
-  }
-  function stopBlink(){ if(blinkTimer){ clearInterval(blinkTimer); blinkTimer=null; } }
-
-  async function writeCtrl(text){
-    if(!chrCtrl) return; // not connected
-    const payload = enc.encode(String(text));
-    await chrCtrl.writeValueWithoutResponse(payload);
-  }
-
-  // === UI Events ===
-  els.btnConnect.addEventListener('click', connect);
-  els.btnDisconnect.addEventListener('click', ()=>{ if(device && device.gatt.connected) device.gatt.disconnect(); });
-
-  els.btnSetTH.addEventListener('click', async ()=>{
-    const n = Number(els.inputTH.value);
-    if(Number.isFinite(n) && n>=0 && n<=255){ await writeCtrl(`TH:${n}`); }
-  });
-
-  document.querySelectorAll('[data-cmd]').forEach(btn=>{
-    btn.addEventListener('click', ()=> writeCtrl(btn.dataset.cmd));
-  });
-
-  els.btnSendRaw.addEventListener('click', async ()=>{
-    const t = (els.inputRaw.value||'').trim();
-    if(t) await writeCtrl(t);
-  });
-
-  // Helpers: 在 Bluefy 上提醒 HTTPS/原生特性
-  if(!('bluetooth' in navigator)){
-    setStatus('此瀏覽器不支援 Web Bluetooth','bad');
-    els.btnConnect.disabled = true;
-  }
-  </script>
+$("#btn").addEventListener("click", connect);
+$("#thr").addEventListener("input", e => { $("#thrVal").textContent = e.target.value; });
+$("#btnSend").addEventListener("click", async ()=>{
+  try{
+    if(!ctrlChar) return;
+    const n = $("#thr").value;
+    await ctrlChar.writeValue(new TextEncoder().encode(String(n)));
+  }catch(err){ console.error(err); }
+});
+</script>
 </body>
 </html>
