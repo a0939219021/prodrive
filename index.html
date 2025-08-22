@@ -2,226 +2,232 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Pico OBD-II Fuel Monitor (Bluefy)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
+<title>ESP32‑C6 BLE 測試面板</title>
 <style>
-  :root{--bg:#0f172a;--card:#111827;--fg:#e5e7eb;--mute:#9ca3af;--ok:#10b981;--warn:#f59e0b;--bad:#ef4444;}
-  *{box-sizing:border-box}
-  body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:#0b1020;color:var(--fg)}
-  header{padding:16px 20px;background:linear-gradient(90deg,#0b132b,#1c2541);position:sticky;top:0;z-index:10}
-  h1{margin:0;font-size:20px;font-weight:700}
-  .wrap{padding:16px;display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
-  .card{background:var(--card);border-radius:14px;padding:14px;box-shadow:0 2px 14px rgba(0,0,0,.25)}
-  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-  button, input, select{background:#1f2937;color:var(--fg);border:1px solid #374151;border-radius:10px;padding:10px 12px}
-  button{cursor:pointer}
-  button.primary{background:#2563eb;border-color:#3b82f6}
-  button:disabled{opacity:.6;cursor:not-allowed}
-  .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-  .kv{display:flex;align-items:baseline;justify-content:space-between;padding:6px 0;border-bottom:1px dashed #243142}
-  .kv b{font-size:18px}
-  .kv small{color:var(--mute)}
-  .badge{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:4px 8px;font-size:12px;background:#0b1222;border:1px solid #243142}
-  .ok{color:var(--ok)} .warn{color:var(--warn)} .bad{color:var(--bad)}
-  .pill{display:inline-block;padding:2px 8px;border-radius:999px;background:#0b1222;border:1px solid #243142;color:#9ca3af}
-  footer{padding:12px;color:#9ca3af;text-align:center}
-  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace}
-  .grow{flex:1}
+  :root{
+    --bg:#0b1220; --card:#111827; --fg:#e5e7eb; --muted:#9ca3af; --acc:#22d3ee; --ok:#10b981; --warn:#f59e0b; --err:#ef4444;
+    --br:16px; --gap:14px;
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bot: env(safe-area-inset-bottom, 0px);
+  }
+  *{box-sizing:border-box;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans",Arial}
+  html,body{height:100%}
+  body{
+    margin:0;
+    background:linear-gradient(180deg,#0b1220 0%,#0f172a 100%);
+    color:var(--fg);
+    padding:calc(12px + var(--safe-top)) 14px calc(14px + var(--safe-bot));
+    display:flex; align-items:center; justify-content:center;
+  }
+  .wrap{width:min(720px,100%); display:grid; gap:var(--gap)}
+  .card{
+    background:var(--card); border:1px solid #1f2937; border-radius:var(--br);
+    padding:18px; box-shadow:0 6px 18px rgba(0,0,0,.25);
+  }
+  h1{font-size:22px;margin:0 0 6px}
+  .muted{color:var(--muted); font-size:13px}
+  .row{display:flex; flex-wrap:wrap; gap:10px; align-items:center}
+  button{
+    border:0; border-radius:14px; padding:12px 16px; font-weight:600;
+    background:#1f2a44; color:var(--fg); cursor:pointer;
+  }
+  button.primary{background:var(--acc); color:#06222a}
+  button.ok{background:var(--ok); color:#06221a}
+  button.warn{background:var(--warn); color:#2b1d00}
+  button.err{background:var(--err); color:#2a0606}
+  button:disabled{opacity:.55; cursor:not-allowed}
+  .grid{display:grid; grid-template-columns:1fr 1fr; gap:var(--gap)}
+  @media (max-width:600px){ .grid{grid-template-columns:1fr} }
+  .stat{
+    background:#0e1627; border:1px solid #1f2b45; border-radius:14px; padding:14px;
+  }
+  .label{font-size:12px; color:var(--muted); margin-bottom:8px}
+  .value{font-size:28px; font-weight:800; letter-spacing:.5px}
+  .unit{font-size:14px; color:var(--muted); margin-left:6px}
+  details{background:#0c1324; border:1px solid #1b2540; border-radius:12px; padding:8px 12px}
+  summary{cursor:pointer; font-weight:600}
+  pre{white-space:pre-wrap; word-break:break-word; margin:8px 0 0; font-size:12px; color:#cbd5e1}
+  .badge{display:inline-block; padding:4px 8px; border-radius:999px; font-size:12px; background:#172036; color:#b6c7e8}
 </style>
 </head>
 <body>
-<header class="row">
-  <h1 class="grow">Pico OBD-II Fuel Monitor</h1>
-  <span id="status" class="badge">未連線</span>
-  <button id="btnConnect" class="primary">連線</button>
-  <button id="btnDisconnect" disabled>中斷</button>
-</header>
+  <div class="wrap">
+    <div class="card">
+      <h1>ESP32‑C6 BLE 測試面板</h1>
+      <div class="muted">目標預設名稱：<span class="badge">ESP32C6-BLE-TEST</span>；服務 <b>0x181A</b>，特徵 <b>0x2A6E</b>（溫度，0.01°C 單位）。</div>
+    </div>
 
-<div class="wrap">
-  <section class="card">
-    <h3>核心資料</h3>
+    <div class="card">
+      <div class="row" style="gap:12px">
+        <button id="btnConnect" class="primary">🔍 掃描並連線</button>
+        <button id="btnDisconnect" class="err" disabled>⏏️ 斷線</button>
+        <button id="btnRead" disabled>📖 讀取一次</button>
+        <button id="btnNotify" class="ok" disabled>🛎️ 訂閱 Notify</button>
+        <button id="btnStopNotify" class="warn" disabled>🔕 停止 Notify</button>
+      </div>
+    </div>
+
     <div class="grid">
-      <div class="kv"><small>RPM</small><b id="rpm">‑</b></div>
-      <div class="kv"><small>TPS %</small><b id="tps">‑</b></div>
-      <div class="kv"><small>MAP kPa</small><b id="map">‑</b></div>
-      <div class="kv"><small>Speed km/h</small><b id="spd">‑</b></div>
-      <div class="kv"><small>Battery V</small><b id="vol">‑</b></div>
-      <div class="kv"><small>Fan</small><b id="fan" class="pill">‑</b></div>
-      <div class="kv"><small>Threshold</small><b id="thr">‑</b></div>
+      <div class="stat">
+        <div class="label">連線狀態</div>
+        <div class="value" id="status">未連線</div>
+      </div>
+      <div class="stat">
+        <div class="label">溫度 (0x2A6E)</div>
+        <div class="value"><span id="temp">--</span><span class="unit">°C</span></div>
+      </div>
     </div>
-  </section>
 
-  <section class="card">
-    <h3>油耗</h3>
-    <div class="grid">
-      <div class="kv"><small>來源</small><b id="src" class="mono">‑</b></div>
-      <div class="kv"><small>Fuel Rate L/h</small><b id="fr">‑</b></div>
-      <div class="kv"><small>瞬間 L/100km</small><b id="iL100">‑</b></div>
-      <div class="kv"><small>瞬間 km/L</small><b id="iKML">‑</b></div>
-      <div class="kv"><small>平均 L/100km</small><b id="aL100">‑</b></div>
-      <div class="kv"><small>平均 km/L</small><b id="aKML">‑</b></div>
-      <div class="kv"><small>Trip Fuel L</small><b id="tripL">0.000</b></div>
-      <div class="kv"><small>Trip Dist km</small><b id="tripK">0.000</b></div>
-    </div>
-    <div class="grid" style="margin-top:8px">
-      <div class="kv"><small>MAF g/s</small><b id="maf">‑</b></div>
-      <div class="kv"><small>IAT °C</small><b id="iat">‑</b></div>
-      <div class="kv"><small>Abs Load %</small><b id="al">‑</b></div>
-      <div class="kv"><small>Lambda</small><b id="lam">‑</b></div>
-    </div>
-  </section>
-
-  <section class="card">
-    <h3>診斷</h3>
-    <div class="grid">
-      <div class="kv"><small>CAN kbps</small><b id="can">‑</b></div>
-      <div class="kv"><small>PWM Hz</small><b id="pwm">‑</b></div>
-      <div class="kv"><small>Notify Hz</small><b id="rate">‑</b></div>
-      <div class="kv"><small>Loop ms(avg)</small><b id="loop">‑</b></div>
-      <div class="kv"><small>RX OK</small><b id="rxok">‑</b></div>
-      <div class="kv"><small>RX TO</small><b id="rxto">‑</b></div>
-    </div>
-  </section>
-
-  <section class="card">
-    <h3>指令控制</h3>
-    <div class="row" style="gap:8px;margin-bottom:8px">
-      <input id="cmdInput" class="grow mono" placeholder="例如：TH:60 / CAN:500 / PWM:25000 / RATE:10 / RST / DISP:2.0 / VE:0.8 / AFR:14.1 / RHO:0.74 / LAM:1.02" />
-      <button id="btnSend">送出</button>
-    </div>
-    <div class="row" style="gap:8px">
-      <button data-cmd="RST">Trip 歸零</button>
-      <button data-cmd="CAN:500">CAN 500k</button>
-      <button data-cmd="CAN:250">CAN 250k</button>
-      <button data-cmd="PWM:25000">PWM 25k</button>
-      <button data-cmd="PWM:1000">PWM 1k</button>
-      <button data-cmd="RATE:8">RATE 8 Hz</button>
-      <button data-cmd="TH:60">TH 60</button>
-    </div>
-    <div style="margin-top:8px;color:#9ca3af" class="mono" id="echo">回顯：—</div>
-  </section>
-</div>
-
-<footer>UUID 服務：6E400001…　Notify：…003　Write：…002</footer>
+    <details class="card">
+      <summary>事件紀錄（可展開）</summary>
+      <pre id="log"></pre>
+    </details>
+  </div>
 
 <script>
-const SVC_UUID  = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
-const RX_UUID   = '6e400003-b5a3-f393-e0a9-e50e24dcca9e'; // from device → notify
-const TX_UUID   = '6e400002-b5a3-f393-e0a9-e50e24dcca9e'; // to device   → write
+(() => {
+  // 16-bit UUIDs
+  const ENV_SERVICE = 0x181a;
+  const TEMP_CHAR   = 0x2a6e; // Temperature, sint16, 0.01 °C
 
-const $ = id => document.getElementById(id);
-const ui = id => (val)=> { const el=$(id); if(el) el.textContent = (val ?? '‑'); };
+  let device = null;
+  let server = null;
+  let service = null;
+  let tempChar = null;
+  let notifying = false;
 
-const setA = {
-  rpm:ui('rpm'), tps:ui('tps'), map:ui('map'), spd:ui('spd'),
-  vol:ui('vol'), thr:ui('thr'),
-  fan:(val)=>{ const el=$('fan'); el.textContent=val?'ON':'OFF'; el.className='pill ' + (val?'ok':'') }
-};
-const setF = {
-  src:ui('src'), fr:ui('fr'), iL100:ui('iL100'), iKML:ui('iKML'),
-  aL100:ui('aL100'), aKML:ui('aKML'),
-  tripL:ui('tripL'), tripK:ui('tripK'),
-  maf:ui('maf'), iat:ui('iat'), al:ui('al'), lam:ui('lam')
-};
-const setD = { can:ui('can'), pwm:ui('pwm'), rate:ui('rate'), loop:ui('loop'), rxok:ui('rxok'), rxto:ui('rxto') };
+  const $ = sel => document.querySelector(sel);
+  const log = (msg) => { const el = $('#log'); el.textContent += `${new Date().toLocaleTimeString()}  ${msg}\n`; el.scrollTop = el.scrollHeight; };
+  const setStatus = (txt) => $('#status').textContent = txt;
+  const setTemp = (t) => $('#temp').textContent = t;
 
-let device=null, server=null, rxChar=null, txChar=null;
-let connected=false;
+  const ui = {
+    connect: $('#btnConnect'),
+    disconnect: $('#btnDisconnect'),
+    read: $('#btnRead'),
+    notify: $('#btnNotify'),
+    stopNotify: $('#btnStopNotify'),
+  };
 
-function setStatus(s){ $('status').textContent=s; }
-
-async function connect(){
-  try{
-    setStatus('掃描中…');
-    const dev = await navigator.bluetooth.requestDevice({
-      filters:[{ services:[SVC_UUID] }],
-      optionalServices:[SVC_UUID]
-    });
-    device = dev;
-    device.addEventListener('gattserverdisconnected', onDisconnect);
-    setStatus('連線中…');
-    server = await device.gatt.connect();
-    const svc = await server.getPrimaryService(SVC_UUID);
-    rxChar = await svc.getCharacteristic(RX_UUID);
-    txChar = await svc.getCharacteristic(TX_UUID);
-    await rxChar.startNotifications();
-    rxChar.addEventListener('characteristicvaluechanged', onNotify);
-    connected=true;
-    $('btnConnect').disabled=true; $('btnDisconnect').disabled=false;
-    setStatus('已連線');
-  }catch(e){
-    console.error(e);
-    setStatus('連線失敗');
+  function setButtonsState(connected){
+    ui.connect.disabled = connected;
+    ui.disconnect.disabled = !connected;
+    ui.read.disabled = !connected;
+    ui.notify.disabled = !connected || notifying;
+    ui.stopNotify.disabled = !connected || !notifying;
   }
-}
 
-function onDisconnect(){
-  connected=false;
-  $('btnConnect').disabled=false; $('btnDisconnect').disabled=true;
-  setStatus('未連線');
-}
+  // 解析 0x2A6E（sint16，0.01°C）
+  function parseTemp(dataView){
+    const raw = dataView.getInt16(0, true); // little-endian
+    return (raw / 100).toFixed(2);
+  }
 
-async function disconnect(){
-  try{ if(device && device.gatt.connected) device.gatt.disconnect(); }catch(e){}
-}
+  async function connect(){
+    try{
+      setStatus('掃描中…');
+      log('開始掃描：namePrefix=ESP32C6 / services=[0x181A]');
+      device = await navigator.bluetooth.requestDevice({
+        filters: [
+          { namePrefix: 'ESP32C6' },
+          { services: [ENV_SERVICE] }
+        ],
+        optionalServices: [ENV_SERVICE]
+      });
 
-function onNotify(ev){
-  const dv = ev.target.value;
-  // 將 DataView 轉為字串（UTF-8）
-  let str = '';
-  for(let i=0;i<dv.byteLength;i++) str += String.fromCharCode(dv.getUint8(i));
-  try{
-    const obj = JSON.parse(str);
-    if(!obj || !obj.t) return;
+      device.addEventListener('gattserverdisconnected', onDisconnected);
 
-    if(obj.t === 'a'){
-      setA.rpm(obj.rpm); setA.tps(obj.tps); setA.map(obj.map);
-      setA.spd(obj.spd?.toFixed ? obj.spd.toFixed(1) : obj.spd);
-      setA.vol(obj.vol); setA.thr(obj.thr); setA.fan(obj.fan);
-    }else if(obj.t === 'f'){
-      setF.src(obj.src||'NA');
-      setF.fr(toFixedMaybe(obj.fr,2));
-      setF.iL100(toFixedMaybe(obj.iL100,2));
-      setF.iKML(toFixedMaybe(obj.iKML,2));
-      setF.aL100(toFixedMaybe(obj.aL100,2));
-      setF.aKML(toFixedMaybe(obj.aKML,2));
-      setF.tripL(toFixedMaybe(obj.tripL,3));
-      setF.tripK(toFixedMaybe(obj.tripK,3));
-      setF.maf(toFixedMaybe(obj.maf,2));
-      setF.iat(obj.iat ?? '‑');
-      setF.al(toFixedMaybe(obj.al,1));
-      setF.lam(toFixedMaybe(obj.lam,3));
-    }else if(obj.t === 'd'){
-      setD.can(obj.can); setD.pwm(obj.pwm); setD.rate(obj.rate);
-      setD.loop(obj.loop); setD.rxok(obj.rxok); setD.rxto(obj.rxto);
+      setStatus('連線中…');
+      server = await device.gatt.connect();
+      log(`已連線：${device.name || '(無名稱)'}`);
+
+      service = await server.getPrimaryService(ENV_SERVICE);
+      tempChar = await service.getCharacteristic(TEMP_CHAR);
+
+      setStatus(`已連線：${device.name || 'ESP32C6'}`);
+      setButtonsState(true);
+    }catch(err){
+      log('❌ 連線失敗：' + err);
+      setStatus('未連線');
+      setButtonsState(false);
     }
-  }catch(e){
-    console.warn('parse notify fail:', e, str);
   }
-}
 
-function toFixedMaybe(v, n){ return (typeof v==='number' && isFinite(v)) ? v.toFixed(n) : '‑'; }
-
-async function sendCmd(txt){
-  if(!connected || !txChar) return;
-  try{
-    const enc = new TextEncoder();
-    await txChar.writeValue(enc.encode(txt));
-    $('echo').textContent = '回顯：' + txt;
-  }catch(e){
-    console.error(e);
+  async function disconnect(){
+    try{
+      if(device && device.gatt.connected){
+        device.gatt.disconnect();
+      }
+    }catch(e){
+      // ignore
+    }finally{
+      setButtonsState(false);
+      setStatus('未連線');
+      log('已手動斷線');
+    }
   }
-}
 
-$('btnConnect').addEventListener('click', connect);
-$('btnDisconnect').addEventListener('click', disconnect);
-$('btnSend').addEventListener('click', ()=> {
-  const t = $('cmdInput').value.trim();
-  if(t) sendCmd(t);
-});
-document.querySelectorAll('button[data-cmd]').forEach(b=>{
-  b.addEventListener('click', ()=> sendCmd(b.dataset.cmd));
-});
+  function onDisconnected(){
+    setButtonsState(false);
+    setStatus('未連線（已斷開）');
+    log('🔌 連線已中斷');
+  }
+
+  async function readOnce(){
+    if(!tempChar) return;
+    try{
+      const v = await tempChar.readValue();
+      const t = parseTemp(v);
+      setTemp(t);
+      log(`📖 Read：${t} °C`);
+    }catch(err){
+      log('❌ Read 失敗：' + err);
+    }
+  }
+
+  async function startNotify(){
+    if(!tempChar) return;
+    try{
+      await tempChar.startNotifications();
+      tempChar.addEventListener('characteristicvaluechanged', (e)=>{
+        const t = parseTemp(e.target.value);
+        setTemp(t);
+        if (!notifying) return; // 初始觸發忽略？
+        log(`🛎️ Notify：${t} °C`);
+      });
+      notifying = true;
+      setButtonsState(true);
+      log('✅ 已訂閱 Notify');
+    }catch(err){
+      log('❌ 訂閱失敗：' + err);
+    }
+  }
+
+  async function stopNotify(){
+    if(!tempChar) return;
+    try{
+      await tempChar.stopNotifications();
+      notifying = false;
+      setButtonsState(true);
+      log('🔕 已停止 Notify');
+    }catch(err){
+      log('❌ 停止 Notify 失敗：' + err);
+    }
+  }
+
+  // 綁定事件（注意：Web Bluetooth 需要使用者手勢觸發）
+  ui.connect.addEventListener('click', connect);
+  ui.disconnect.addEventListener('click', disconnect);
+  ui.read.addEventListener('click', readOnce);
+  ui.notify.addEventListener('click', startNotify);
+  ui.stopNotify.addEventListener('click', stopNotify);
+
+  // 初始 UI
+  setButtonsState(false);
+  setStatus('未連線');
+  setTemp('--');
+})();
 </script>
 </body>
 </html>
