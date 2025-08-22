@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
-<title>ESP32‑C6 BLE 測試面板</title>
+<title>ESP32‑C6 BLE 測試面板（Bluefy 相容）</title>
 <style>
   :root{
     --bg:#0b1220; --card:#111827; --fg:#e5e7eb; --muted:#9ca3af; --acc:#22d3ee; --ok:#10b981; --warn:#f59e0b; --err:#ef4444;
@@ -20,7 +20,7 @@
     padding:calc(12px + var(--safe-top)) 14px calc(14px + var(--safe-bot));
     display:flex; align-items:center; justify-content:center;
   }
-  .wrap{width:min(720px,100%); display:grid; gap:var(--gap)}
+  .wrap{width:min(760px,100%); display:grid; gap:var(--gap)}
   .card{
     background:var(--card); border:1px solid #1f2937; border-radius:var(--br);
     padding:18px; box-shadow:0 6px 18px rgba(0,0,0,.25);
@@ -38,24 +38,26 @@
   button.err{background:var(--err); color:#2a0606}
   button:disabled{opacity:.55; cursor:not-allowed}
   .grid{display:grid; grid-template-columns:1fr 1fr; gap:var(--gap)}
-  @media (max-width:600px){ .grid{grid-template-columns:1fr} }
-  .stat{
-    background:#0e1627; border:1px solid #1f2b45; border-radius:14px; padding:14px;
-  }
+  @media (max-width:640px){ .grid{grid-template-columns:1fr} }
+  .stat{background:#0e1627; border:1px solid #1f2b45; border-radius:14px; padding:14px}
   .label{font-size:12px; color:var(--muted); margin-bottom:8px}
   .value{font-size:28px; font-weight:800; letter-spacing:.5px}
   .unit{font-size:14px; color:var(--muted); margin-left:6px}
   details{background:#0c1324; border:1px solid #1b2540; border-radius:12px; padding:8px 12px}
   summary{cursor:pointer; font-weight:600}
-  pre{white-space:pre-wrap; word-break:break-word; margin:8px 0 0; font-size:12px; color:#cbd5e1}
+  pre{white-space:pre-wrap; word-break:break-word; margin:8px 0 0; font-size:12px; color:#cbd5e1; max-height:36vh; overflow:auto}
   .badge{display:inline-block; padding:4px 8px; border-radius:999px; font-size:12px; background:#172036; color:#b6c7e8}
+  .hint{font-size:12px; color:#9ca3af; line-height:1.5}
+  .hint li{margin:4px 0}
 </style>
 </head>
 <body>
   <div class="wrap">
     <div class="card">
       <h1>ESP32‑C6 BLE 測試面板</h1>
-      <div class="muted">目標預設名稱：<span class="badge">ESP32C6-BLE-TEST</span>；服務 <b>0x181A</b>，特徵 <b>0x2A6E</b>（溫度，0.01°C 單位）。</div>
+      <div class="muted">
+        預期裝置名稱前綴：<span class="badge">ESP32C6</span>　｜　服務 <b>0x181A</b>　｜　特徵 <b>0x2A6E</b>（溫度，0.01°C）
+      </div>
     </div>
 
     <div class="card">
@@ -79,6 +81,15 @@
       </div>
     </div>
 
+    <div class="card">
+      <div class="label">Bluefy 提示</div>
+      <ul class="hint">
+        <li>請到 iOS 設定 → Bluefy → 確認「藍牙」與（若有）「定位」已啟用。</li>
+        <li>建議用 HTTPS 網址或 Bluefy 的本機檔案模式開啟本頁。</li>
+        <li>若先前連線過，ESP32‑C6 可能在連線後暫停廣播；重置板子或等 1–2 秒讓它恢復廣播。</li>
+      </ul>
+    </div>
+
     <details class="card">
       <summary>事件紀錄（可展開）</summary>
       <pre id="log"></pre>
@@ -87,18 +98,25 @@
 
 <script>
 (() => {
-  // 16-bit UUIDs
-  const ENV_SERVICE = 0x181a;
-  const TEMP_CHAR   = 0x2a6e; // Temperature, sint16, 0.01 °C
+  // ===== 配置 =====
+  const ENV_SERVICE = 0x181a;     // Environmental Sensing
+  const TEMP_CHAR   = 0x2a6e;     // Temperature (sint16, 0.01°C)
+  const NAME_PREFIX = 'ESP32C6';  // 你的裝置名稱開頭（與 main.py 的 gap_name 一致）
 
+  // ===== 狀態變數 =====
   let device = null;
   let server = null;
   let service = null;
   let tempChar = null;
   let notifying = false;
 
+  // ===== DOM Helper =====
   const $ = sel => document.querySelector(sel);
-  const log = (msg) => { const el = $('#log'); el.textContent += `${new Date().toLocaleTimeString()}  ${msg}\n`; el.scrollTop = el.scrollHeight; };
+  const log = (msg) => {
+    const el = $('#log');
+    el.textContent += `${new Date().toLocaleTimeString()}  ${msg}\n`;
+    el.scrollTop = el.scrollHeight;
+  };
   const setStatus = (txt) => $('#status').textContent = txt;
   const setTemp = (t) => $('#temp').textContent = t;
 
@@ -118,29 +136,52 @@
     ui.stopNotify.disabled = !connected || !notifying;
   }
 
-  // 解析 0x2A6E（sint16，0.01°C）
+  // 解析 0x2A6E（sint16，0.01°C，小端）
   function parseTemp(dataView){
-    const raw = dataView.getInt16(0, true); // little-endian
+    const raw = dataView.getInt16(0, true);
     return (raw / 100).toFixed(2);
   }
 
+  // ====== Bluefy 相容：雙模式掃描 ======
   async function connect(){
+    setButtonsState(false);
+    setStatus('掃描中…');
+
+    // 模式 A：僅用 services 過濾（Bluefy 對多重 filters 較敏感）
     try{
-      setStatus('掃描中…');
-      log('開始掃描：namePrefix=ESP32C6 / services=[0x181A]');
+      log('嘗試模式A：filters=[{ services:[0x181A] }]');
       device = await navigator.bluetooth.requestDevice({
-        filters: [
-          { namePrefix: 'ESP32C6' },
-          { services: [ENV_SERVICE] }
-        ],
+        filters: [{ services: [ENV_SERVICE] }],
         optionalServices: [ENV_SERVICE]
       });
+    }catch(errA){
+      log('模式A 失敗：' + errA);
 
+      // 模式 B：退回 acceptAllDevices，再用名稱與服務於連線後驗證
+      try{
+        log('嘗試模式B：acceptAllDevices=true（連線後再檢查服務/名稱）');
+        device = await navigator.bluetooth.requestDevice({
+          acceptAllDevices: true,
+          optionalServices: [ENV_SERVICE]
+        });
+      }catch(errB){
+        log('❌ 兩種模式都無法彈出裝置列表：' + errB);
+        setStatus('未連線');
+        return;
+      }
+    }
+
+    try{
       device.addEventListener('gattserverdisconnected', onDisconnected);
 
       setStatus('連線中…');
       server = await device.gatt.connect();
       log(`已連線：${device.name || '(無名稱)'}`);
+
+      // 可選：若名稱不符，仍嘗試讀取服務（避免不同韌體名稱）
+      if (device.name && !device.name.startsWith(NAME_PREFIX)) {
+        log(`⚠️ 名稱非預期（${device.name}），將嘗試讀取 0x181A 服務`);
+      }
 
       service = await server.getPrimaryService(ENV_SERVICE);
       tempChar = await service.getCharacteristic(TEMP_CHAR);
@@ -148,7 +189,7 @@
       setStatus(`已連線：${device.name || 'ESP32C6'}`);
       setButtonsState(true);
     }catch(err){
-      log('❌ 連線失敗：' + err);
+      log('❌ 連線/發現服務失敗：' + err);
       setStatus('未連線');
       setButtonsState(false);
     }
@@ -156,12 +197,13 @@
 
   async function disconnect(){
     try{
-      if(device && device.gatt.connected){
+      if(device && device.gatt && device.gatt.connected){
         device.gatt.disconnect();
       }
     }catch(e){
       // ignore
     }finally{
+      notifying = false;
       setButtonsState(false);
       setStatus('未連線');
       log('已手動斷線');
@@ -169,13 +211,14 @@
   }
 
   function onDisconnected(){
+    notifying = false;
     setButtonsState(false);
     setStatus('未連線（已斷開）');
     log('🔌 連線已中斷');
   }
 
   async function readOnce(){
-    if(!tempChar) return;
+    if(!tempChar){ log('⚠️ 尚未取得特徵'); return; }
     try{
       const v = await tempChar.readValue();
       const t = parseTemp(v);
@@ -187,13 +230,13 @@
   }
 
   async function startNotify(){
-    if(!tempChar) return;
+    if(!tempChar){ log('⚠️ 尚未取得特徵'); return; }
     try{
       await tempChar.startNotifications();
       tempChar.addEventListener('characteristicvaluechanged', (e)=>{
         const t = parseTemp(e.target.value);
         setTemp(t);
-        if (!notifying) return; // 初始觸發忽略？
+        if (!notifying) return;
         log(`🛎️ Notify：${t} °C`);
       });
       notifying = true;
@@ -205,7 +248,7 @@
   }
 
   async function stopNotify(){
-    if(!tempChar) return;
+    if(!tempChar){ log('⚠️ 尚未取得特徵'); return; }
     try{
       await tempChar.stopNotifications();
       notifying = false;
@@ -216,7 +259,7 @@
     }
   }
 
-  // 綁定事件（注意：Web Bluetooth 需要使用者手勢觸發）
+  // 綁定事件（Web Bluetooth 需要使用者手勢觸發）
   ui.connect.addEventListener('click', connect);
   ui.disconnect.addEventListener('click', disconnect);
   ui.read.addEventListener('click', readOnce);
@@ -227,6 +270,11 @@
   setButtonsState(false);
   setStatus('未連線');
   setTemp('--');
+
+  // 快速檢查支持度
+  if (!('bluetooth' in navigator)) {
+    log('❌ 這個瀏覽器不支援 Web Bluetooth');
+  }
 })();
 </script>
 </body>
