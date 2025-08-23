@@ -2,7 +2,7 @@
 <html lang="zh-Hant">
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>C3-LED Control</title>
+<title>C3-LED Control (Robust)</title>
 <style>
   body{margin:0;background:#0b1220;color:#e5e7eb;font-family:system-ui,Segoe UI,Arial}
   .wrap{max-width:720px;margin:0 auto;padding:16px}
@@ -15,6 +15,7 @@
   .muted{color:#9ca3af}
   label{display:inline-block;width:110px}
   .val{min-width:36px;text-align:right;display:inline-block}
+  #msg{white-space:pre-wrap;margin-top:10px;font-family:ui-monospace,Consolas,monospace;color:#9ca3af}
 </style>
 <div class="wrap">
   <h2>ESP32‑C3 BLE 控制面板</h2>
@@ -24,7 +25,7 @@
       <span id="name" class="muted">Not connected</span>
       <span id="dot" class="dot"></span>
     </div>
-    <p class="muted">Service: <code id="svc">0000fff0-0000-1000-8000-00805f9b34fb</code></p>
+    <p class="muted">Service: <code>0000fff0-0000-1000-8000-00805f9b34fb</code></p>
     <div id="ctrls" style="opacity:.5;pointer-events:none">
       <div class="row">
         <label>Mode (0–255)</label>
@@ -46,6 +47,7 @@
       </div>
       <p class="muted">Status Notify: <span id="status">0</span></p>
     </div>
+    <div id="msg"></div>
   </div>
 </div>
 <script>
@@ -56,80 +58,108 @@ const UUID = {
   SPD  : '0000fff3-0000-1000-8000-00805f9b34fb',
   STAT : '0000fff4-0000-1000-8000-00805f9b34fb',
 };
+const ui = {
+  btn:   document.getElementById('btn'),
+  name:  document.getElementById('name'),
+  dot:   document.getElementById('dot'),
+  ctrls: document.getElementById('ctrls'),
+  mode:  document.getElementById('mode'),
+  modev: document.getElementById('modev'),
+  modeb: document.getElementById('modeb'),
+  bri:   document.getElementById('bri'),
+  briv:  document.getElementById('briv'),
+  brib:  document.getElementById('brib'),
+  spd:   document.getElementById('spd'),
+  spdv:  document.getElementById('spdv'),
+  spdb:  document.getElementById('spdb'),
+  status:document.getElementById('status'),
+  msg:   document.getElementById('msg'),
+};
 
 let device, server, svc, ch = {};
+function log(m){ ui.msg.textContent = String(m); }
 
 function uiConnected(on, name=''){
-  document.getElementById('name').textContent = on ? `Connected: ${name}` : 'Not connected';
-  document.getElementById('dot').className = on ? 'dot ok' : 'dot';
-  document.getElementById('btn').textContent = on ? '🔌 Disconnect' : '🔗 Connect';
-  const ctrls = document.getElementById('ctrls');
-  ctrls.style.opacity = on ? 1 : .5;
-  ctrls.style.pointerEvents = on ? 'auto' : 'none';
+  ui.name.textContent = on ? `Connected: ${name}` : 'Not connected';
+  ui.dot.className = on ? 'dot ok' : 'dot';
+  ui.btn.textContent = on ? '🔌 Disconnect' : '🔗 Connect';
+  ui.ctrls.style.opacity = on ? 1 : .5;
+  ui.ctrls.style.pointerEvents = on ? 'auto' : 'none';
 }
 
 function u8(v){ return new Uint8Array([v & 0xff]); }
 
-async function connect(){
-  device = await navigator.bluetooth.requestDevice({
-    filters: [{ namePrefix: 'C3-LED' }],
-    optionalServices: [SVC]
-  });
+async function connectFlow(){
+  log('Opening chooser…');
+  // First try with namePrefix + optionalServices
+  try{
+    device = await navigator.bluetooth.requestDevice({
+      filters: [{ namePrefix: 'C3-LED' }],
+      optionalServices: [SVC]
+    });
+  }catch(e1){
+    // Fallback: acceptAllDevices + optionalServices
+    log('Retrying with acceptAllDevices…');
+    device = await navigator.bluetooth.requestDevice({
+      acceptAllDevices: true,
+      optionalServices: [SVC]
+    });
+  }
+
   device.addEventListener('gattserverdisconnected', ()=> uiConnected(false));
   server = await device.gatt.connect();
+  log('Connected. Discovering services…');
   svc = await server.getPrimaryService(SVC);
+
   ch.MODE = await svc.getCharacteristic(UUID.MODE);
   ch.BRI  = await svc.getCharacteristic(UUID.BRI);
   ch.SPD  = await svc.getCharacteristic(UUID.SPD);
   ch.STAT = await svc.getCharacteristic(UUID.STAT);
 
-  // 訂閱 Notify（狀態）
   await ch.STAT.startNotifications();
   ch.STAT.addEventListener('characteristicvaluechanged', e=>{
     const v = e.target.value.getUint8(0);
-    document.getElementById('status').textContent = v;
+    ui.status.textContent = v;
     uiConnected(!!v, device.name || '(no name)');
   });
 
-  // 讀取初始值
+  // Read initial values
   const mv = (await ch.MODE.readValue()).getUint8(0);
-  const bv = (await ch.BRI.readValue()).getUint8(0);
-  const sv = (await ch.SPD.readValue()).getUint8(0);
-  document.getElementById('mode').value = mv; document.getElementById('modev').textContent = mv;
-  document.getElementById('bri').value  = bv; document.getElementById('briv').textContent  = bv;
-  document.getElementById('spd').value  = sv; document.getElementById('spdv').textContent  = sv;
+  const bv = (await ch.BRI .readValue()).getUint8(0);
+  const sv = (await ch.SPD .readValue()).getUint8(0);
+  ui.mode.value=mv; ui.modev.textContent=mv;
+  ui.bri .value=bv; ui.briv .textContent=bv;
+  ui.spd .value=sv; ui.spdv .textContent=sv;
 
-  // 也訂閱三個特徵的 Notify（可選）
+  // Optional: subscribe to value changes
   for (const k of ['MODE','BRI','SPD']){
     await ch[k].startNotifications();
     ch[k].addEventListener('characteristicvaluechanged', e=>{
       const v = e.target.value.getUint8(0);
-      if (k==='MODE'){ mode.value=v; modev.textContent=v; }
-      if (k==='BRI' ){ bri.value=v; briv .textContent=v; }
-      if (k==='SPD' ){ spd.value=v; spdv .textContent=v; }
+      if (k==='MODE'){ ui.mode.value=v; ui.modev.textContent=v; }
+      if (k==='BRI' ){ ui.bri.value =v; ui.briv.textContent =v; }
+      if (k==='SPD' ){ ui.spd.value =v; ui.spdv.textContent =v; }
     });
   }
 
-  // 讀一次狀態
   const s = (await ch.STAT.readValue()).getUint8(0);
   uiConnected(!!s, device.name || '(no name)');
+  log('Ready.');
 }
 
-document.getElementById('btn').onclick = async ()=>{
+ui.btn.addEventListener('click', async ()=>{
   try{
-    if (device && device.gatt.connected){ device.gatt.disconnect(); uiConnected(false); }
-    else { await connect(); }
-  }catch(e){ alert('Connect failed: '+e); }
-};
+    if (device && device.gatt.connected){ device.gatt.disconnect(); uiConnected(false); log('Disconnected.'); }
+    else { await connectFlow(); }
+  }catch(err){ log('Error: ' + err); }
+});
 
-// Range 顯示立即更新
-mode.oninput = ()=> modev.textContent = mode.value;
-bri .oninput = ()=> briv .textContent = bri.value;
-spd .oninput = ()=> spdv .textContent = spd.value;
+ui.mode.addEventListener('input', ()=> ui.modev.textContent = ui.mode.value);
+ui.bri .addEventListener('input', ()=> ui.briv .textContent = ui.bri.value);
+ui.spd .addEventListener('input', ()=> ui.spdv .textContent = ui.spd.value);
 
-// 寫入三個特徵
-modeb.onclick = async ()=> { if(ch.MODE) await ch.MODE.writeValueWithResponse(u8(+mode.value)); };
-brib .onclick = async ()=> { if(ch.BRI ) await ch.BRI .writeValueWithResponse(u8(+bri.value )); };
-spdb .onclick = async ()=> { if(ch.SPD ) await ch.SPD .writeValueWithResponse(u8(+spd.value )); };
+ui.modeb.addEventListener('click', async ()=> { try{ if(ch.MODE) await ch.MODE.writeValueWithResponse(u8(+ui.mode.value)); }catch(e){ log(e); } });
+ui.brib .addEventListener('click', async ()=> { try{ if(ch.BRI ) await ch.BRI .writeValueWithResponse(u8(+ui.bri.value )); }catch(e){ log(e); } });
+ui.spdb .addEventListener('click', async ()=> { try{ if(ch.SPD ) await ch.SPD .writeValueWithResponse(u8(+ui.spd.value )); }catch(e){ log(e); } });
 </script>
 </html>
