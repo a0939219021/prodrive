@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>C3-LED Control</title>
+<title>C3-LED Control (iOS Bluefy)</title>
 <style>
   body{margin:0;background:#0b1220;color:#e5e7eb;font-family:system-ui,Segoe UI,Arial}
   .wrap{max-width:720px;margin:0 auto;padding:16px}
@@ -94,18 +94,10 @@ function u8(v){ return new Uint8Array([v & 0xff]); }
 
 async function connectFlow(){
   log('Opening chooser…');
-  try{
-    device = await navigator.bluetooth.requestDevice({
-      filters: [{ namePrefix: 'C3-LED' }],
-      optionalServices: [SVC]
-    });
-  }catch(e1){
-    log('Retrying with acceptAllDevices…');
-    device = await navigator.bluetooth.requestDevice({
-      acceptAllDevices: true,
-      optionalServices: [SVC]
-    });
-  }
+  device = await navigator.bluetooth.requestDevice({
+    acceptAllDevices: true,
+    optionalServices: [SVC]
+  });
 
   device.addEventListener('gattserverdisconnected', ()=> uiConnected(false));
   server = await device.gatt.connect();
