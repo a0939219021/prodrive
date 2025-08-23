@@ -19,8 +19,8 @@
 </head>
 <body>
 <div class="wrap">
-  <h2>OBD‑II BLE Console</h2>
-  <p class="muted">掃描裝置名稱「C3‑OBD」，或使用指定 Service UUID 連線。</p>
+  <h2>OBD-II BLE Console</h2>
+  <p class="muted">Bluefy 若用過濾器掃不到，改用「全部裝置」→ 手動選 C3-OBD。</p>
   <div style="display:flex;gap:8px;margin:12px 0;">
     <button id="btnConnect">Connect</button>
     <button id="btnDisconnect" disabled>Disconnect</button>
@@ -40,37 +40,38 @@
 </div>
 
 <script>
-const SVC = '12f05678-1234-5678-1234-56789abcdef0'; // 注意：必須與韌體相同（小寫也可）
-const CHR_RPM = '12f05678-1234-5678-1234-56789abcdef1';
-const CHR_SPD = '12f05678-1234-5678-1234-56789abcdef2';
-const CHR_THR = '12f05678-1234-5678-1234-56789abcdef3';
+// 與韌體一致的 Service/Char UUID
+const SVC    = '12f05678-1234-5678-1234-56789abcdef0';
+const CHR_RPM= '12f05678-1234-5678-1234-56789abcdef1';
+const CHR_SPD= '12f05678-1234-5678-1234-56789abcdef2';
+const CHR_THR= '12f05678-1234-5678-1234-56789abcdef3';
 
-// 與韌體 BLE_UUID128_INIT 內容一致（大小端在 Web 層不需操心，只要字串一致）
-const namePrefix = 'C3-OBD';
-
-const $ = sel => document.querySelector(sel);
+const nameHint = 'C3-OBD';
+const $ = s => document.querySelector(s);
 const log = m => { const t = new Date().toLocaleTimeString(); $('#log').textContent += `[${t}] ${m}\n`; };
+function setStatus(s){ $('#status').textContent = s; }
 
 let device, server, svc, chrRPM, chrSPD, chrTHR;
-let reconnectTimer = null;
-
-function setStatus(s) { $('#status').textContent = s; }
-
-async function request() {
-  // 兩種 filter 取 OR：有些裝置在 iOS 需用 namePrefix 比較穩
-  const filters = [{ services: [SVC] }, { namePrefix }];
-  return navigator.bluetooth.requestDevice({
-    filters,
-    optionalServices: [SVC]
-  });
-}
 
 async function connect() {
   setStatus('requesting...');
-  device = await request();
-  device.addEventListener('gattserverdisconnected', onDisconnected);
+  // 用 acceptAllDevices，避免 Bluefy 的過濾器導致列表空白
+  device = await navigator.bluetooth.requestDevice({
+    acceptAllDevices: true,
+    optionalServices: [SVC]
+  });
   setStatus('connecting...');
+  device.addEventListener('gattserverdisconnected', onDisconnected);
   server = await device.gatt.connect();
+
+  // 可選：提示選到的是否是 C3-OBD
+  if (device.name && !device.name.includes(nameHint)) {
+    log(`⚠️ 你選的是 "${device.name}"，建議選擇 ${nameHint}`);
+  } else {
+    log(`Connected to ${device.name || device.id}`);
+  }
+
+  // 取得 Service / Characteristics
   svc = await server.getPrimaryService(SVC);
   [chrRPM, chrSPD, chrTHR] = await Promise.all([
     svc.getCharacteristic(CHR_RPM),
@@ -78,88 +79,33 @@ async function connect() {
     svc.getCharacteristic(CHR_THR),
   ]);
 
-  // 監聽通知（binary）
-  const onRPM = e => {
-    const dv = e.target.value;
-    const v = dv.getUint16(0, /*littleEndian*/ true);
-    $('#rpm').textContent = v;
-  };
-  const onSPD = e => {
-    const dv = e.target.value;
-    const v = dv.getUint8(0);
-    $('#spd').textContent = v;
-  };
-  const onTHR = e => {
-    const dv = e.target.value;
-    const v = dv.getUint8(0);
-    $('#thr').textContent = v;
-    $('#thrb').style.width = `${v}%`;
-  };
+  // 訂閱通知（小端 LE）
+  const onRPM = e => { $('#rpm').textContent = e.target.value.getUint16(0, true); };
+  const onSPD = e => { $('#spd').textContent = e.target.value.getUint8(0); };
+  const onTHR = e => { const v=e.target.value.getUint8(0); $('#thr').textContent=v; $('#thrb').style.width = `${v}%`; };
 
   await chrRPM.startNotifications(); chrRPM.addEventListener('characteristicvaluechanged', onRPM);
   await chrSPD.startNotifications(); chrSPD.addEventListener('characteristicvaluechanged', onSPD);
   await chrTHR.startNotifications(); chrTHR.addEventListener('characteristicvaluechanged', onTHR);
 
   setStatus('connected');
-  $('#btnConnect').disabled = true;
-  $('#btnDisconnect').disabled = false;
-  log(`Connected to ${device.name || device.id}`);
+  $('#btnConnect').disabled = true; $('#btnDisconnect').disabled = false;
 }
 
-function onDisconnected() {
+function onDisconnected(){
   setStatus('disconnected');
-  $('#btnConnect').disabled = false;
-  $('#btnDisconnect').disabled = true;
+  $('#btnConnect').disabled = false; $('#btnDisconnect').disabled = true;
   log('Disconnected.');
-  // 自動重連
-  if (reconnectTimer) clearTimeout(reconnectTimer);
-  reconnectTimer = setTimeout(async ()=> {
-    try {
-      if (!device) return;
-      setStatus('reconnecting...');
-      server = await device.gatt.connect();
-      // 重新進入完整流程
-      connectKnownDevice();
-    } catch(e){ log('reconnect fail: '+e); }
-  }, 3000);
 }
 
-async function connectKnownDevice() {
-  try{
-    svc = await server.getPrimaryService(SVC);
-    [chrRPM, chrSPD, chrTHR] = await Promise.all([
-      svc.getCharacteristic(CHR_RPM),
-      svc.getCharacteristic(CHR_SPD),
-      svc.getCharacteristic(CHR_THR),
-    ]);
-    await chrRPM.startNotifications(); chrRPM.addEventListener('characteristicvaluechanged', e=>{
-      const v = e.target.value.getUint16(0,true); $('#rpm').textContent = v;
-    });
-    await chrSPD.startNotifications(); chrSPD.addEventListener('characteristicvaluechanged', e=>{
-      const v = e.target.value.getUint8(0); $('#spd').textContent = v;
-    });
-    await chrTHR.startNotifications(); chrTHR.addEventListener('characteristicvaluechanged', e=>{
-      const v = e.target.value.getUint8(0); $('#thr').textContent = v; $('#thrb').style.width = `${v}%`;
-    });
-    setStatus('connected');
-    $('#btnConnect').disabled = true;
-    $('#btnDisconnect').disabled = false;
-    log('Reconnected.');
-  }catch(e){ log('connectKnownDevice err: '+e); }
-}
-
-async function disconnect() {
-  if (device && device.gatt.connected) {
-    device.gatt.disconnect();
-  }
+async function disconnect(){
+  try { if (device?.gatt?.connected) device.gatt.disconnect(); } catch(e){ log('disconnect err: '+e); }
 }
 
 $('#btnConnect').addEventListener('click', async ()=>{
-  try { await connect(); } catch(e){ log('connect err: '+e); setStatus('error'); }
+  try { await connect(); } catch(e){ log('connect err: '+e.name+': '+e.message); setStatus('error'); }
 });
-$('#btnDisconnect').addEventListener('click', async ()=>{
-  try { await disconnect(); } catch(e){ log('disconnect err: '+e); }
-});
+$('#btnDisconnect').addEventListener('click', ()=> disconnect());
 </script>
 </body>
 </html>
