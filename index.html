@@ -1,8 +1,9 @@
 <!doctype html>
 <html lang="zh-Hant">
+<head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>C3-LED Control (Robust)</title>
+<title>C3-LED Control</title>
 <style>
   body{margin:0;background:#0b1220;color:#e5e7eb;font-family:system-ui,Segoe UI,Arial}
   .wrap{max-width:720px;margin:0 auto;padding:16px}
@@ -17,8 +18,10 @@
   .val{min-width:36px;text-align:right;display:inline-block}
   #msg{white-space:pre-wrap;margin-top:10px;font-family:ui-monospace,Consolas,monospace;color:#9ca3af}
 </style>
+</head>
+<body>
 <div class="wrap">
-  <h2>ESP32‑C3 BLE 控制面板</h2>
+  <h2>ESP32-C3 BLE 控制面板</h2>
   <div class="card">
     <div class="row">
       <button id="btn" class="btn">🔗 Connect</button>
@@ -91,14 +94,12 @@ function u8(v){ return new Uint8Array([v & 0xff]); }
 
 async function connectFlow(){
   log('Opening chooser…');
-  // First try with namePrefix + optionalServices
   try{
     device = await navigator.bluetooth.requestDevice({
       filters: [{ namePrefix: 'C3-LED' }],
       optionalServices: [SVC]
     });
   }catch(e1){
-    // Fallback: acceptAllDevices + optionalServices
     log('Retrying with acceptAllDevices…');
     device = await navigator.bluetooth.requestDevice({
       acceptAllDevices: true,
@@ -123,7 +124,6 @@ async function connectFlow(){
     uiConnected(!!v, device.name || '(no name)');
   });
 
-  // Read initial values
   const mv = (await ch.MODE.readValue()).getUint8(0);
   const bv = (await ch.BRI .readValue()).getUint8(0);
   const sv = (await ch.SPD .readValue()).getUint8(0);
@@ -131,7 +131,6 @@ async function connectFlow(){
   ui.bri .value=bv; ui.briv .textContent=bv;
   ui.spd .value=sv; ui.spdv .textContent=sv;
 
-  // Optional: subscribe to value changes
   for (const k of ['MODE','BRI','SPD']){
     await ch[k].startNotifications();
     ch[k].addEventListener('characteristicvaluechanged', e=>{
@@ -162,4 +161,5 @@ ui.modeb.addEventListener('click', async ()=> { try{ if(ch.MODE) await ch.MODE.w
 ui.brib .addEventListener('click', async ()=> { try{ if(ch.BRI ) await ch.BRI .writeValueWithResponse(u8(+ui.bri.value )); }catch(e){ log(e); } });
 ui.spdb .addEventListener('click', async ()=> { try{ if(ch.SPD ) await ch.SPD .writeValueWithResponse(u8(+ui.spd.value )); }catch(e){ log(e); } });
 </script>
+</body>
 </html>
