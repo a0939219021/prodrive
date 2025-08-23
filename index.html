@@ -1,35 +1,234 @@
 <!doctype html>
-<html>
+<html lang="zh-Hant">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Web Bluetooth 極簡診斷</title>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
+<title>C6-LED Controller (Bluefy)</title>
 <style>
-  body{margin:0;display:grid;place-items:center;height:100vh;background:#0b1220;color:#e5e7eb;font-family:system-ui}
-  button{padding:14px 18px;border-radius:12px;border:0;font-weight:700;background:#22d3ee;color:#06222a}
-  pre{max-width:92%;white-space:pre-wrap}
+  :root{
+    --bg:#0b1220; --card:#111827; --fg:#e5e7eb; --muted:#9ca3af; --acc:#22d3ee; --ok:#10b981; --warn:#f59e0b; --err:#ef4444;
+    --br:18px; --gap:14px;
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bot: env(safe-area-inset-bottom, 0px);
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:linear-gradient(160deg,#0b1220,#0f172a);
+    color:var(--fg); font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Helvetica,Arial,'Noto Sans TC',sans-serif;
+    -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
+    padding:calc(8px + var(--safe-top)) 12px calc(12px + var(--safe-bot));
+  }
+  .wrap{max-width:760px; margin:0 auto; display:grid; gap:var(--gap);}
+  .title{display:flex; align-items:center; gap:10px; justify-content:space-between}
+  .title h1{font-size:22px; margin:0}
+  .badge{padding:6px 10px; border-radius:999px; font-size:12px; background:#1f2937; color:#9ca3af}
+  .card{background:var(--card); border-radius:var(--br); padding:16px; box-shadow:0 10px 30px rgba(0,0,0,.25)}
+  .row{display:grid; gap:10px; grid-template-columns:1fr auto; align-items:center}
+  .btn{appearance:none; border:0; border-radius:12px; padding:12px 14px; font-size:16px; font-weight:600; cursor:pointer; color:#0b1220; background:var(--acc)}
+  .btn:disabled{opacity:.5; cursor:not-allowed}
+  .btn.alt{background:#334155; color:#e5e7eb}
+  .status{display:flex; align-items:center; gap:8px; font-size:14px; color:var(--muted)}
+  .dot{width:10px; height:10px; background:#6b7280; border-radius:999px}
+  .dot.ok{background:var(--ok)} .dot.warn{background:var(--warn)} .dot.err{background:var(--err)}
+  .grid{display:grid; gap:var(--gap)}
+  label{font-size:13px; color:var(--muted); display:block; margin-bottom:6px}
+  .ctrl{display:grid; gap:6px}
+  .slider{width:100%}
+  .val{font-variant-numeric:tabular-nums; min-width:48px; text-align:right}
+  .toggle{display:flex; gap:10px; align-items:center}
+  .radio{display:flex; gap:8px; align-items:center; background:#0f172a; padding:8px 10px; border-radius:10px}
+  input[type="radio"]{accent-color:#22d3ee; width:18px; height:18px}
+  input[type="range"]{accent-color:#22d3ee}
+  .foot{opacity:.7; font-size:12px; text-align:center; padding-top:6px}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace; font-size:12px; color:#9ca3af}
 </style>
 </head>
 <body>
-  <div>
-    <h1>Web Bluetooth 極簡診斷</h1>
-    <p>按下按鈕應該會跳出裝置列表。</p>
-    <button id="go">🔍 掃描</button>
-    <pre id="log"></pre>
-  </div>
-<script>
-const log = m => (document.getElementById('log').textContent += m + '\n');
+  <div class="wrap">
+    <div class="title">
+      <h1>ESP32-C6 LED 控制（Bluefy）</h1>
+      <div id="devName" class="badge">未連線</div>
+    </div>
 
-document.getElementById('go').addEventListener('click', async () => {
-  if (!('bluetooth' in navigator)) { log('❌ navigator.bluetooth 不存在'); return; }
-  log('✅ navigator.bluetooth 存在；嘗試 requestDevice(acceptAllDevices)');
-  try {
-    const dev = await navigator.bluetooth.requestDevice({ acceptAllDevices: true });
-    log('✅ 使用者選擇了裝置：' + (dev.name || '(無名稱)'));
-  } catch (e) {
-    log('⚠️ 被拒絕/失敗：' + e);
+    <div class="card grid">
+      <div class="row">
+        <div class="status"><div id="dot" class="dot"></div><span id="stat">未連線</span></div>
+        <div style="display:flex; gap:8px">
+          <button id="btnConn" class="btn">連線</button>
+          <button id="btnDisc" class="btn alt" disabled>中斷</button>
+        </div>
+      </div>
+      <div class="mono" id="hint">提示：請先點「連線」，選擇裝置名稱 <b>C6-LED</b>。</div>
+    </div>
+
+    <div class="card grid" id="panel" style="display:none">
+      <div class="ctrl">
+        <label>模式 Mode</label>
+        <div class="toggle">
+          <label class="radio"><input type="radio" name="mode" value="0" checked> 平滑彩虹</label>
+          <label class="radio"><input type="radio" name="mode" value="1"> 七色分段</label>
+        </div>
+      </div>
+
+      <div class="ctrl">
+        <label>亮度 Brightness <span class="val" id="valB">128</span></label>
+        <input id="rngB" type="range" class="slider" min="0" max="255" step="1" value="128">
+      </div>
+
+      <div class="ctrl">
+        <label>速度 Speed <span class="val" id="valS">8</span></label>
+        <input id="rngS" type="range" class="slider" min="1" max="20" step="1" value="8">
+      </div>
+    </div>
+
+    <div class="foot">若 Bluefy 要求權限，請允許使用藍牙。此頁僅在 Bluefy / 支援 Web Bluetooth 的瀏覽器中可用。</div>
+  </div>
+
+<script>
+(() => {
+  // === UUIDs (16-bit) ===
+  const UUID_SVC  = 0xFFF0;
+  const UUID_MODE = 0xFFF1;
+  const UUID_B    = 0xFFF2;
+  const UUID_S    = 0xFFF3;
+
+  // === UI ===
+  const $ = sel => document.querySelector(sel);
+  const devName = $('#devName');
+  const dot = $('#dot');
+  const stat = $('#stat');
+  const btnConn = $('#btnConn');
+  const btnDisc = $('#btnDisc');
+  const panel = $('#panel');
+  const rngB = $('#rngB');
+  const rngS = $('#rngS');
+  const valB = $('#valB');
+  const valS = $('#valS');
+  const modeRadios = document.querySelectorAll('input[name="mode"]');
+
+  let device, server, service;
+  let chrMode, chrB, chrS;
+  let writing = {B: null, S: null}; // throttle timers
+
+  function setStatus(connected, text) {
+    dot.className = 'dot ' + (connected ? 'ok' : '');
+    stat.textContent = text || (connected ? '已連線' : '未連線');
+    btnConn.disabled = connected;
+    btnDisc.disabled = !connected;
+    devName.textContent = connected ? (device?.name || '已連線') : '未連線';
+    panel.style.display = connected ? 'grid' : 'none';
   }
-}, { passive: true });
+
+  async function connect() {
+    try {
+      setStatus(false, '掃描中…');
+      // 使用 namePrefix + service 雙條件，提升 Bluefy 相容性
+      device = await navigator.bluetooth.requestDevice({
+        filters: [{ namePrefix: 'C6-', services: [UUID_SVC] }],
+        optionalServices: [UUID_SVC]
+      });
+      device.addEventListener('gattserverdisconnected', onDisconnect);
+      server = await device.gatt.connect();
+      service = await server.getPrimaryService(UUID_SVC);
+
+      // characteristics
+      chrMode = await service.getCharacteristic(UUID_MODE);
+      chrB    = await service.getCharacteristic(UUID_B);
+      chrS    = await service.getCharacteristic(UUID_S);
+
+      // notifications → 同步 UI
+      await chrMode.startNotifications();
+      chrMode.addEventListener('characteristicvaluechanged', e => {
+        const v = e.target.value.getUint8(0);
+        for (const r of modeRadios) r.checked = (r.value == v);
+      });
+
+      await chrB.startNotifications();
+      chrB.addEventListener('characteristicvaluechanged', e => {
+        const v = e.target.value.getUint8(0);
+        rngB.value = v; valB.textContent = v;
+      });
+
+      await chrS.startNotifications();
+      chrS.addEventListener('characteristicvaluechanged', e => {
+        const v = e.target.value.getUint8(0);
+        rngS.value = v; valS.textContent = v;
+      });
+
+      // 初始讀取（載入板端 NVS 的現值）
+      const vMode = (await chrMode.readValue()).getUint8(0);
+      for (const r of modeRadios) r.checked = (r.value == vMode);
+
+      const vB = (await chrB.readValue()).getUint8(0);
+      rngB.value = vB; valB.textContent = vB;
+
+      const vS = (await chrS.readValue()).getUint8(0);
+      rngS.value = vS; valS.textContent = vS;
+
+      setStatus(true);
+    } catch (err) {
+      console.error(err);
+      setStatus(false, '連線失敗');
+      alert('連線失敗：' + (err && err.message ? err.message : err));
+    }
+  }
+
+  function onDisconnect() {
+    setStatus(false, '已中斷');
+  }
+
+  async function disconnect() {
+    try {
+      if (device && device.gatt.connected) device.gatt.disconnect();
+    } catch (e) {}
+    setStatus(false, '未連線');
+  }
+
+  // === Writes ===
+  async function writeByte(chr, val){
+    const data = new Uint8Array([val & 0xFF]);
+    await chr.writeValue(data);
+  }
+
+  // Mode (radio)
+  for (const r of modeRadios) {
+    r.addEventListener('change', async () => {
+      if (!device || !device.gatt.connected) return;
+      const val = Number(document.querySelector('input[name="mode"]:checked').value);
+      try { await writeByte(chrMode, val); } catch(e){ console.error(e); }
+    });
+  }
+
+  // Brightness (slider) – throttle
+  rngB.addEventListener('input', () => {
+    valB.textContent = rngB.value;
+    if (!device || !device.gatt.connected) return;
+    clearTimeout(writing.B);
+    writing.B = setTimeout(async () => {
+      try { await writeByte(chrB, Number(rngB.value)); } catch(e){ console.error(e); }
+    }, 80);
+  });
+
+  // Speed (slider) – throttle
+  rngS.addEventListener('input', () => {
+    valS.textContent = rngS.value;
+    if (!device || !device.gatt.connected) return;
+    clearTimeout(writing.S);
+    writing.S = setTimeout(async () => {
+      try { await writeByte(chrS, Number(rngS.value)); } catch(e){ console.error(e); }
+    }, 80);
+  });
+
+  // Buttons
+  btnConn.addEventListener('click', connect);
+  btnDisc.addEventListener('click', disconnect);
+
+  // Feature detection
+  if (!navigator.bluetooth) {
+    document.getElementById('hint').innerHTML = '此瀏覽器不支援 Web Bluetooth。請使用 <b>Bluefy</b>（iOS）或支援 Web Bluetooth 的瀏覽器。';
+  }
+})();
 </script>
 </body>
 </html>
