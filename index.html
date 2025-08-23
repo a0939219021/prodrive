@@ -1,27 +1,157 @@
 <!doctype html>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Web Bluetooth Quick Test (iOS Bluefy)</title>
-<body style="font-family:system-ui,Arial;padding:16px">
-<h3>Web Bluetooth Quick Test</h3>
-<button id="btn" style="padding:10px 14px;font-weight:700">🔗 Connect</button>
-<pre id="out" style="white-space:pre-wrap;background:#111;color:#ddd;padding:12px;border-radius:8px;margin-top:12px"></pre>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>C3-LED Control (Fixed for iOS)</title>
+<style>
+  body{margin:0;background:#0b1220;color:#e5e7eb;font-family:system-ui,Segoe UI,Arial}
+  .wrap{max-width:720px;margin:0 auto;padding:16px}
+  .card{background:#111827;border-radius:16px;padding:16px;box-shadow:0 8px 24px rgba(0,0,0,.2)}
+  .row{display:flex;align-items:center;gap:12px;margin:.5rem 0}
+  .btn{background:#22d3ee;color:#0b1220;border:0;border-radius:10px;padding:10px 14px;font-weight:700}
+  .dot{width:12px;height:12px;border-radius:50%;display:inline-block;background:#ef4444}
+  .ok{background:#10b981}
+  input[type="range"]{width:220px}
+  .muted{color:#9ca3af}
+  label{display:inline-block;width:110px}
+  .val{min-width:36px;text-align:right;display:inline-block}
+  #msg{white-space:pre-wrap;margin-top:10px;font-family:ui-monospace,Consolas,monospace;color:#9ca3af}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h2>ESP32-C3 BLE 控制面板</h2>
+  <div class="card">
+    <div class="row">
+      <button id="btn" class="btn">🔗 Connect</button>
+      <span id="name" class="muted">Not connected</span>
+      <span id="dot" class="dot"></span>
+    </div>
+    <p class="muted">Service: <code>0000fff0-0000-1000-8000-00805f9b34fb</code></p>
+    <div id="ctrls" style="opacity:.5;pointer-events:none">
+      <div class="row">
+        <label>Mode (0–255)</label>
+        <input id="mode" type="range" min="0" max="255" value="0">
+        <span class="val" id="modev">0</span>
+        <button id="modeb" class="btn" style="padding:6px 10px">寫入</button>
+      </div>
+      <div class="row">
+        <label>Brightness</label>
+        <input id="bri" type="range" min="0" max="255" value="128">
+        <span class="val" id="briv">128</span>
+        <button id="brib" class="btn" style="padding:6px 10px">寫入</button>
+      </div>
+      <div class="row">
+        <label>Speed</label>
+        <input id="spd" type="range" min="0" max="255" value="8">
+        <span class="val" id="spdv">8</span>
+        <button id="spdb" class="btn" style="padding:6px 10px">寫入</button>
+      </div>
+      <p class="muted">Status Notify: <span id="status">0</span></p>
+    </div>
+    <div id="msg"></div>
+  </div>
+</div>
 <script>
-const out = document.getElementById('out');
-function log(s){ out.textContent = s; }
-if (!('bluetooth' in navigator)) {
-  log('❌ 此瀏覽器不支援 Web Bluetooth。\n請到 iOS 設定→隱私權與安全性→藍牙→開啟 Bluefy 權限，並使用 Bluefy 開啟本頁。');
+const SVC  = '0000fff0-0000-1000-8000-00805f9b34fb';
+const UUID = {
+  MODE : '0000fff1-0000-1000-8000-00805f9b34fb',
+  BRI  : '0000fff2-0000-1000-8000-00805f9b34fb',
+  SPD  : '0000fff3-0000-1000-8000-00805f9b34fb',
+  STAT : '0000fff4-0000-1000-8000-00805f9b34fb',
+};
+const ui = {
+  btn:   document.getElementById('btn'),
+  name:  document.getElementById('name'),
+  dot:   document.getElementById('dot'),
+  ctrls: document.getElementById('ctrls'),
+  mode:  document.getElementById('mode'),
+  modev: document.getElementById('modev'),
+  modeb: document.getElementById('modeb'),
+  bri:   document.getElementById('bri'),
+  briv:  document.getElementById('briv'),
+  brib:  document.getElementById('brib'),
+  spd:   document.getElementById('spd'),
+  spdv:  document.getElementById('spdv'),
+  spdb:  document.getElementById('spdb'),
+  status:document.getElementById('status'),
+  msg:   document.getElementById('msg'),
+};
+
+let device, server, svc, ch = {};
+function log(m){ ui.msg.textContent = String(m); }
+
+function uiConnected(on, name=''){
+  ui.name.textContent = on ? `Connected: ${name}` : 'Not connected';
+  ui.dot.className = on ? 'dot ok' : 'dot';
+  ui.btn.textContent = on ? '🔌 Disconnect' : '🔗 Connect';
+  ui.ctrls.style.opacity = on ? 1 : .5;
+  ui.ctrls.style.pointerEvents = on ? 'auto' : 'none';
 }
-document.getElementById('btn').addEventListener('click', async ()=>{
-  try{
-    log('Opening chooser...');
-    const dev = await navigator.bluetooth.requestDevice({
-      acceptAllDevices: true, optionalServices: ['0000fff0-0000-1000-8000-00805f9b34fb']
+
+function u8(v){ return new Uint8Array([v & 0xff]); }
+
+async function connectFlow(){
+  log('Opening chooser…');
+  device = await navigator.bluetooth.requestDevice({
+    acceptAllDevices: true,
+    optionalServices: [SVC]
+  });
+
+  device.addEventListener('gattserverdisconnected', ()=> uiConnected(false));
+  server = await device.gatt.connect();
+  log('Connected. Discovering services…');
+  svc = await server.getPrimaryService(SVC);
+
+  ch.MODE = await svc.getCharacteristic(UUID.MODE);
+  ch.BRI  = await svc.getCharacteristic(UUID.BRI);
+  ch.SPD  = await svc.getCharacteristic(UUID.SPD);
+  ch.STAT = await svc.getCharacteristic(UUID.STAT);
+
+  await ch.STAT.startNotifications();
+  ch.STAT.addEventListener('characteristicvaluechanged', e=>{
+    const v = e.target.value.getUint8(0);
+    ui.status.textContent = v;
+    uiConnected(!!v, device.name || '(no name)');
+  });
+
+  const mv = (await ch.MODE.readValue()).getUint8(0);
+  const bv = (await ch.BRI .readValue()).getUint8(0);
+  const sv = (await ch.SPD .readValue()).getUint8(0);
+  ui.mode.value=mv; ui.modev.textContent=mv;
+  ui.bri .value=bv; ui.briv .textContent=bv;
+  ui.spd .value=sv; ui.spdv .textContent=sv;
+
+  for (const k of ['MODE','BRI','SPD']){
+    await ch[k].startNotifications();
+    ch[k].addEventListener('characteristicvaluechanged', e=>{
+      const v = e.target.value.getUint8(0);
+      if (k==='MODE'){ ui.mode.value=v; ui.modev.textContent=v; }
+      if (k==='BRI' ){ ui.bri.value=v; ui.briv.textContent=v; }
+      if (k==='SPD' ){ ui.spd.value=v; ui.spdv.textContent=v; }
     });
-    log('Selected: ' + (dev.name || '(no name)'));
-  }catch(e){
-    log('Error: ' + e.name + ' - ' + e.message + '\n(若沒有跳出清單，多半是權限或藍牙被其他 App 佔用)');
   }
+
+  const s = (await ch.STAT.readValue()).getUint8(0);
+  uiConnected(!!s, device.name || '(no name)');
+  log('Ready.');
+}
+
+ui.btn.addEventListener('click', async ()=>{
+  try{
+    if (device && device.gatt.connected){ device.gatt.disconnect(); uiConnected(false); log('Disconnected.'); }
+    else { await connectFlow(); }
+  }catch(err){ log('Error: ' + err); }
 });
+
+ui.mode.addEventListener('input', ()=> ui.modev.textContent = ui.mode.value);
+ui.bri .addEventListener('input', ()=> ui.briv .textContent = ui.bri.value);
+ui.spd .addEventListener('input', ()=> ui.spdv .textContent = ui.spd.value);
+
+ui.modeb.addEventListener('click', async ()=> { try{ if(ch.MODE) await ch.MODE.writeValueWithResponse(u8(+ui.mode.value)); }catch(e){ log(e); } });
+ui.brib .addEventListener('click', async ()=> { try{ if(ch.BRI ) await ch.BRI .writeValueWithResponse(u8(+ui.bri.value )); }catch(e){ log(e); } });
+ui.spdb .addEventListener('click', async ()=> { try{ if(ch.SPD ) await ch.SPD .writeValueWithResponse(u8(+ui.spd.value )); }catch(e){ log(e); } });
 </script>
 </body>
+</html>
