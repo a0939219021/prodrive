@@ -2,183 +2,164 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>C3-LED Control (iOS Touch-Safe)</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1" />
+<title>OBD-II BLE Console</title>
 <style>
-  body{margin:0;background:#0b1220;color:#e5e7eb;font-family:system-ui,Segoe UI,Arial}
+  :root{--bg:#0b1220;--card:#111827;--fg:#e5e7eb;--muted:#9ca3af;--acc:#22d3ee;--ok:#10b981;--warn:#f59e0b}
+  *{box-sizing:border-box} html,body{height:100%} body{margin:0;background:linear-gradient(160deg,#0b1220,#0f172a);color:var(--fg);font-family:system-ui,Segoe UI,Roboto,Arial}
   .wrap{max-width:720px;margin:0 auto;padding:16px}
-  .card{background:#111827;border-radius:16px;padding:16px;box-shadow:0 8px 24px rgba(0,0,0,.2)}
-  .row{display:flex;align-items:center;gap:12px;margin:.5rem 0}
-  .btn{background:#22d3ee;color:#0b1220;border:0;border-radius:10px;padding:10px 14px;font-weight:700;cursor:pointer}
-  .dot{width:12px;height:12px;border-radius:50%;display:inline-block;background:#ef4444}
-  .ok{background:#10b981}
-  input[type="range"]{width:220px}
-  .muted{color:#9ca3af}
-  label{display:inline-block;width:110px}
-  .val{min-width:36px;text-align:right;display:inline-block}
-  #msg{white-space:pre-wrap;margin-top:10px;font-family:ui-monospace,Consolas,monospace;color:#9ca3af}
+  .row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+  .card{background:var(--card);border-radius:16px;padding:16px;box-shadow:0 6px 24px rgba(0,0,0,.25)}
+  .big{font-size:40px;font-weight:700}
+  .muted{color:var(--muted)}
+  button{background:var(--acc);color:#001018;border:0;border-radius:12px;padding:12px 16px;font-weight:600;cursor:pointer}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  .bar{height:8px;background:linear-gradient(90deg,var(--ok),var(--warn));border-radius:999px}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h2>ESP32‑C3 BLE 控制面板</h2>
-  <div class="card">
-    <div class="row">
-      <!-- inline onclick：確保是使用者手勢 -->
-      <button id="btn" class="btn" onclick="onConnectBtn()">🔗 Connect</button>
-      <span id="name" class="muted">Not connected</span>
-      <span id="dot" class="dot"></span>
-    </div>
-    <p class="muted">Service: <code>0000fff0-0000-1000-8000-00805f9b34fb</code></p>
-    <div id="ctrls" style="opacity:.5;pointer-events:none">
-      <div class="row">
-        <label>Mode (0–255)</label>
-        <input id="mode" type="range" min="0" max="255" value="0">
-        <span class="val" id="modev">0</span>
-        <button id="modeb" class="btn" style="padding:6px 10px">寫入</button>
-      </div>
-      <div class="row">
-        <label>Brightness</label>
-        <input id="bri" type="range" min="0" max="255" value="128">
-        <span class="val" id="briv">128</span>
-        <button id="brib" class="btn" style="padding:6px 10px">寫入</button>
-      </div>
-      <div class="row">
-        <label>Speed</label>
-        <input id="spd" type="range" min="0" max="255" value="8">
-        <span class="val" id="spdv">8</span>
-        <button id="spdb" class="btn" style="padding:6px 10px">寫入</button>
-      </div>
-      <p class="muted">Status Notify: <span id="status">0</span></p>
-    </div>
-    <div id="msg">Ready.</div>
+  <h2>OBD‑II BLE Console</h2>
+  <p class="muted">掃描裝置名稱「C3‑OBD」，或使用指定 Service UUID 連線。</p>
+  <div style="display:flex;gap:8px;margin:12px 0;">
+    <button id="btnConnect">Connect</button>
+    <button id="btnDisconnect" disabled>Disconnect</button>
+    <span id="status" class="muted" style="align-self:center">idle</span>
+  </div>
+
+  <div class="row">
+    <div class="card"><div>RPM</div><div id="rpm" class="big">—</div></div>
+    <div class="card"><div>Speed (km/h)</div><div id="spd" class="big">—</div></div>
+    <div class="card"><div>Throttle (%)</div><div id="thr" class="big">—</div><div class="bar"><div id="thrb" style="height:100%;width:0%"></div></div></div>
+  </div>
+
+  <div class="card" style="margin-top:12px">
+    <div class="muted">Log</div>
+    <pre id="log" style="white-space:pre-wrap;max-height:240px;overflow:auto;margin:8px 0 0"></pre>
   </div>
 </div>
+
 <script>
-// 128-bit UUID（與韌體一致）
-const SVC  = '0000fff0-0000-1000-8000-00805f9b34fb';
-const UUID = {
-  MODE : '0000fff1-0000-1000-8000-00805f9b34fb',
-  BRI  : '0000fff2-0000-1000-8000-00805f9b34fb',
-  SPD  : '0000fff3-0000-1000-8000-00805f9b34fb',
-  STAT : '0000fff4-0000-1000-8000-00805f9b34fb',
-};
+const SVC = '12f05678-1234-5678-1234-56789abcdef0'; // 注意：必須與韌體相同（小寫也可）
+const CHR_RPM = '12f05678-1234-5678-1234-56789abcdef1';
+const CHR_SPD = '12f05678-1234-5678-1234-56789abcdef2';
+const CHR_THR = '12f05678-1234-5678-1234-56789abcdef3';
 
-const ui = {
-  btn:   document.getElementById('btn'),
-  name:  document.getElementById('name'),
-  dot:   document.getElementById('dot'),
-  ctrls: document.getElementById('ctrls'),
-  mode:  document.getElementById('mode'),
-  modev: document.getElementById('modev'),
-  modeb: document.getElementById('modeb'),
-  bri:   document.getElementById('bri'),
-  briv:  document.getElementById('briv'),
-  brib:  document.getElementById('brib'),
-  spd:   document.getElementById('spd'),
-  spdv:  document.getElementById('spdv'),
-  spdb:  document.getElementById('spdb'),
-  status:document.getElementById('status'),
-  msg:   document.getElementById('msg'),
-};
-let device, server, svc, ch = {};
-let busy = false;
+// 與韌體 BLE_UUID128_INIT 內容一致（大小端在 Web 層不需操心，只要字串一致）
+const namePrefix = 'C3-OBD';
 
-function log(m){ ui.msg.textContent = String(m); }
-function uiConnected(on, name=''){
-  ui.name.textContent = on ? `Connected: ${name}` : 'Not connected';
-  ui.dot.className = on ? 'dot ok' : 'dot';
-  ui.btn.textContent = on ? '🔌 Disconnect' : '🔗 Connect';
-  ui.ctrls.style.opacity = on ? 1 : .5;
-  ui.ctrls.style.pointerEvents = on ? 'auto' : 'none';
-}
-function u8(v){ return new Uint8Array([v & 0xff]); }
-async function writeOnce(chr, val){
-  if (!chr || busy) return;
-  busy = true;
-  try { await chr.writeValueWithResponse(u8(val)); }
-  catch (e){ log('Write error: ' + (e.message||e)); }
-  finally { busy = false; }
+const $ = sel => document.querySelector(sel);
+const log = m => { const t = new Date().toLocaleTimeString(); $('#log').textContent += `[${t}] ${m}\n`; };
+
+let device, server, svc, chrRPM, chrSPD, chrTHR;
+let reconnectTimer = null;
+
+function setStatus(s) { $('#status').textContent = s; }
+
+async function request() {
+  // 兩種 filter 取 OR：有些裝置在 iOS 需用 namePrefix 比較穩
+  const filters = [{ services: [SVC] }, { namePrefix }];
+  return navigator.bluetooth.requestDevice({
+    filters,
+    optionalServices: [SVC]
+  });
 }
 
-// 入口：按鈕（inline onclick）
-async function onConnectBtn(){
+async function connect() {
+  setStatus('requesting...');
+  device = await request();
+  device.addEventListener('gattserverdisconnected', onDisconnected);
+  setStatus('connecting...');
+  server = await device.gatt.connect();
+  svc = await server.getPrimaryService(SVC);
+  [chrRPM, chrSPD, chrTHR] = await Promise.all([
+    svc.getCharacteristic(CHR_RPM),
+    svc.getCharacteristic(CHR_SPD),
+    svc.getCharacteristic(CHR_THR),
+  ]);
+
+  // 監聽通知（binary）
+  const onRPM = e => {
+    const dv = e.target.value;
+    const v = dv.getUint16(0, /*littleEndian*/ true);
+    $('#rpm').textContent = v;
+  };
+  const onSPD = e => {
+    const dv = e.target.value;
+    const v = dv.getUint8(0);
+    $('#spd').textContent = v;
+  };
+  const onTHR = e => {
+    const dv = e.target.value;
+    const v = dv.getUint8(0);
+    $('#thr').textContent = v;
+    $('#thrb').style.width = `${v}%`;
+  };
+
+  await chrRPM.startNotifications(); chrRPM.addEventListener('characteristicvaluechanged', onRPM);
+  await chrSPD.startNotifications(); chrSPD.addEventListener('characteristicvaluechanged', onSPD);
+  await chrTHR.startNotifications(); chrTHR.addEventListener('characteristicvaluechanged', onTHR);
+
+  setStatus('connected');
+  $('#btnConnect').disabled = true;
+  $('#btnDisconnect').disabled = false;
+  log(`Connected to ${device.name || device.id}`);
+}
+
+function onDisconnected() {
+  setStatus('disconnected');
+  $('#btnConnect').disabled = false;
+  $('#btnDisconnect').disabled = true;
+  log('Disconnected.');
+  // 自動重連
+  if (reconnectTimer) clearTimeout(reconnectTimer);
+  reconnectTimer = setTimeout(async ()=> {
+    try {
+      if (!device) return;
+      setStatus('reconnecting...');
+      server = await device.gatt.connect();
+      // 重新進入完整流程
+      connectKnownDevice();
+    } catch(e){ log('reconnect fail: '+e); }
+  }, 3000);
+}
+
+async function connectKnownDevice() {
   try{
-    // 若已連線 → 先斷線
-    if (device && device.gatt.connected){ device.gatt.disconnect(); uiConnected(false); log('Disconnected.'); return; }
-
-    log('Opening chooser…');
-    // ★ iOS 最穩：直接 acceptAllDevices（之後再靠服務 UUID 過濾）
- device = await navigator.bluetooth.requestDevice({
-  acceptAllDevices: true,
-  optionalServices: ['0000fff0-0000-1000-8000-00805f9b34fb']
-});
-
-    });
-
-    device.addEventListener('gattserverdisconnected', ()=> uiConnected(false));
-    server = await device.gatt.connect();
-    log('Connected. Discovering services…');
-
     svc = await server.getPrimaryService(SVC);
-    ch.MODE = await svc.getCharacteristic(UUID.MODE);
-    ch.BRI  = await svc.getCharacteristic(UUID.BRI);
-    ch.SPD  = await svc.getCharacteristic(UUID.SPD);
-    ch.STAT = await svc.getCharacteristic(UUID.STAT);
-
-    await ch.STAT.startNotifications();
-    ch.STAT.addEventListener('characteristicvaluechanged', e=>{
-      const v = e.target.value.getUint8(0);
-      ui.status.textContent = v;
-      uiConnected(!!v, device.name || '(no name)');
+    [chrRPM, chrSPD, chrTHR] = await Promise.all([
+      svc.getCharacteristic(CHR_RPM),
+      svc.getCharacteristic(CHR_SPD),
+      svc.getCharacteristic(CHR_THR),
+    ]);
+    await chrRPM.startNotifications(); chrRPM.addEventListener('characteristicvaluechanged', e=>{
+      const v = e.target.value.getUint16(0,true); $('#rpm').textContent = v;
     });
+    await chrSPD.startNotifications(); chrSPD.addEventListener('characteristicvaluechanged', e=>{
+      const v = e.target.value.getUint8(0); $('#spd').textContent = v;
+    });
+    await chrTHR.startNotifications(); chrTHR.addEventListener('characteristicvaluechanged', e=>{
+      const v = e.target.value.getUint8(0); $('#thr').textContent = v; $('#thrb').style.width = `${v}%`;
+    });
+    setStatus('connected');
+    $('#btnConnect').disabled = true;
+    $('#btnDisconnect').disabled = false;
+    log('Reconnected.');
+  }catch(e){ log('connectKnownDevice err: '+e); }
+}
 
-    // 初始值
-    const mv = (await ch.MODE.readValue()).getUint8(0);
-    const bv = (await ch.BRI .readValue()).getUint8(0);
-    const sv = (await ch.SPD .readValue()).getUint8(0);
-    ui.mode.value=mv; ui.modev.textContent=mv;
-    ui.bri .value=bv; ui.briv .textContent=bv;
-    ui.spd .value=sv; ui.spdv .textContent=sv;
-
-    // （可選）訂閱三個特徵
-    for (const k of ['MODE','BRI','SPD']){
-      await ch[k].startNotifications();
-      ch[k].addEventListener('characteristicvaluechanged', e=>{
-        const v = e.target.value.getUint8(0);
-        if (k==='MODE'){ ui.mode.value=v; ui.modev.textContent=v; }
-        if (k==='BRI' ){ ui.bri.value =v; ui.briv.textContent =v; }
-        if (k==='SPD' ){ ui.spd.value =v; ui.spdv.textContent =v; }
-      });
-    }
-
-    const s = (await ch.STAT.readValue()).getUint8(0);
-    uiConnected(!!s, device.name || '(no name)');
-    log('Ready.');
-  }catch(err){
-    log('Error: ' + (err && err.message ? err.message : err));
+async function disconnect() {
+  if (device && device.gatt.connected) {
+    device.gatt.disconnect();
   }
 }
 
-// 再加一層 touchend 保險（某些 WebView 只觸發 touchend）
-ui.btn.addEventListener('touchend', (e)=>{ e.preventDefault(); onConnectBtn(); }, {passive:false});
-
-// 即時顯示 slider
-ui.mode.addEventListener('input', ()=> ui.modev.textContent = ui.mode.value);
-ui.bri .addEventListener('input', ()=> ui.briv .textContent = ui.bri.value);
-ui.spd .addEventListener('input', ()=> ui.spdv .textContent = ui.spd.value);
-
-// 寫入
-ui.modeb.addEventListener('click', async ()=> { const v = +ui.mode.value; ui.modev.textContent=v; await writeOnce(ch.MODE, v); });
-ui.brib .addEventListener('click', async ()=> { const v = +ui.bri.value;  ui.briv .textContent=v; await writeOnce(ch.BRI , v); });
-ui.spdb .addEventListener('click', async ()=> { const v = +ui.spd.value;  ui.spdv .textContent=v; await writeOnce(ch.SPD , v); });
-
-// 基礎支援偵測
-if (!('bluetooth' in navigator)){
-  log('❌ 此瀏覽器不支援 Web Bluetooth。請使用 Bluefy (iOS) 或 Chrome (桌面/Android)。');
-}
+$('#btnConnect').addEventListener('click', async ()=>{
+  try { await connect(); } catch(e){ log('connect err: '+e); setStatus('error'); }
+});
+$('#btnDisconnect').addEventListener('click', async ()=>{
+  try { await disconnect(); } catch(e){ log('disconnect err: '+e); }
+});
 </script>
-  alert('boot'); // 一開頁就跳這個，如果沒跳＝JS 沒跑，是預覽模式
-// 後面保留原本程式碼…
 </body>
 </html>
