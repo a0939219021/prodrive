@@ -3,106 +3,176 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>BLE Debug (iOS Bluefy)</title>
+<title>C3-LED Control (Final)</title>
 <style>
   body{margin:0;background:#0b1220;color:#e5e7eb;font-family:system-ui,Segoe UI,Arial}
   .wrap{max-width:720px;margin:0 auto;padding:16px}
   .card{background:#111827;border-radius:16px;padding:16px;box-shadow:0 8px 24px rgba(0,0,0,.2)}
   .row{display:flex;align-items:center;gap:12px;margin:.5rem 0}
-  .btn{background:#22d3ee;color:#0b1220;border:0;border-radius:10px;padding:10px 14px;font-weight:700}
-  #log{white-space:pre-wrap;font-family:ui-monospace,Consolas,monospace;background:#0f172a;padding:12px;border-radius:12px;margin-top:12px}
+  .btn{background:#22d3ee;color:#0b1220;border:0;border-radius:10px;padding:10px 14px;font-weight:700;cursor:pointer}
+  .dot{width:12px;height:12px;border-radius:50%;display:inline-block;background:#ef4444}
+  .ok{background:#10b981}
+  input[type="range"]{width:220px}
+  .muted{color:#9ca3af}
+  label{display:inline-block;width:110px}
+  .val{min-width:36px;text-align:right;display:inline-block}
+  #msg{white-space:pre-wrap;margin-top:10px;font-family:ui-monospace,Consolas,monospace;color:#9ca3af}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h2>Web Bluetooth Debug (iOS Bluefy)</h2>
+  <h2>ESP32‑C3 BLE 控制面板</h2>
   <div class="card">
     <div class="row">
       <button id="btn" class="btn">🔗 Connect</button>
-      <button id="reset" class="btn">♻️ Reset Page</button>
+      <span id="name" class="muted">Not connected</span>
+      <span id="dot" class="dot"></span>
     </div>
-    <div id="log">Ready.</div>
+    <p class="muted">Service: <code>0000fff0-0000-1000-8000-00805f9b34fb</code></p>
+    <div id="ctrls" style="opacity:.5;pointer-events:none">
+      <div class="row">
+        <label>Mode (0–255)</label>
+        <input id="mode" type="range" min="0" max="255" value="0">
+        <span class="val" id="modev">0</span>
+        <button id="modeb" class="btn" style="padding:6px 10px">寫入</button>
+      </div>
+      <div class="row">
+        <label>Brightness</label>
+        <input id="bri" type="range" min="0" max="255" value="128">
+        <span class="val" id="briv">128</span>
+        <button id="brib" class="btn" style="padding:6px 10px">寫入</button>
+      </div>
+      <div class="row">
+        <label>Speed</label>
+        <input id="spd" type="range" min="0" max="255" value="8">
+        <span class="val" id="spdv">8</span>
+        <button id="spdb" class="btn" style="padding:6px 10px">寫入</button>
+      </div>
+      <p class="muted">Status Notify: <span id="status">0</span></p>
+    </div>
+    <div id="msg"></div>
   </div>
 </div>
-
 <script>
-(function(){
-  const SVC  = '0000fff0-0000-1000-8000-00805f9b34fb';
-  const UUID = {
-    MODE : '0000fff1-0000-1000-8000-00805f9b34fb',
-    BRI  : '0000fff2-0000-1000-8000-00805f9b34fb',
-    SPD  : '0000fff3-0000-1000-8000-00805f9b34fb',
-    STAT : '0000fff4-0000-1000-8000-00805f9b34fb',
-  };
+const SVC  = '0000fff0-0000-1000-8000-00805f9b34fb';
+const UUID = {
+  MODE : '0000fff1-0000-1000-8000-00805f9b34fb',
+  BRI  : '0000fff2-0000-1000-8000-00805f9b34fb',
+  SPD  : '0000fff3-0000-1000-8000-00805f9b34fb',
+  STAT : '0000fff4-0000-1000-8000-00805f9b34fb',
+};
+const ui = {
+  btn:   document.getElementById('btn'),
+  name:  document.getElementById('name'),
+  dot:   document.getElementById('dot'),
+  ctrls: document.getElementById('ctrls'),
+  mode:  document.getElementById('mode'),
+  modev: document.getElementById('modev'),
+  modeb: document.getElementById('modeb'),
+  bri:   document.getElementById('bri'),
+  briv:  document.getElementById('briv'),
+  brib:  document.getElementById('brib'),
+  spd:   document.getElementById('spd'),
+  spdv:  document.getElementById('spdv'),
+  spdb:  document.getElementById('spdb'),
+  status:document.getElementById('status'),
+  msg:   document.getElementById('msg'),
+};
+let device, server, svc, ch = {};
+let busy = false;
 
-  const $ = id => document.getElementById(id);
-  const logBox = $('log');
-  const log = (m) => { logBox.textContent = String(m); };
+function log(m){ ui.msg.textContent = String(m); }
+function uiConnected(on, name=''){
+  ui.name.textContent = on ? `Connected: ${name}` : 'Not connected';
+  ui.dot.className = on ? 'dot ok' : 'dot';
+  ui.btn.textContent = on ? '🔌 Disconnect' : '🔗 Connect';
+  ui.ctrls.style.opacity = on ? 1 : .5;
+  ui.ctrls.style.pointerEvents = on ? 'auto' : 'none';
+}
+function u8(v){ return new Uint8Array([v & 0xff]); }
+async function writeOnce(chr, val){
+  if (!chr || busy) return;
+  busy = true;
+  try { await chr.writeValueWithResponse(u8(val)); }
+  catch (e){ log('Write error: ' + (e.message||e)); }
+  finally { busy = false; }
+}
 
-  // 全域錯誤攔截
-  window.onerror = function(msg, src, line, col, err){
-    const t = `JS Error: ${msg}\n@ ${src}:${line}:${col}\n${err && err.stack ? err.stack : ''}`;
-    log(t);
-    alert(t);
-  };
-  window.addEventListener('unhandledrejection', (ev)=>{
-    const t = `UnhandledRejection: ${ev.reason && ev.reason.message ? ev.reason.message : ev.reason}`;
-    log(t);
-    alert(t);
+async function connectFlow(){
+  log('Opening chooser…');
+  try {
+    device = await navigator.bluetooth.requestDevice({
+      filters: [{ namePrefix: 'C3-LED' }],
+      optionalServices: [SVC]
+    });
+  } catch (e) {
+    log('Fallback to acceptAllDevices…');
+    device = await navigator.bluetooth.requestDevice({
+      acceptAllDevices: true,
+      optionalServices: [SVC]
+    });
+  }
+
+  device.addEventListener('gattserverdisconnected', ()=> uiConnected(false));
+  server = await device.gatt.connect();
+  log('Connected. Discovering services…');
+  svc = await server.getPrimaryService(SVC);
+
+  ch.MODE = await svc.getCharacteristic(UUID.MODE);
+  ch.BRI  = await svc.getCharacteristic(UUID.BRI);
+  ch.SPD  = await svc.getCharacteristic(UUID.SPD);
+  ch.STAT = await svc.getCharacteristic(UUID.STAT);
+
+  await ch.STAT.startNotifications();
+  ch.STAT.addEventListener('characteristicvaluechanged', e=>{
+    const v = e.target.value.getUint8(0);
+    ui.status.textContent = v;
+    uiConnected(!!v, device.name || '(no name)');
   });
 
-  document.addEventListener('DOMContentLoaded', async () => {
-    // 檢查支援性
-    if (!('bluetooth' in navigator)) {
-      const t = '❌ 此瀏覽器不支援 Web Bluetooth。\n請前往 iOS 設定→隱私權與安全性→藍牙→開啟 Bluefy 的權限，並用 Bluefy 開啟本頁。';
-      log(t); alert(t);
-      return;
-    }
+  // 初始值
+  const mv = (await ch.MODE.readValue()).getUint8(0);
+  const bv = (await ch.BRI .readValue()).getUint8(0);
+  const sv = (await ch.SPD .readValue()).getUint8(0);
+  ui.mode.value=mv; ui.modev.textContent=mv;
+  ui.bri .value=bv; ui.briv .textContent=bv;
+  ui.spd .value=sv; ui.spdv .textContent=sv;
 
-    // 可用性檢查（iOS 可能返回 false 代表藍牙未開或被佔用）
-    try{
-      if ('getAvailability' in navigator.bluetooth) {
-        const avail = await navigator.bluetooth.getAvailability();
-        log(`Bluetooth availability: ${avail}`);
-      } else {
-        log('Bluetooth availability: (api not present, continue)');
-      }
-    }catch(e){
-      log('getAvailability error: ' + e);
-    }
+  // 訂閱 3 個特徵的 Notify（可選）
+  for (const k of ['MODE','BRI','SPD']){
+    await ch[k].startNotifications();
+    ch[k].addEventListener('characteristicvaluechanged', e=>{
+      const v = e.target.value.getUint8(0);
+      if (k==='MODE'){ ui.mode.value=v; ui.modev.textContent=v; }
+      if (k==='BRI' ){ ui.bri.value =v; ui.briv.textContent =v; }
+      if (k==='SPD' ){ ui.spd.value =v; ui.spdv.textContent =v; }
+    });
+  }
 
-    $('reset').addEventListener('click', ()=> location.reload());
+  const s = (await ch.STAT.readValue()).getUint8(0);
+  uiConnected(!!s, device.name || '(no name)');
+  log('Ready.');
+}
 
-    $('btn').addEventListener('click', async ()=>{
-      alert('clicked'); // 用來確認點擊事件真的有進來（Bluefy 必須彈出這個）
-      try{
-        log('Opening chooser…');
-        const dev = await navigator.bluetooth.requestDevice({
-          acceptAllDevices: true,
-          optionalServices: [SVC]
-        });
-        log('Selected: ' + (dev.name || '(no name)'));
+ui.btn.addEventListener('click', async ()=>{
+  try{
+    if (device && device.gatt.connected){ device.gatt.disconnect(); uiConnected(false); log('Disconnected.'); }
+    else { await connectFlow(); }
+  }catch(err){ log('Error: ' + (err.message||err)); }
+});
 
-        const server = await dev.gatt.connect();
-        log('Connected. Discovering services…');
-        const svc = await server.getPrimaryService(SVC);
-        const stat = await svc.getCharacteristic(UUID.STAT);
-        await stat.startNotifications();
-        stat.addEventListener('characteristicvaluechanged', e=>{
-          const v = e.target.value.getUint8(0);
-          log('Status notify: ' + v + ' (connected=' + (v? 'yes':'no') + ')');
-        });
+ui.mode.addEventListener('input', ()=> ui.modev.textContent = ui.mode.value);
+ui.bri .addEventListener('input', ()=> ui.briv .textContent = ui.bri.value);
+ui.spd .addEventListener('input', ()=> ui.spdv .textContent = ui.spd.value);
 
-        // 讀取初始值（只讀 STAT 以簡化）
-        const s = (await stat.readValue()).getUint8(0);
-        log('Initial status: ' + s + ' — Ready.');
-      }catch(e){
-        log('Error: ' + (e && e.message ? e.message : e));
-        alert('Error: ' + (e && e.message ? e.message : e));
-      }
-    }, {passive:false});
-  });
-})();
+ui.modeb.addEventListener('click', async ()=> { const v = +ui.mode.value; ui.modev.textContent=v; await writeOnce(ch.MODE, v); });
+ui.brib .addEventListener('click', async ()=> { const v = +ui.bri.value;  ui.briv .textContent=v; await writeOnce(ch.BRI , v); });
+ui.spdb .addEventListener('click', async ()=> { const v = +ui.spd.value;  ui.spdv .textContent=v; await writeOnce(ch.SPD , v); });
+
+// 基礎支援偵測
+if (!('bluetooth' in navigator)){
+  log('❌ 此瀏覽器不支援 Web Bluetooth。請使用 Bluefy (iOS) 或 Chrome (桌面/Android)。');
+}
 </script>
 </body>
 </html>
