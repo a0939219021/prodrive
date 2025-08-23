@@ -3,24 +3,25 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1" />
-<title>OBD-II BLE Console</title>
+<title>OBD-II BLE Console (Debug)</title>
 <style>
   :root{--bg:#0b1220;--card:#111827;--fg:#e5e7eb;--muted:#9ca3af;--acc:#22d3ee;--ok:#10b981;--warn:#f59e0b}
   *{box-sizing:border-box} html,body{height:100%} body{margin:0;background:linear-gradient(160deg,#0b1220,#0f172a);color:var(--fg);font-family:system-ui,Segoe UI,Roboto,Arial}
-  .wrap{max-width:720px;margin:0 auto;padding:16px}
-  .row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+  .wrap{max-width:860px;margin:0 auto;padding:16px}
+  .row{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
   .card{background:var(--card);border-radius:16px;padding:16px;box-shadow:0 6px 24px rgba(0,0,0,.25)}
   .big{font-size:40px;font-weight:700}
   .muted{color:var(--muted)}
   button{background:var(--acc);color:#001018;border:0;border-radius:12px;padding:12px 16px;font-weight:600;cursor:pointer}
   button:disabled{opacity:.5;cursor:not-allowed}
   .bar{height:8px;background:linear-gradient(90deg,var(--ok),var(--warn));border-radius:999px}
+  pre{white-space:pre-wrap;font-family:ui-monospace,SFMono-Regular,Consolas,monospace}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h2>OBD-II BLE Console</h2>
-  <p class="muted">Bluefy 若用過濾器掃不到，改用「全部裝置」→ 手動選 C3-OBD。</p>
+  <h2>OBD-II BLE Console（偵錯版）</h2>
+  <p class="muted">若 Bluefy 過濾器抓不到，這版會先列出所有 Services 再自動尋找並訂閱。</p>
   <div style="display:flex;gap:8px;margin:12px 0;">
     <button id="btnConnect">Connect</button>
     <button id="btnDisconnect" disabled>Disconnect</button>
@@ -35,61 +36,118 @@
 
   <div class="card" style="margin-top:12px">
     <div class="muted">Log</div>
-    <pre id="log" style="white-space:pre-wrap;max-height:240px;overflow:auto;margin:8px 0 0"></pre>
+    <pre id="log" style="max-height:320px;overflow:auto;margin:8px 0 0"></pre>
   </div>
 </div>
 
 <script>
-// 與韌體一致的 Service/Char UUID
-const SVC    = '12f05678-1234-5678-1234-56789abcdef0';
-const CHR_RPM= '12f05678-1234-5678-1234-56789abcdef1';
-const CHR_SPD= '12f05678-1234-5678-1234-56789abcdef2';
-const CHR_THR= '12f05678-1234-5678-1234-56789abcdef3';
+// 與韌體相同（我們仍優先嘗試此 UUID；不匹配就 fallback）
+const SVC     = '12f05678-1234-5678-1234-56789abcdef0';
+const CHR_RPM = '12f05678-1234-5678-1234-56789abcdef1';
+const CHR_SPD = '12f05678-1234-5678-1234-56789abcdef2';
+const CHR_THR = '12f05678-1234-5678-1234-56789abcdef3';
+const NAME_HINT = 'C3-OBD';
 
-const nameHint = 'C3-OBD';
 const $ = s => document.querySelector(s);
-const log = m => { const t = new Date().toLocaleTimeString(); $('#log').textContent += `[${t}] ${m}\n`; };
-function setStatus(s){ $('#status').textContent = s; }
+const log = m => { const t = new Date().toLocaleTimeString(); const L=$('#log'); L.textContent += `[${t}] ${m}\n`; L.scrollTop=L.scrollHeight; };
+const setStatus = s => $('#status').textContent = s;
 
 let device, server, svc, chrRPM, chrSPD, chrTHR;
 
+function toUUID(u){
+  // 統一大小寫顯示
+  return String(u || '').toLowerCase();
+}
+
 async function connect() {
-  setStatus('requesting...');
-  // 用 acceptAllDevices，避免 Bluefy 的過濾器導致列表空白
-  device = await navigator.bluetooth.requestDevice({
-    acceptAllDevices: true,
-    optionalServices: [SVC]
-  });
-  setStatus('connecting...');
-  device.addEventListener('gattserverdisconnected', onDisconnected);
-  server = await device.gatt.connect();
+  try {
+    setStatus('requesting...');
+    device = await navigator.bluetooth.requestDevice({
+      // 最寬鬆：先讓你挑到裝置；連上後再查 services
+      acceptAllDevices: true,
+      optionalServices: [SVC] // 優先授權我們的自訂服務；若 Bluefy 無視也會 fallback
+    });
+    device.addEventListener('gattserverdisconnected', onDisconnected);
 
-  // 可選：提示選到的是否是 C3-OBD
-  if (device.name && !device.name.includes(nameHint)) {
-    log(`⚠️ 你選的是 "${device.name}"，建議選擇 ${nameHint}`);
-  } else {
+    setStatus('connecting...');
+    server = await device.gatt.connect();
     log(`Connected to ${device.name || device.id}`);
+
+    // --- 先嘗試以指定 UUID 取得 Service ---
+    try {
+      svc = await server.getPrimaryService(SVC);
+      log(`Primary service found (by UUID): ${SVC}`);
+    } catch(e) {
+      log(`getPrimaryService(${SVC}) failed → 進入 fallback 掃描。`);
+      // 列出所有 Primary Services 幫你對照
+      const services = await server.getPrimaryServices();
+      log(`Primary services (${services.length}):`);
+      for (const s of services) log(` - ${toUUID(s.uuid)}`);
+
+      // 嘗試找到含有 3 個可 Notify 的 characteristic 的 service 作為候選
+      for (const s of services) {
+        try {
+          const chs = await s.getCharacteristics();
+          const notifies = chs.filter(c => c.properties?.notify || c.properties?.indicate);
+          if (notifies.length >= 3) {
+            svc = s;
+            log(`Fallback: choose service ${toUUID(s.uuid)} (notify chars >=3)`);
+            break;
+          }
+        } catch (e2) {
+          log(`inspect service ${toUUID(s.uuid)} error: ${e2?.name||e2} ${e2?.message||''}`);
+        }
+      }
+      if (!svc) throw new Error('找不到合適的 Service（至少 3 個可通知的特徵）');
+    }
+
+    // --- 取得 characteristics（先按我們的 UUID，失敗就掃描匹配） ---
+    try {
+      [chrRPM, chrSPD, chrTHR] = await Promise.all([
+        svc.getCharacteristic(CHR_RPM),
+        svc.getCharacteristic(CHR_SPD),
+        svc.getCharacteristic(CHR_THR),
+      ]);
+      log('Characteristics found by UUID (RPM/SPD/THR).');
+    } catch(e) {
+      log(`getCharacteristic(by UUID) 失敗 → 進入 fallback 特徵掃描。`);
+      const chs = await svc.getCharacteristics();
+      log(`此 service 共有 ${chs.length} 個特徵：`);
+      for (const c of chs) {
+        log(` * ${toUUID(c.uuid)} props=${JSON.stringify(c.properties)}`);
+      }
+      // 取前三個可 notify 的當作 RPM/SPD/THR
+      const notifies = chs.filter(c => c.properties?.notify || c.properties?.indicate);
+      if (notifies.length < 3) throw new Error('這個 service 可通知的特徵少於 3 個，無法對應 RPM/SPD/THR');
+      [chrRPM, chrSPD, chrTHR] = notifies.slice(0,3);
+      log(`Fallback: use notify chars → RPM=${toUUID(chrRPM.uuid)}, SPD=${toUUID(chrSPD.uuid)}, THR=${toUUID(chrTHR.uuid)}`);
+    }
+
+    // --- 訂閱通知（先綁 listener 再 startNotifications，避免漏掉第一包） ---
+    chrRPM.addEventListener('characteristicvaluechanged', e=>{
+      const v=e.target.value.getUint16(0,true); $('#rpm').textContent=v;
+    });
+    chrSPD.addEventListener('characteristicvaluechanged', e=>{
+      const v=e.target.value.getUint8(0); $('#spd').textContent=v;
+    });
+    chrTHR.addEventListener('characteristicvaluechanged', e=>{
+      const v=e.target.value.getUint8(0); $('#thr').textContent=v; $('#thrb').style.width = `${v}%`;
+    });
+    await chrRPM.startNotifications();
+    await chrSPD.startNotifications();
+    await chrTHR.startNotifications();
+
+    setStatus('connected');
+    $('#btnConnect').disabled = true; $('#btnDisconnect').disabled = false;
+    log('Notifications started. 等待數據...');
+  } catch(e) {
+    // 把完整錯誤物件吐出，避免 undefined;undefined
+    const name = (e && e.name) ? e.name : 'UnknownError';
+    const msg  = (e && e.message) ? e.message : String(e);
+    setStatus('error');
+    log(`❌ connect error → ${name}: ${msg}`);
+    console.error(e);
   }
-
-  // 取得 Service / Characteristics
-  svc = await server.getPrimaryService(SVC);
-  [chrRPM, chrSPD, chrTHR] = await Promise.all([
-    svc.getCharacteristic(CHR_RPM),
-    svc.getCharacteristic(CHR_SPD),
-    svc.getCharacteristic(CHR_THR),
-  ]);
-
-  // 訂閱通知（小端 LE）
-  const onRPM = e => { $('#rpm').textContent = e.target.value.getUint16(0, true); };
-  const onSPD = e => { $('#spd').textContent = e.target.value.getUint8(0); };
-  const onTHR = e => { const v=e.target.value.getUint8(0); $('#thr').textContent=v; $('#thrb').style.width = `${v}%`; };
-
-  await chrRPM.startNotifications(); chrRPM.addEventListener('characteristicvaluechanged', onRPM);
-  await chrSPD.startNotifications(); chrSPD.addEventListener('characteristicvaluechanged', onSPD);
-  await chrTHR.startNotifications(); chrTHR.addEventListener('characteristicvaluechanged', onTHR);
-
-  setStatus('connected');
-  $('#btnConnect').disabled = true; $('#btnDisconnect').disabled = false;
 }
 
 function onDisconnected(){
@@ -99,12 +157,10 @@ function onDisconnected(){
 }
 
 async function disconnect(){
-  try { if (device?.gatt?.connected) device.gatt.disconnect(); } catch(e){ log('disconnect err: '+e); }
+  try { if (device?.gatt?.connected) device.gatt.disconnect(); } catch(e){ log('disconnect err: '+(e?.name||e)+': '+(e?.message||'')); }
 }
 
-$('#btnConnect').addEventListener('click', async ()=>{
-  try { await connect(); } catch(e){ log('connect err: '+e.name+': '+e.message); setStatus('error'); }
-});
+$('#btnConnect').addEventListener('click', ()=> connect());
 $('#btnDisconnect').addEventListener('click', ()=> disconnect());
 </script>
 </body>
