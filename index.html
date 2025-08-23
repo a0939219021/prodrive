@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>C3-LED Control (Stable iOS/Chrome)</title>
+<title>C3-LED Control (iOS Touch-Safe)</title>
 <style>
   body{margin:0;background:#0b1220;color:#e5e7eb;font-family:system-ui,Segoe UI,Arial}
   .wrap{max-width:720px;margin:0 auto;padding:16px}
@@ -24,7 +24,8 @@
   <h2>ESP32‑C3 BLE 控制面板</h2>
   <div class="card">
     <div class="row">
-      <button id="btn" class="btn">🔗 Connect</button>
+      <!-- inline onclick：確保是使用者手勢 -->
+      <button id="btn" class="btn" onclick="onConnectBtn()">🔗 Connect</button>
       <span id="name" class="muted">Not connected</span>
       <span id="dot" class="dot"></span>
     </div>
@@ -50,10 +51,11 @@
       </div>
       <p class="muted">Status Notify: <span id="status">0</span></p>
     </div>
-    <div id="msg"></div>
+    <div id="msg">Ready.</div>
   </div>
 </div>
 <script>
+// 128-bit UUID（與韌體一致）
 const SVC  = '0000fff0-0000-1000-8000-00805f9b34fb';
 const UUID = {
   MODE : '0000fff1-0000-1000-8000-00805f9b34fb',
@@ -61,6 +63,7 @@ const UUID = {
   SPD  : '0000fff3-0000-1000-8000-00805f9b34fb',
   STAT : '0000fff4-0000-1000-8000-00805f9b34fb',
 };
+
 const ui = {
   btn:   document.getElementById('btn'),
   name:  document.getElementById('name'),
@@ -98,76 +101,77 @@ async function writeOnce(chr, val){
   finally { busy = false; }
 }
 
-async function connectFlow(){
-  log('Opening chooser…');
-  try {
-    device = await navigator.bluetooth.requestDevice({
-      filters: [{ namePrefix: 'C3-LED' }],
-      optionalServices: [SVC]
-    });
-  } catch (e) {
-    log('Fallback to acceptAllDevices…');
+// 入口：按鈕（inline onclick）
+async function onConnectBtn(){
+  try{
+    // 若已連線 → 先斷線
+    if (device && device.gatt.connected){ device.gatt.disconnect(); uiConnected(false); log('Disconnected.'); return; }
+
+    log('Opening chooser…');
+    // ★ iOS 最穩：直接 acceptAllDevices（之後再靠服務 UUID 過濾）
     device = await navigator.bluetooth.requestDevice({
       acceptAllDevices: true,
       optionalServices: [SVC]
     });
-  }
 
-  device.addEventListener('gattserverdisconnected', ()=> uiConnected(false));
-  server = await device.gatt.connect();
-  log('Connected. Discovering services…');
-  svc = await server.getPrimaryService(SVC);
+    device.addEventListener('gattserverdisconnected', ()=> uiConnected(false));
+    server = await device.gatt.connect();
+    log('Connected. Discovering services…');
 
-  ch.MODE = await svc.getCharacteristic(UUID.MODE);
-  ch.BRI  = await svc.getCharacteristic(UUID.BRI);
-  ch.SPD  = await svc.getCharacteristic(UUID.SPD);
-  ch.STAT = await svc.getCharacteristic(UUID.STAT);
+    svc = await server.getPrimaryService(SVC);
+    ch.MODE = await svc.getCharacteristic(UUID.MODE);
+    ch.BRI  = await svc.getCharacteristic(UUID.BRI);
+    ch.SPD  = await svc.getCharacteristic(UUID.SPD);
+    ch.STAT = await svc.getCharacteristic(UUID.STAT);
 
-  await ch.STAT.startNotifications();
-  ch.STAT.addEventListener('characteristicvaluechanged', e=>{
-    const v = e.target.value.getUint8(0);
-    ui.status.textContent = v;
-    uiConnected(!!v, device.name || '(no name)');
-  });
-
-  const mv = (await ch.MODE.readValue()).getUint8(0);
-  const bv = (await ch.BRI .readValue()).getUint8(0);
-  const sv = (await ch.SPD .readValue()).getUint8(0);
-  ui.mode.value=mv; ui.modev.textContent=mv;
-  ui.bri .value=bv; ui.briv .textContent=bv;
-  ui.spd .value=sv; ui.spdv .textContent=sv;
-
-  // 可選：訂閱 3 個設定的 Notify
-  for (const k of ['MODE','BRI','SPD']){
-    await ch[k].startNotifications();
-    ch[k].addEventListener('characteristicvaluechanged', e=>{
+    await ch.STAT.startNotifications();
+    ch.STAT.addEventListener('characteristicvaluechanged', e=>{
       const v = e.target.value.getUint8(0);
-      if (k==='MODE'){ ui.mode.value=v; ui.modev.textContent=v; }
-      if (k==='BRI' ){ ui.bri.value =v; ui.briv.textContent =v; }
-      if (k==='SPD' ){ ui.spd.value =v; ui.spdv.textContent =v; }
+      ui.status.textContent = v;
+      uiConnected(!!v, device.name || '(no name)');
     });
-  }
 
-  const s = (await ch.STAT.readValue()).getUint8(0);
-  uiConnected(!!s, device.name || '(no name)');
-  log('Ready.');
+    // 初始值
+    const mv = (await ch.MODE.readValue()).getUint8(0);
+    const bv = (await ch.BRI .readValue()).getUint8(0);
+    const sv = (await ch.SPD .readValue()).getUint8(0);
+    ui.mode.value=mv; ui.modev.textContent=mv;
+    ui.bri .value=bv; ui.briv .textContent=bv;
+    ui.spd .value=sv; ui.spdv .textContent=sv;
+
+    // （可選）訂閱三個特徵
+    for (const k of ['MODE','BRI','SPD']){
+      await ch[k].startNotifications();
+      ch[k].addEventListener('characteristicvaluechanged', e=>{
+        const v = e.target.value.getUint8(0);
+        if (k==='MODE'){ ui.mode.value=v; ui.modev.textContent=v; }
+        if (k==='BRI' ){ ui.bri.value =v; ui.briv.textContent =v; }
+        if (k==='SPD' ){ ui.spd.value =v; ui.spdv.textContent =v; }
+      });
+    }
+
+    const s = (await ch.STAT.readValue()).getUint8(0);
+    uiConnected(!!s, device.name || '(no name)');
+    log('Ready.');
+  }catch(err){
+    log('Error: ' + (err && err.message ? err.message : err));
+  }
 }
 
-ui.btn.addEventListener('click', async ()=>{
-  try{
-    if (device && device.gatt.connected){ device.gatt.disconnect(); uiConnected(false); log('Disconnected.'); }
-    else { await connectFlow(); }
-  }catch(err){ log('Error: ' + (err.message||err)); }
-});
+// 再加一層 touchend 保險（某些 WebView 只觸發 touchend）
+ui.btn.addEventListener('touchend', (e)=>{ e.preventDefault(); onConnectBtn(); }, {passive:false});
 
+// 即時顯示 slider
 ui.mode.addEventListener('input', ()=> ui.modev.textContent = ui.mode.value);
 ui.bri .addEventListener('input', ()=> ui.briv .textContent = ui.bri.value);
 ui.spd .addEventListener('input', ()=> ui.spdv .textContent = ui.spd.value);
 
+// 寫入
 ui.modeb.addEventListener('click', async ()=> { const v = +ui.mode.value; ui.modev.textContent=v; await writeOnce(ch.MODE, v); });
 ui.brib .addEventListener('click', async ()=> { const v = +ui.bri.value;  ui.briv .textContent=v; await writeOnce(ch.BRI , v); });
 ui.spdb .addEventListener('click', async ()=> { const v = +ui.spd.value;  ui.spdv .textContent=v; await writeOnce(ch.SPD , v); });
 
+// 基礎支援偵測
 if (!('bluetooth' in navigator)){
   log('❌ 此瀏覽器不支援 Web Bluetooth。請使用 Bluefy (iOS) 或 Chrome (桌面/Android)。');
 }
