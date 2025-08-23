@@ -109,9 +109,11 @@ async function onConnectBtn(){
 
     log('Opening chooser…');
     // ★ iOS 最穩：直接 acceptAllDevices（之後再靠服務 UUID 過濾）
-    device = await navigator.bluetooth.requestDevice({
-      acceptAllDevices: true,
-      optionalServices: [SVC]
+ device = await navigator.bluetooth.requestDevice({
+  acceptAllDevices: true,
+  optionalServices: ['0000fff0-0000-1000-8000-00805f9b34fb']
+});
+
     });
 
     device.addEventListener('gattserverdisconnected', ()=> uiConnected(false));
