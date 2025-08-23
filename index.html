@@ -21,7 +21,7 @@
 <body>
 <div class="wrap">
   <h2>OBD-II BLE Console（偵錯版）</h2>
-  <p class="muted">若 Bluefy 過濾器抓不到，這版會先列出所有 Services 再自動尋找並訂閱。</p>
+  <p class="muted">若 Bluefy 過濾器抓不到，這版會列出所有 Services 並自動尋找/訂閱。</p>
   <div style="display:flex;gap:8px;margin:12px 0;">
     <button id="btnConnect">Connect</button>
     <button id="btnDisconnect" disabled>Disconnect</button>
@@ -31,7 +31,9 @@
   <div class="row">
     <div class="card"><div>RPM</div><div id="rpm" class="big">—</div></div>
     <div class="card"><div>Speed (km/h)</div><div id="spd" class="big">—</div></div>
-    <div class="card"><div>Throttle (%)</div><div id="thr" class="big">—</div><div class="bar"><div id="thrb" style="height:100%;width:0%"></div></div></div>
+    <div class="card"><div>Throttle (%)</div><div id="thr" class="big">—</div>
+      <div class="bar"><div id="thrb" style="height:100%;width:0%"></div></div>
+    </div>
   </div>
 
   <div class="card" style="margin-top:12px">
@@ -41,12 +43,11 @@
 </div>
 
 <script>
-// 與韌體相同（我們仍優先嘗試此 UUID；不匹配就 fallback）
+// 與韌體一致（先嘗試指定 UUID，不匹配就 fallback）
 const SVC     = '12f05678-1234-5678-1234-56789abcdef0';
 const CHR_RPM = '12f05678-1234-5678-1234-56789abcdef1';
 const CHR_SPD = '12f05678-1234-5678-1234-56789abcdef2';
 const CHR_THR = '12f05678-1234-5678-1234-56789abcdef3';
-const NAME_HINT = 'C3-OBD';
 
 const $ = s => document.querySelector(s);
 const log = m => { const t = new Date().toLocaleTimeString(); const L=$('#log'); L.textContent += `[${t}] ${m}\n`; L.scrollTop=L.scrollHeight; };
@@ -54,18 +55,14 @@ const setStatus = s => $('#status').textContent = s;
 
 let device, server, svc, chrRPM, chrSPD, chrTHR;
 
-function toUUID(u){
-  // 統一大小寫顯示
-  return String(u || '').toLowerCase();
-}
+function toUUID(u){ return String(u || '').toLowerCase(); }
 
 async function connect() {
   try {
     setStatus('requesting...');
     device = await navigator.bluetooth.requestDevice({
-      // 最寬鬆：先讓你挑到裝置；連上後再查 services
       acceptAllDevices: true,
-      optionalServices: [SVC] // 優先授權我們的自訂服務；若 Bluefy 無視也會 fallback
+      optionalServices: [SVC] // 若 Bluefy 不給，也會 fallback
     });
     device.addEventListener('gattserverdisconnected', onDisconnected);
 
@@ -79,21 +76,14 @@ async function connect() {
       log(`Primary service found (by UUID): ${SVC}`);
     } catch(e) {
       log(`getPrimaryService(${SVC}) failed → 進入 fallback 掃描。`);
-      // 列出所有 Primary Services 幫你對照
       const services = await server.getPrimaryServices();
       log(`Primary services (${services.length}):`);
       for (const s of services) log(` - ${toUUID(s.uuid)}`);
-
-      // 嘗試找到含有 3 個可 Notify 的 characteristic 的 service 作為候選
       for (const s of services) {
         try {
           const chs = await s.getCharacteristics();
           const notifies = chs.filter(c => c.properties?.notify || c.properties?.indicate);
-          if (notifies.length >= 3) {
-            svc = s;
-            log(`Fallback: choose service ${toUUID(s.uuid)} (notify chars >=3)`);
-            break;
-          }
+          if (notifies.length >= 3) { svc = s; log(`Fallback: choose service ${toUUID(s.uuid)} (notify chars >=3)`); break; }
         } catch (e2) {
           log(`inspect service ${toUUID(s.uuid)} error: ${e2?.name||e2} ${e2?.message||''}`);
         }
@@ -113,17 +103,23 @@ async function connect() {
       log(`getCharacteristic(by UUID) 失敗 → 進入 fallback 特徵掃描。`);
       const chs = await svc.getCharacteristics();
       log(`此 service 共有 ${chs.length} 個特徵：`);
-      for (const c of chs) {
-        log(` * ${toUUID(c.uuid)} props=${JSON.stringify(c.properties)}`);
-      }
-      // 取前三個可 notify 的當作 RPM/SPD/THR
+      for (const c of chs) log(` * ${toUUID(c.uuid)} props=${JSON.stringify(c.properties)}`);
       const notifies = chs.filter(c => c.properties?.notify || c.properties?.indicate);
       if (notifies.length < 3) throw new Error('這個 service 可通知的特徵少於 3 個，無法對應 RPM/SPD/THR');
       [chrRPM, chrSPD, chrTHR] = notifies.slice(0,3);
       log(`Fallback: use notify chars → RPM=${toUUID(chrRPM.uuid)}, SPD=${toUUID(chrSPD.uuid)}, THR=${toUUID(chrTHR.uuid)}`);
     }
 
-    // --- 訂閱通知（先綁 listener 再 startNotifications，避免漏掉第一包） ---
+    // --- 先讀一次，立即把 UI 填上 ---
+    try {
+      const v1 = await chrRPM.readValue(); $('#rpm').textContent = v1.getUint16(0, true);
+      const v2 = await chrSPD.readValue(); $('#spd').textContent = v2.getUint8(0);
+      const v3 = await chrTHR.readValue(); const tv = v3.getUint8(0); $('#thr').textContent = tv; $('#thrb').style.width = `${tv}%`;
+    } catch (e) {
+      log(`初次 readValue 失敗（可能特徵不支援 read）：${e?.name||e} ${e?.message||''}`);
+    }
+
+    // --- 訂閱通知（先綁 listener 再 startNotifications） ---
     chrRPM.addEventListener('characteristicvaluechanged', e=>{
       const v=e.target.value.getUint16(0,true); $('#rpm').textContent=v;
     });
@@ -141,7 +137,6 @@ async function connect() {
     $('#btnConnect').disabled = true; $('#btnDisconnect').disabled = false;
     log('Notifications started. 等待數據...');
   } catch(e) {
-    // 把完整錯誤物件吐出，避免 undefined;undefined
     const name = (e && e.name) ? e.name : 'UnknownError';
     const msg  = (e && e.message) ? e.message : String(e);
     setStatus('error');
