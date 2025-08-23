@@ -3,6 +3,366 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
+<title>C6‑LED Controller (Bluefy, Configurable)</title>
+<style>
+  :root{
+    --bg:#0b1220; --card:#111827; --fg:#e5e7eb; --muted:#9ca3af; --acc:#22d3ee; --ok:#10b981; --warn:#f59e0b; --err:#ef4444;
+    --br:18px; --gap:14px;
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bot: env(safe-area-inset-bottom, 0px);
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:linear-gradient(160deg,#0b1220,#0f172a);
+    color:var(--fg); font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Helvetica,Arial,'Noto Sans TC',sans-serif;
+    -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
+    padding:calc(8px + var(--safe-top)) 12px calc(12px + var(--safe-bot));
+  }
+  .wrap{max-width:880px; margin:0 auto; display:grid; gap:var(--gap);}
+  .title{display:flex; align-items:center; gap:10px; justify-content:space-between}
+  .title h1{font-size:22px; margin:0}
+  .badge{padding:6px 10px; border-radius:999px; font-size:12px; background:#1f2937; color:#9ca3af}
+  .card{background:var(--card); border-radius:var(--br); padding:16px; box-shadow:0 10px 30px rgba(0,0,0,.25)}
+  .row{display:grid; gap:10px; grid-template-columns:1fr auto; align-items:center}
+  .btn{appearance:none; border:0; border-radius:12px; padding:12px 14px; font-size:16px; font-weight:600; cursor:pointer; color:#0b1220; background:var(--acc)}
+  .btn:disabled{opacity:.5; cursor:not-allowed}
+  .btn.alt{background:#334155; color:#e5e7eb}
+  .status{display:flex; align-items:center; gap:8px; font-size:14px; color:var(--muted)}
+  .dot{width:10px; height:10px; background:#6b7280; border-radius:999px}
+  .dot.ok{background:var(--ok)} .dot.warn{background:var(--warn)} .dot.err{background:var(--err)}
+  .grid{display:grid; gap:var(--gap)}
+  label{font-size:13px; color:#9ca3af; display:block; margin-bottom:6px}
+  .ctrl{display:grid; gap:6px}
+  .slider{width:100%}
+  .val{font-variant-numeric:tabular-nums; min-width:48px; text-align:right}
+  .toggle{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
+  .radio{display:flex; gap:8px; align-items:center; background:#0f172a; padding:8px 10px; border-radius:10px}
+  input[type="radio"]{accent-color:#22d3ee; width:18px; height:18px}
+  input[type="range"]{accent-color:#22d3ee}
+  .foot{opacity:.7; font-size:12px; text-align:center; padding-top:6px}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace; font-size:12px; color:#9ca3af; white-space:pre-wrap}
+  .settings{display:grid; gap:12px; grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+  .input{display:grid; gap:6px}
+  input[type="text"]{width:100%; padding:10px 12px; border-radius:10px; border:1px solid #253041; background:#0f172a; color:#e5e7eb; outline:none}
+  .switch{display:flex; gap:10px; align-items:center}
+  .pill{background:#0f172a; padding:6px 10px; border-radius:999px; font-size:12px; color:#9ca3af}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="title">
+      <h1>ESP32‑C6 LED 控制（Bluefy 可設定版）</h1>
+      <div id="devName" class="badge">未連線</div>
+    </div>
+
+    <!-- Settings Panel -->
+    <div class="card grid">
+      <div class="row" style="grid-template-columns:1fr auto auto">
+        <div class="status"><div id="dot" class="dot"></div><span id="stat">未連線</span></div>
+        <button id="btnSave" class="btn alt">儲存設定</button>
+        <div style="display:flex; gap:8px">
+          <button id="btnConn" class="btn">連線</button>
+          <button id="btnDisc" class="btn alt" disabled>中斷</button>
+        </div>
+      </div>
+
+      <div class="settings">
+        <div class="input">
+          <label>裝置名稱前綴（namePrefix）</label>
+          <input id="inpNamePrefix" type="text" placeholder="例如：C6-" value="C6-">
+        </div>
+        <div class="input">
+          <label>Service UUID</label>
+          <input id="inpSvc" type="text" placeholder="0000fff0-0000-1000-8000-00805f9b34fb 或 fff0" value="0000fff0-0000-1000-8000-00805f9b34fb">
+        </div>
+        <div class="input">
+          <label>Mode Characteristic UUID</label>
+          <input id="inpMode" type="text" placeholder="0000fff1-0000-1000-8000-00805f9b34fb 或 fff1" value="0000fff1-0000-1000-8000-00805f9b34fb">
+        </div>
+        <div class="input">
+          <label>Brightness Characteristic UUID</label>
+          <input id="inpB" type="text" placeholder="0000fff2-0000-1000-8000-00805f9b34fb 或 fff2" value="0000fff2-0000-1000-8000-00805f9b34fb">
+        </div>
+        <div class="input">
+          <label>Speed Characteristic UUID</label>
+          <input id="inpS" type="text" placeholder="0000fff3-0000-1000-8000-00805f9b34fb 或 fff3" value="0000fff3-0000-1000-8000-00805f9b34fb">
+        </div>
+        <div class="switch">
+          <label class="radio"><input id="chkUseSvc" type="radio" name="flt" checked> 以 Service 過濾</label>
+          <label class="radio"><input id="chkUseName" type="radio" name="flt"> 以 namePrefix 過濾</label>
+          <span class="pill" id="hintFlt">目前：Service 過濾</span>
+        </div>
+        <div class="switch">
+          <label class="radio"><input id="chkAutoRe" type="checkbox"> 斷線自動重連（嘗試）</label>
+        </div>
+      </div>
+      <div class="mono" id="hint">提示：設定完可先按「儲存設定」，再點「連線」。</div>
+    </div>
+
+    <!-- Control Panel -->
+    <div class="card grid" id="panel" style="display:none">
+      <div class="ctrl">
+        <label>模式 Mode</label>
+        <div class="toggle">
+          <label class="radio"><input type="radio" name="mode" value="0" checked> 平滑彩虹</label>
+          <label class="radio"><input type="radio" name="mode" value="1"> 七色分段</label>
+        </div>
+      </div>
+
+      <div class="ctrl">
+        <label>亮度 Brightness <span class="val" id="valB">128</span></label>
+        <input id="rngB" type="range" class="slider" min="0" max="255" step="1" value="128">
+      </div>
+
+      <div class="ctrl">
+        <label>速度 Speed <span class="val" id="valS">8</span></label>
+        <input id="rngS" type="range" class="slider" min="1" max="20" step="1" value="8">
+      </div>
+    </div>
+
+    <!-- Log Panel -->
+    <div class="card">
+      <div><b>除錯訊息</b></div>
+      <div class="mono" id="log" style="max-height:220px; overflow:auto; margin-top:8px; background:#0f172a; padding:10px; border-radius:12px;"></div>
+    </div>
+
+    <div class="foot">若 Bluefy 要求權限，請允許使用藍牙。此頁僅在 Bluefy / 支援 Web Bluetooth 的瀏覽器中可用。</div>
+  </div>
+
+<script>
+(() => {
+  // --- Utilities ---
+  const $ = sel => document.querySelector(sel);
+  const logEl = $('#log');
+  function log(...args){ const s = args.map(a=> typeof a==='object'? JSON.stringify(a): String(a)).join(' '); logEl.textContent += s + '\\n'; logEl.scrollTop = logEl.scrollHeight; console.log(...args); }
+  function normalizeUuid(u){
+    if(!u) return u;
+    u = String(u).trim().toLowerCase();
+    const hex4 = /^[0-9a-f]{4}$/i;
+    const hex16 = /^0x[0-9a-f]{4}$/i;
+    const full = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if(full.test(u)) return u;
+    if(hex4.test(u)) return `0000${u}-0000-1000-8000-00805f9b34fb`;
+    if(hex16.test(u)) return `0000${u.slice(2)}-0000-1000-8000-00805f9b34fb`;
+    return u;
+  }
+
+  // --- Elements ---
+  const devName = $('#devName');
+  const dot = $('#dot');
+  const stat = $('#stat');
+  const btnConn = $('#btnConn');
+  const btnDisc = $('#btnDisc');
+  const btnSave = $('#btnSave');
+  const panel = $('#panel');
+  const rngB = $('#rngB');
+  const rngS = $('#rngS');
+  const valB = $('#valB');
+  const valS = $('#valS');
+  const modeRadios = document.querySelectorAll('input[name="mode"]');
+  const inpNamePrefix = $('#inpNamePrefix');
+  const inpSvc  = $('#inpSvc');
+  const inpMode = $('#inpMode');
+  const inpB    = $('#inpB');
+  const inpS    = $('#inpS');
+  const chkUseSvc = $('#chkUseSvc');
+  const chkUseName = $('#chkUseName');
+  const chkAutoRe = $('#chkAutoRe');
+  const hintFlt = $('#hintFlt');
+
+  function setStatus(connected, text) {
+    dot.className = 'dot ' + (connected ? 'ok' : '');
+    stat.textContent = text || (connected ? '已連線' : '未連線');
+    btnConn.disabled = connected;
+    btnDisc.disabled = !connected;
+    panel.style.display = connected ? 'grid' : 'none';
+  }
+
+  function saveSettings(){
+    const settings = {
+      namePrefix: inpNamePrefix.value.trim(),
+      svc: normalizeUuid(inpSvc.value),
+      mode: normalizeUuid(inpMode.value),
+      b: normalizeUuid(inpB.value),
+      s: normalizeUuid(inpS.value),
+      useSvc: chkUseSvc.checked,
+      autoRe: chkAutoRe.checked,
+    };
+    localStorage.setItem('c6_ble_settings', JSON.stringify(settings));
+    inpSvc.value = settings.svc; inpMode.value = settings.mode; inpB.value = settings.b; inpS.value = settings.s;
+    hintFlt.textContent = '目前：' + (settings.useSvc? 'Service 過濾':'namePrefix 過濾');
+    log('設定已儲存');
+    return settings;
+  }
+  function loadSettings(){
+    try{
+      const s = JSON.parse(localStorage.getItem('c6_ble_settings')||'{}');
+      if(s.namePrefix) inpNamePrefix.value = s.namePrefix;
+      if(s.svc)  inpSvc.value  = s.svc;
+      if(s.mode) inpMode.value = s.mode;
+      if(s.b)    inpB.value    = s.b;
+      if(s.s)    inpS.value    = s.s;
+      if(typeof s.useSvc === 'boolean'){ chkUseSvc.checked = s.useSvc; chkUseName.checked = !s.useSvc; }
+      if(typeof s.autoRe === 'boolean'){ chkAutoRe.checked = s.autoRe; }
+      hintFlt.textContent = '目前：' + (chkUseSvc.checked? 'Service 過濾':'namePrefix 過濾');
+    }catch(e){}
+  }
+  loadSettings();
+
+  chkUseSvc.addEventListener('change', ()=>{ if(chkUseSvc.checked){ chkUseName.checked=false; hintFlt.textContent='目前：Service 過濾'; } });
+  chkUseName.addEventListener('change', ()=>{ if(chkUseName.checked){ chkUseSvc.checked=false; hintFlt.textContent='目前：namePrefix 過濾'; } });
+  btnSave.addEventListener('click', saveSettings);
+
+  // --- BLE state ---
+  let device, server, service, chrMode, chrB, chrS;
+  let writing = {B:null, S:null};
+  let settings = saveSettings();
+
+  async function connect() {
+    try {
+      settings = saveSettings();
+      setStatus(false, '掃描中…');
+      log('開始 requestDevice…');
+
+      const svc = settings.svc;
+      const optSvc = [svc];
+
+      if(settings.useSvc){
+        const options = { filters: [{ services: [svc] }], optionalServices: optSvc };
+        device = await navigator.bluetooth.requestDevice(options);
+        log('用 Service 過濾成功');
+      } else {
+        const options = { filters: [{ namePrefix: settings.namePrefix || 'C6-' }], optionalServices: optSvc };
+        device = await navigator.bluetooth.requestDevice(options);
+        log('用 namePrefix 過濾成功');
+      }
+
+      device.addEventListener('gattserverdisconnected', onDisconnect);
+      devName.textContent = device.name || '已連線';
+      server = await device.gatt.connect();
+      log('GATT 連線完成');
+
+      service = await server.getPrimaryService(svc);
+      log('取得服務', svc);
+
+      chrMode = await service.getCharacteristic(settings.mode);
+      chrB    = await service.getCharacteristic(settings.b);
+      chrS    = await service.getCharacteristic(settings.s);
+      log('特徵就緒');
+
+      await chrMode.startNotifications();
+      chrMode.addEventListener('characteristicvaluechanged', e => {
+        const v = e.target.value.getUint8(0);
+        for (const r of modeRadios) r.checked = (r.value == v);
+      });
+
+      await chrB.startNotifications();
+      chrB.addEventListener('characteristicvaluechanged', e => {
+        const v = e.target.value.getUint8(0);
+        rngB.value = v; valB.textContent = v;
+      });
+
+      await chrS.startNotifications();
+      chrS.addEventListener('characteristicvaluechanged', e => {
+        const v = e.target.value.getUint8(0);
+        rngS.value = v; valS.textContent = v;
+      });
+
+      // 初始同步
+      const vMode = (await chrMode.readValue()).getUint8(0);
+      for (const r of modeRadios) r.checked = (r.value == vMode);
+      const vB = (await chrB.readValue()).getUint8(0);
+      rngB.value = vB; valB.textContent = vB;
+      const vS = (await chrS.readValue()).getUint8(0);
+      rngS.value = vS; valS.textContent = vS;
+
+      setStatus(true);
+      log('準備完成');
+    } catch (err) {
+      log('連線失敗：', err && (err.name || err.message) ? (err.name + ': ' + err.message) : String(err));
+      setStatus(false, '連線失敗');
+      alert('連線失敗：' + (err && err.message ? err.message : err));
+    }
+  }
+
+  function onDisconnect() {
+    setStatus(false, '已中斷');
+    log('GATT 連線中斷');
+    if(chkAutoRe.checked){
+      // 嘗試快速重連（部分瀏覽器限制，可能需要重新 requestDevice）
+      setTimeout(async () => {
+        try{
+          if(device && device.gatt && !device.gatt.connected){
+            await device.gatt.connect();
+            log('自動重連成功');
+            setStatus(true);
+          }
+        }catch(e){ log('自動重連失敗：', e.message||e); }
+      }, 500);
+    }
+  }
+
+  async function disconnect() {
+    try { if (device && device.gatt.connected) device.gatt.disconnect(); } catch(e){}
+    setStatus(false, '未連線');
+    log('手動中斷');
+  }
+
+  // --- Writes ---
+  async function writeByte(chr, val){
+    const data = new Uint8Array([val & 0xFF]);
+    await chr.writeValue(data);
+  }
+
+  // Mode
+  for (const r of modeRadios) {
+    r.addEventListener('change', async () => {
+      if (!device || !device.gatt.connected) return;
+      const val = Number(document.querySelector('input[name="mode"]:checked').value);
+      try { await writeByte(chrMode, val); log('寫入 Mode =', val); } catch(e){ log('寫入 mode 失敗', e); }
+    });
+  }
+
+  // Brightness
+  rngB.addEventListener('input', () => {
+    valB.textContent = rngB.value;
+    if (!device || !device.gatt.connected) return;
+    clearTimeout(writing.B);
+    writing.B = setTimeout(async () => {
+      try { await writeByte(chrB, Number(rngB.value)); log('寫入 Brightness =', rngB.value); } catch(e){ log('寫入 B 失敗', e); }
+    }, 80);
+  });
+
+  // Speed
+  rngS.addEventListener('input', () => {
+    valS.textContent = rngS.value;
+    if (!device || !device.gatt.connected) return;
+    clearTimeout(writing.S);
+    writing.S = setTimeout(async () => {
+      try { await writeByte(chrS, Number(rngS.value)); log('寫入 Speed =', rngS.value); } catch(e){ log('寫入 S 失敗', e); }
+    }, 80);
+  });
+
+  // Buttons
+  btnConn.addEventListener('click', connect);
+  btnDisc.addEventListener('click', disconnect);
+
+  if (!navigator.bluetooth) {
+    $('#hint').innerHTML = '此瀏覽器不支援 Web Bluetooth。請使用 <b>Bluefy</b>（iOS）或支援 Web Bluetooth 的瀏覽器。';
+    log('navigator.bluetooth 不存在');
+  } else {
+    log('Web Bluetooth 支援存在');
+  }
+})();
+</script>
+</body>
+</html>
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
 <title>C6-LED Controller (Bluefy)</title>
 <style>
   :root{
