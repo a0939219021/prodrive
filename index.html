@@ -1,71 +1,30 @@
-<!doctype html>
-<html lang="zh-Hant">
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>C3-LED BLE Console</title>
-<style>
-  body{margin:0;background:#0b1220;color:#e5e7eb;font-family:system-ui,Segoe UI,Arial}
-  .wrap{max-width:640px;margin:0 auto;padding:16px}
-  .card{background:#111827;border-radius:16px;padding:16px;box-shadow:0 8px 24px rgba(0,0,0,.2)}
-  .row{display:flex;align-items:center;gap:10px}
-  .btn{background:#22d3ee;color:#0b1220;border:0;border-radius:10px;padding:10px 14px;font-weight:700}
-  .dot{width:12px;height:12px;border-radius:50%;background:#ef4444;display:inline-block}
-  .ok{background:#10b981}
-  .muted{color:#9ca3af}
-</style>
-<div class="wrap">
-  <h2>ESP32‑C3 BLE 連線狀態</h2>
-  <div class="card">
-    <div class="row">
-      <button id="btn" class="btn">🔗 Connect</button>
-      <span id="name" class="muted">Not connected</span>
-      <span id="dot" class="dot"></span>
-    </div>
-    <p class="muted" style="margin-top:8px">Service: 0xFFF0 · Status Char: 0xFFF4 (Notify 0/1)</p>
-  </div>
+<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BLE Debug Scanner</title>
+<body style="font-family:system-ui;background:#0b1220;color:#e5e7eb">
+<div style="max-width:720px;margin:auto;padding:16px">
+  <button id="btn" style="padding:10px 14px;font-weight:700">🔎 Scan & Connect</button>
+  <pre id="out" style="white-space:pre-wrap;background:#111827;border-radius:12px;padding:12px;margin-top:12px"></pre>
 </div>
 <script>
-const SVC = 0xFFF0;
-const STAT = 0xFFF4;
-let device, server, statChar;
-
-function setState(connected, n='') {
-  document.getElementById('name').textContent = connected ? (`Connected: ${n}`) : 'Not connected';
-  document.getElementById('dot').className = connected ? 'dot ok' : 'dot';
-  document.getElementById('btn').textContent = connected ? '🔌 Disconnect' : '🔗 Connect';
-}
-
-async function connect() {
+const out = d=>document.getElementById('out').textContent=d;
+document.getElementById('btn').onclick = async ()=>{
+  out('Scanning...');
   try{
-    device = await navigator.bluetooth.requestDevice({
-      filters: [{ namePrefix: 'C3-LED' }, { services: [SVC] }],
-      optionalServices: [SVC]
-    });
-    device.addEventListener('gattserverdisconnected', ()=> setState(false));
-    server = await device.gatt.connect();
-    const svc = await server.getPrimaryService(SVC);
-    statChar = await svc.getCharacteristic(STAT);
-    await statChar.startNotifications();
-    statChar.addEventListener('characteristicvaluechanged', e=>{
-      const v = e.target.value.getUint8(0);
-      setState(!!v, device.name || '(no name)');
-    });
-    // 讀一次目前值
-    const v = (await statChar.readValue()).getUint8(0);
-    setState(!!v, device.name || '(no name)');
-  }catch(err){
-    alert('Connect failed: '+err);
-    setState(false);
-  }
-}
-
-document.getElementById('btn').addEventListener('click', async ()=>{
-  if(device && device.gatt.connected) {
-    device.gatt.disconnect();
-    setState(false);
-  } else {
-    await connect();
-  }
-});
+    const dev = await navigator.bluetooth.requestDevice({ acceptAllDevices:true, optionalServices: [] });
+    dev.addEventListener('gattserverdisconnected', ()=> out('Disconnected.'));
+    const server = await dev.gatt.connect();
+    const services = await server.getPrimaryServices();
+    let txt = `Connected: ${dev.name||'(no name)'}\nServices: ${services.length}\n\n`;
+    for(const s of services){
+      txt += `Service ${s.uuid}\n`;
+      const chs = await s.getCharacteristics();
+      for(const c of chs){
+        let props = Object.keys(c.properties).filter(k=>c.properties[k]).join(',');
+        txt += `  Char ${c.uuid}  [${props}]\n`;
+      }
+      txt+='\n';
+    }
+    out(txt);
+  }catch(e){ out('Error: '+e); }
+};
 </script>
-</html>
