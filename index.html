@@ -1,136 +1,195 @@
 <!doctype html>
 <html lang="zh-Hant">
+<head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>C3-OBD Web Bluetooth (v2)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
+<title>ESP32-C6 OBD-II BLE Panel</title>
 <style>
-  body{margin:0;padding:16px;font-family:system-ui,Arial;background:#0f172a;color:#e5e7eb}
-  button{padding:10px 14px;border:0;border-radius:10px;background:#22d3ee;color:#082b2f;font-weight:700}
-  #log{white-space:pre-wrap;background:#111827;border-radius:12px;padding:12px;margin-top:12px}
-  .row{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:12px}
-  .card{background:#111827;border-radius:12px;padding:14px}
-  .big{font-size:36px;font-weight:800}
-  .muted{color:#9ca3af}
+  :root{
+    --bg:#0b1220; --panel:#111827; --fg:#e5e7eb; --muted:#9ca3af; --acc:#22d3ee; --ok:#10b981; --warn:#f59e0b; --err:#ef4444;
+    --br:16px; --gap:12px;
+    --safe-top: env(safe-area-inset-top, 0px); --safe-bot: env(safe-area-inset-bottom, 0px);
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:linear-gradient(180deg,#0b1220,#0f172a);
+    color:var(--fg); font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue";
+    padding-bottom: var(--safe-bot);
+  }
+  header{
+    position:sticky; top:0; z-index:10;
+    background:rgba(11,18,32,.75); backdrop-filter: blur(8px);
+    padding: calc(10px + var(--safe-top)) 16px 10px 16px;
+    border-bottom: 1px solid #111827;
+    display:flex; align-items:center; gap:12px; justify-content:space-between;
+  }
+  .btn{background:var(--acc); color:#001018; border:none; padding:10px 14px; border-radius:12px; font-weight:700}
+  .btn:disabled{opacity:.5}
+  .wrap{max-width:900px; margin:0 auto; padding:16px}
+  .grid{display:grid; gap:12px; grid-template-columns:1fr 1fr 1fr}
+  @media (max-width:900px){ .grid{grid-template-columns:1fr} }
+  .card{
+    background:var(--panel); border-radius:var(--br); padding:16px; box-shadow:0 6px 20px rgba(0,0,0,.25);
+    display:flex; flex-direction:column; gap:8px;
+  }
+  .title{font-size:14px; color:var(--muted); letter-spacing:.06em; text-transform:uppercase}
+  .value{font-size:42px; font-weight:800}
+  .unit{font-size:16px; color:var(--muted); margin-left:6px}
+  .row{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
+  .status{
+    display:inline-flex; align-items:center; gap:8px; padding:8px 10px; background:#0b1629; border-radius:12px; border:1px solid #1f2a44;
+    font-size:13px; color:#a5b4fc;
+  }
+  .pill{display:inline-block; padding:6px 10px; border-radius:999px; background:#0e1a2d; color:#93c5fd; font-size:12px}
+  .footer{
+    padding:20px; text-align:center; color:var(--muted); font-size:12px
+  }
+  input,select{background:#0b1629; color:var(--fg); border:1px solid #1f2a44; border-radius:10px; padding:8px 10px}
+  .hint{font-size:12px; color:#9ca3af}
 </style>
+</head>
 <body>
-  <h2>C3-OBD Web Bluetooth (v2)</h2>
-  <div style="display:flex;gap:8px">
-    <button id="btn">Connect / Reconnect</button>
-    <button id="btnD" disabled>Disconnect</button>
-    <div id="st" class="muted" style="align-self:center">idle</div>
+  <header>
+    <div class="row">
+      <strong>ESP32-C6 OBD-II Panel</strong>
+      <span id="dev" class="pill">Not connected</span>
+    </div>
+    <div class="row">
+      <input id="rate" type="number" min="50" max="2000" step="50" value="200" style="width:120px" />
+      <button id="setrate" class="btn">Set RATE</button>
+      <button id="btn" class="btn">Connect</button>
+    </div>
+  </header>
+
+  <div class="wrap">
+    <div class="row" style="margin-bottom:12px">
+      <div class="status" id="status">Waiting…</div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <div class="title">RPM</div>
+        <div><span class="value" id="rpm">—</span><span class="unit">rpm</span></div>
+      </div>
+      <div class="card">
+        <div class="title">MAF</div>
+        <div><span class="value" id="maf">—</span><span class="unit">g/s</span></div>
+      </div>
+      <div class="card">
+        <div class="title">Throttle</div>
+        <div><span class="value" id="thr">—</span><span class="unit">%</span></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:12px">
+      <div class="title">Log</div>
+      <div id="log" style="font-family:ui-monospace,Consolas,monospace; font-size:12px; white-space:pre-wrap; max-height:220px; overflow:auto"></div>
+      <div class="hint">TIP：若 iOS Bluefy 選不到裝置，可重整頁面再試一次；已連線後斷線會自動嘗試重連。</div>
+    </div>
   </div>
 
-  <div class="row">
-    <div class="card"><div>RPM</div><div id="rpm" class="big">—</div></div>
-    <div class="card"><div>Speed</div><div id="spd" class="big">—</div></div>
-    <div class="card"><div>Throttle</div><div id="thr" class="big">—</div></div>
-  </div>
-
-  <pre id="log"></pre>
+  <div class="footer">© OBD-II BLE demo • ISO-15765-4 (11-bit, 500 kbps) • RPM/MAF/Throttle</div>
 
 <script>
-const SVC     = '12f05678-1234-5678-1234-56789abcdef0';
-const CHR_RPM = '12f05678-1234-5678-1234-56789abcdef1';
-const CHR_SPD = '12f05678-1234-5678-1234-56789abcdef2';
-const CHR_THR = '12f05678-1234-5678-1234-56789abcdef3';
+const UUID_SVC =      "12345678-1234-5678-1234-56789abcdef0";
+const UUID_TX_NOTIFY = "12345678-1234-5678-1234-56789abcdef1"; // device → browser (notify)
+const UUID_RX_WRITE  = "12345678-1234-5678-1234-56789abcdef2"; // browser → device (write)
 
-const $ = s => document.querySelector(s);
-const log = m => { const t=new Date().toLocaleTimeString(); const L=$("#log"); L.textContent+=`[${t}] ${m}\n`; L.scrollTop=L.scrollHeight; };
-const setSt = s => $("#st").textContent = s;
+const $ = sel => document.querySelector(sel);
+const log = (s) => {
+  const el = $('#log');
+  const at = new Date().toLocaleTimeString();
+  el.textContent = `[${at}] ${s}\n` + el.textContent;
+};
+const setStatus = (s) => $('#status').textContent = s;
 
-let device, server, svc, chrRPM, chrSPD, chrTHR;
+let device, server, service, chTX, chRX;
+let reconnectTimer = null;
 
-async function requestC3() {
-  // 用名稱過濾；如果 Bluefy 對 services filter 挑剔，仍可用 optionalServices
-  return await navigator.bluetooth.requestDevice({
-    filters: [{ namePrefix: 'C3-OBD' }],
-    optionalServices: [SVC]
-  });
-}
+async function connect() {
+  try {
+    setStatus('Scanning…');
+    // namePrefix 用於你裝置名稱 C6-LED；同時開 acceptAllDevices 以防 iOS 選單限制
+    device = await navigator.bluetooth.requestDevice({
+      acceptAllDevices: true,
+      optionalServices: [UUID_SVC],
+      filters: [{ namePrefix: 'C6-' }]
+    });
+    $('#dev').textContent = device.name || 'Unknown';
+    device.addEventListener('gattserverdisconnected', handleDisconnect);
 
-async function connectGattWithRetry(dev, tries=3){
-  let lastErr;
-  for (let i=0;i<tries;i++){
-    try{
-      setSt(`connecting... (try ${i+1}/${tries})`);
-      if (dev.gatt.connected) { try { dev.gatt.disconnect(); } catch(e){} }
-      const g = await dev.gatt.connect();
-      return g;
-    }catch(e){
-      lastErr = e;
-      log(`connect fail #${i+1} → ${e?.name||e}: ${e?.message||''}`);
-      await new Promise(r=>setTimeout(r, 800));
-    }
-  }
-  throw lastErr;
-}
+    setStatus('Connecting GATT…');
+    server = await device.gatt.connect();
+    service = await server.getPrimaryService(UUID_SVC);
+    chTX = await service.getCharacteristic(UUID_TX_NOTIFY);
+    chRX = await service.getCharacteristic(UUID_RX_WRITE);
 
-async function doConnect(){
-  try{
-    setSt('requesting...');
-    device = await requestC3();
-    device.addEventListener('gattserverdisconnected', ()=>{ setSt('disconnected'); $("#btn").disabled=false; $("#btnD").disabled=true; log('Disconnected.'); });
-
-    server = await connectGattWithRetry(device, 3);
-    log(`Connected to ${device.name || device.id}`);
-
-    // 先試指定 UUID 的 service，失敗就 fallback 選「可通知≥3」的
-    try {
-      svc = await server.getPrimaryService(SVC);
-      log(`Service found by UUID: ${SVC}`);
-    } catch(e) {
-      log(`getPrimaryService by UUID failed → fallback scan services`);
-      const svcs = await server.getPrimaryServices();
-      for(const s of svcs){
-        try{
-          const chs = await s.getCharacteristics();
-          const noti = chs.filter(c=>c.properties?.notify||c.properties?.indicate);
-          if(noti.length>=3){ svc=s; log(`fallback picked service: ${s.uuid}`); break; }
-        }catch(e2){}
-      }
-      if(!svc) throw new Error('找不到合適的 Service（可通知特徵 < 3）');
-    }
-
-    // 取三個特徵（按 UUID；失敗就用 fallback 的前三個可通知）
-    try{
-      [chrRPM, chrSPD, chrTHR] = await Promise.all([
-        svc.getCharacteristic(CHR_RPM),
-        svc.getCharacteristic(CHR_SPD),
-        svc.getCharacteristic(CHR_THR),
-      ]);
-      log('Characteristics found by UUID.');
-    }catch(e){
-      log('getCharacteristic by UUID failed → fallback to first 3 notifiable');
-      const chs = await svc.getCharacteristics();
-      const noti = chs.filter(c=>c.properties?.notify||c.properties?.indicate);
-      if(noti.length<3) throw new Error('Service notifiable chars < 3');
-      [chrRPM, chrSPD, chrTHR] = noti.slice(0,3);
-    }
-
-    // 初次 read（立刻有值）
-    try{
-      const v1 = await chrRPM.readValue(); $("#rpm").textContent = v1.getUint16(0,true);
-      const v2 = await chrSPD.readValue(); $("#spd").textContent = v2.getUint8(0);
-      const v3 = await chrTHR.readValue(); $("#thr").textContent = v3.getUint8(0);
-    }catch(e){ log(`initial read failed: ${e?.name||e} ${e?.message||''}`); }
-
-    // 訂閱
-    chrRPM.addEventListener('characteristicvaluechanged', e=>$("#rpm").textContent=e.target.value.getUint16(0,true));
-    chrSPD.addEventListener('characteristicvaluechanged', e=>$("#spd").textContent=e.target.value.getUint8(0));
-    chrTHR.addEventListener('characteristicvaluechanged', e=>$("#thr").textContent=e.target.value.getUint8(0));
-    await chrRPM.startNotifications(); await chrSPD.startNotifications(); await chrTHR.startNotifications();
-
-    setSt('connected');
-    $("#btn").disabled=true; $("#btnD").disabled=false;
-    log('Notifications started. 等待數據...');
-  }catch(e){
-    setSt('error');
-    log(`❌ connect error → ${e?.name||e}: ${e?.message||''}`);
+    await chTX.startNotifications();
+    chTX.addEventListener('characteristicvaluechanged', onNotify);
+    setStatus('Connected');
+    log('Connected');
+    $('#btn').textContent = 'Disconnect';
+  } catch (e) {
+    setStatus('Error: ' + e.message);
+    log('ERR ' + e);
   }
 }
 
-$("#btn").addEventListener('click', ()=> doConnect());
-$("#btnD").addEventListener('click', ()=> { try{ device?.gatt?.disconnect(); }catch(e){} });
+function scheduleReconnect() {
+  if (reconnectTimer) return;
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    if (device && device.gatt && !device.gatt.connected) {
+      connect().catch(()=>{});
+    }
+  }, 1500);
+}
+
+function handleDisconnect() {
+  setStatus('Disconnected');
+  log('Disconnected');
+  $('#btn').textContent = 'Connect';
+  scheduleReconnect();
+}
+
+function onNotify(ev) {
+  const dv = ev.target.value;
+  let s = '';
+  for (let i=0; i<dv.byteLength; i++) s += String.fromCharCode(dv.getUint8(i));
+  try {
+    const j = JSON.parse(s);
+    if (j.t === 'obd') {
+      if (j.rpm != null) $('#rpm').textContent = j.rpm;
+      if (j.maf != null) $('#maf').textContent = j.maf.toFixed(2);
+      if (j.thr != null) $('#thr').textContent = j.thr.toFixed(1);
+    }
+  } catch (e) {
+    log('RX: ' + s);
+  }
+}
+
+async function setRate() {
+  const v = parseInt($('#rate').value, 10);
+  if (!chRX || isNaN(v)) return;
+  const msg = `RATE:${v}`;
+  await chRX.writeValue(new TextEncoder().encode(msg));
+  log('TX ' + msg);
+}
+
+$('#btn').addEventListener('click', async ()=>{
+  try {
+    if (device && device.gatt && device.gatt.connected) {
+      device.gatt.disconnect();
+      return;
+    }
+    await connect();
+  } catch(e){
+    setStatus('Error: ' + e.message);
+  }
+});
+
+$('#setrate').addEventListener('click', setRate);
 </script>
 </body>
 </html>
