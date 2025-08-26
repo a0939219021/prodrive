@@ -17,7 +17,7 @@
   .v{font-size:44px;font-weight:800}
   .u{font-size:14px;color:var(--muted);margin-left:6px}
   #log{font-family:ui-monospace,Consolas,monospace;font-size:12px;white-space:pre-wrap;max-height:280px;overflow:auto}
-  select,input{background:#0b1629;color:var(--fg);border:1px solid #1f2a44;border-radius:10px;padding:8px 10px}
+  select,input{background:#0b1629;color:#e5e7eb;border:1px solid #1f2a44;border-radius:10px;padding:8px 10px}
 </style>
 <body>
 <header>
@@ -70,7 +70,6 @@ let device, server, svc, chTX, chRX;
 
 async function connect() {
   log("requestDevice…");
-  // 不加 filters，避免被 iOS/瀏覽器過濾；optionalServices 指向自家服務
   device = await navigator.bluetooth.requestDevice({
     acceptAllDevices: true,
     optionalServices: [UUID_SVC]
@@ -102,8 +101,6 @@ function onNotify(ev) {
   const dv = ev.target.value;
   let s = "";
   for (let i = 0; i < dv.byteLength; i++) s += String.fromCharCode(dv.getUint8(i));
-
-  // 可能一次收到分片，盡量以行為單位解析
   try {
     const j = JSON.parse(s);
     if (j.t === 'obd') {
