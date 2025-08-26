@@ -9,8 +9,8 @@
   header{position:sticky;top:0;background:#0b1220cc;backdrop-filter:blur(8px);padding:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
   .btn{background:var(--acc);color:#001018;border:0;border-radius:12px;padding:10px 14px;font-weight:700}
   .wrap{max-width:980px;margin:0 auto;padding:16px}
-  .pill{padding:6px 10px;border-radius:999px;background:#0e1a2d;color:#93c5fd}
-  .grid{display:grid;gap:12px;grid-template-columns:repeat(3,1fr)} @media(max-width:900px){.grid{grid-template-columns:1fr}}
+  .pill{padding:6px 10px;border-radius:999px;background:#0e1a2d;color:var(--muted)}
+  .grid{display:grid;gap:12px;grid-template-columns:repeat(4,1fr)} @media(max-width:1100px){.grid{grid-template-columns:repeat(2,1fr)}} @media(max-width:700px){.grid{grid-template-columns:1fr}}
   .card{background:var(--card);border-radius:var(--br);padding:16px;box-shadow:0 6px 18px #0006}
   .t{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
   .v{font-size:44px;font-weight:800}
@@ -51,6 +51,7 @@
     <div class="card"><div class="t">RPM</div><div><span class="v" id="rpm">—</span><span class="u">rpm</span></div></div>
     <div class="card"><div class="t">MAF</div><div><span class="v" id="maf">—</span><span class="u">g/s</span></div></div>
     <div class="card"><div class="t">Throttle</div><div><span class="v" id="thr">—</span><span class="u">%</span></div></div>
+    <div class="card"><div class="t">MAP</div><div><span class="v" id="map">—</span><span class="u">kPa</span></div></div>
   </div>
   <div class="card" style="margin-top:12px">
     <div class="t">Log</div>
@@ -108,6 +109,7 @@ function onNotify(ev) {
       if (j.rpm != null) $('#rpm').textContent = j.rpm;
       if (j.maf != null) $('#maf').textContent = (+j.maf).toFixed(2);
       if (j.thr != null) $('#thr').textContent = (+j.thr).toFixed(1);
+      if (j.map != null) $('#map').textContent = j.map;
     } else if (j.t === 'raw') {
       log(`RAW id=0x${j.id.toString(16)} d=${j.d}`);
     } else if (j.t === 'err') {
