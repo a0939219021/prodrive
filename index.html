@@ -1,37 +1,155 @@
 <!doctype html>
+<html lang="zh-Hant">
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>BLE Debug Connect</title>
-<style>body{font-family:system-ui,Segoe UI,Roboto;margin:20px;color:#e5e7eb;background:#0b1220}
-h1{margin:0 0 10px} button{padding:10px 14px;border:0;border-radius:10px;background:#22d3ee;color:#001018;font-weight:700}
-pre{white-space:pre-wrap;background:#111827;padding:12px;border-radius:10px;min-height:120px}</style>
-<h1>BLE Debug Connect</h1>
-<button id="btn">Connect</button>
-<pre id="log">Log will appear here…</pre>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<title>ESP32-C6 OBD-II BLE Diag</title>
+<style>
+  :root{--bg:#0b1220;--card:#111827;--fg:#e5e7eb;--muted:#9ca3af;--acc:#22d3ee;--ok:#10b981;--warn:#f59e0b;--bad:#ef4444;--br:16px}
+  *{box-sizing:border-box} body{margin:0;background:linear-gradient(180deg,#0b1220,#0f172a);color:var(--fg);font-family:system-ui,Segoe UI,Roboto}
+  header{position:sticky;top:0;background:#0b1220cc;backdrop-filter:blur(8px);padding:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .btn{background:var(--acc);color:#001018;border:0;border-radius:12px;padding:10px 14px;font-weight:700}
+  .wrap{max-width:980px;margin:0 auto;padding:16px}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .pill{padding:6px 10px;border-radius:999px;background:#0e1a2d;color:#93c5fd}
+  .grid{display:grid;gap:12px;grid-template-columns:repeat(3,1fr)} @media(max-width:900px){.grid{grid-template-columns:1fr}}
+  .card{background:var(--card);border-radius:var(--br);padding:16px;box-shadow:0 6px 18px #0006}
+  .t{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+  .v{font-size:44px;font-weight:800}
+  .u{font-size:14px;color:var(--muted);margin-left:6px}
+  #log{font-family:ui-monospace,Consolas,monospace;font-size:12px;white-space:pre-wrap;max-height:280px;overflow:auto}
+  select,input{background:#0b1629;color:var(--fg);border:1px solid #1f2a44;border-radius:10px;padding:8px 10px}
+</style>
+<body>
+<header>
+  <button id="btn" class="btn">Connect</button>
+  <span id="dev" class="pill">Not connected</span>
+  <select id="mode">
+    <option>MODE:LISTEN</option>
+    <option>MODE:NORMAL</option>
+  </select>
+  <select id="bit">
+    <option>BIT:500</option>
+    <option>BIT:250</option>
+  </select>
+  <select id="clk">
+    <option>CLK:8</option>
+    <option>CLK:16</option>
+  </select>
+  <select id="dump">
+    <option>DUMP:ON</option>
+    <option>DUMP:OFF</option>
+  </select>
+  <select id="pid">
+    <option>PID:OFF</option>
+    <option>PID:ON</option>
+  </select>
+  <button id="apply" class="btn">Apply</button>
+</header>
+
+<div class="wrap">
+  <div class="grid">
+    <div class="card"><div class="t">RPM</div><div><span class="v" id="rpm">—</span><span class="u">rpm</span></div></div>
+    <div class="card"><div class="t">MAF</div><div><span class="v" id="maf">—</span><span class="u">g/s</span></div></div>
+    <div class="card"><div class="t">Throttle</div><div><span class="v" id="thr">—</span><span class="u">%</span></div></div>
+  </div>
+  <div class="card" style="margin-top:12px">
+    <div class="t">Log</div>
+    <div id="log">Ready.</div>
+  </div>
+</div>
+
 <script>
-const log = (s)=>{document.querySelector('#log').textContent = s+"\n"+document.querySelector('#log').textContent;}
-const UUID_SVC="12345678-1234-5678-1234-56789abcdef0";
-const UUID_TX ="12345678-1234-5678-1234-56789abcdef1";
-const UUID_RX ="12345678-1234-5678-1234-56789abcdef2";
-document.querySelector('#btn').onclick = async ()=>{
-  try{
-    log("requestDevice…");
-    const dev = await navigator.bluetooth.requestDevice({
-      acceptAllDevices: true,
-      optionalServices: [UUID_SVC]
-    });
-    log("device: "+(dev.name||"Unknown"));
-    dev.addEventListener('gattserverdisconnected', ()=>log("disconnected"));
-    const server = await dev.gatt.connect(); log("gatt.connect ok");
-    const svc = await server.getPrimaryService(UUID_SVC); log("getPrimaryService ok");
-    const chTX = await svc.getCharacteristic(UUID_TX); log("TX characteristic ok");
-    const chRX = await svc.getCharacteristic(UUID_RX); log("RX characteristic ok");
-    await chTX.startNotifications(); log("startNotifications ok");
-    chTX.addEventListener('characteristicvaluechanged', e=>{
-      let s=""; const dv=e.target.value; for(let i=0;i<dv.byteLength;i++) s+=String.fromCharCode(dv.getUint8(i));
-      log("notify: "+s);
-    });
-    log("READY ✔ 你現在已連上 GATT");
-  }catch(e){ log("ERROR: "+(e?.message||e)); }
+const UUID_SVC = "12345678-1234-5678-1234-56789abcdef0";
+const UUID_TX  = "12345678-1234-5678-1234-56789abcdef1";
+const UUID_RX  = "12345678-1234-5678-1234-56789abcdef2";
+
+const $ = s => document.querySelector(s);
+const log = s => { $('#log').textContent = `[${new Date().toLocaleTimeString()}] ${s}\n` + $('#log').textContent; };
+
+let device, server, svc, chTX, chRX;
+
+async function connect() {
+  log("requestDevice…");
+  // 不加 filters，避免被 iOS/瀏覽器過濾；optionalServices 指向自家服務
+  device = await navigator.bluetooth.requestDevice({
+    acceptAllDevices: true,
+    optionalServices: [UUID_SVC]
+  });
+  $('#dev').textContent = device.name || 'Unknown';
+  device.addEventListener('gattserverdisconnected', onDisconnect);
+
+  log("gatt.connect…");
+  server = await device.gatt.connect();
+  log("gatt.connect ok");
+
+  svc = await server.getPrimaryService(UUID_SVC);
+  chTX = await svc.getCharacteristic(UUID_TX);
+  chRX = await svc.getCharacteristic(UUID_RX);
+
+  await chTX.startNotifications();
+  chTX.addEventListener('characteristicvaluechanged', onNotify);
+  log("READY ✔ 已連線，可用上方選單送指令");
+  $('#btn').textContent = 'Disconnect';
+}
+
+function onDisconnect() {
+  $('#dev').textContent = 'Disconnected';
+  $('#btn').textContent = 'Connect';
+  log('disconnected');
+}
+
+function onNotify(ev) {
+  const dv = ev.target.value;
+  let s = "";
+  for (let i = 0; i < dv.byteLength; i++) s += String.fromCharCode(dv.getUint8(i));
+
+  // 可能一次收到分片，盡量以行為單位解析
+  try {
+    const j = JSON.parse(s);
+    if (j.t === 'obd') {
+      if (j.rpm != null) $('#rpm').textContent = j.rpm;
+      if (j.maf != null) $('#maf').textContent = j.maf.toFixed(2);
+      if (j.thr != null) $('#thr').textContent = j.thr.toFixed(1);
+    } else if (j.t === 'raw') {
+      log(`RAW id=0x${j.id.toString(16)} d=${j.d}`);
+    } else if (j.t === 'err') {
+      log(`ERR ${JSON.stringify(j)}`);
+    } else {
+      log(`RX ${s}`);
+    }
+  } catch(e) {
+    log('RX ' + s);
+  }
+}
+
+async function send(cmd) {
+  if (!chRX) { log('尚未連線'); return; }
+  try {
+    await chRX.writeValue(new TextEncoder().encode(cmd));
+    log('TX ' + cmd);
+  } catch (e) {
+    log('TX ERR ' + e.message);
+  }
+}
+
+$('#btn').onclick = async () => {
+  try {
+    if (device && device.gatt && device.gatt.connected) {
+      device.gatt.disconnect(); return;
+    }
+    await connect();
+  } catch (e) {
+    log('ERROR ' + (e?.message || e));
+  }
+};
+
+$('#apply').onclick = async () => {
+  await send($('#mode').value);
+  await send($('#bit').value);
+  await send($('#clk').value);
+  await send($('#dump').value);
+  await send($('#pid').value);
 };
 </script>
+</body>
+</html>
