@@ -47,7 +47,7 @@
     <div class="t">Firmware Update (OTA)</div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0">
       <input type="file" id="fwfile" accept=".py,.mpy,.zip,.bin,.txt">
-      <input type="text" id="fwpath" placeholder="Target path on device" value="c6_can_listen_diag.py" style="min-width:260px">
+      <input type="text" id="fwpath" placeholder="Target path on device" value="main.py" style="min-width:260px">
       <button id="fwUpload" class="btn">Upload</button>
       <button id="fwApply"  class="btn">Apply & Reboot</button>
       <button id="fwCheck"  class="btn">Update Firmware</button>
@@ -207,7 +207,7 @@ async function fwUpload() {
   if (!chFILE) { log('未連線'); return; }
   const f = $('#fwfile').files[0];
   if (!f) { $('#fwinfo').textContent = '請先選擇檔案'; return; }
-  const target = ($('#fwpath').value || 'c6_can_listen_diag.py').trim();
+  const target = ($('#fwpath').value || 'main.py').trim();
 
   const buf = await f.arrayBuffer();
   const sha = await sha256Hex(buf);
