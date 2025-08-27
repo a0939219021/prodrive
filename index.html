@@ -2,7 +2,7 @@
 <html lang="zh-Hant">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
-<title>ESP32-C6 OBD-II BLE Diag — v2025.08.27-r3 (OTA)</title>
+<title>ESP32-C6 OBD-II BLE Diag — v2025.08.27-r4 (OTA fix)</title>
 <style>
   :root{--bg:#0b1220;--card:#111827;--fg:#e5e7eb;--muted:#9ca3af;--acc:#22d3ee;--ok:#10b981;--warn:#f59e0b;--bad:#ef4444;--br:16px}
   *{box-sizing:border-box} body{margin:0;background:linear-gradient(180deg,#0b1220,#0f172a);color:var(--fg);font-family:system-ui,Segoe UI,Roboto}
@@ -25,7 +25,7 @@
 <header>
   <button id="btn" class="btn">Connect</button>
   <span id="dev" class="pill">Not connected</span>
-  <span id="ver" class="pill">v2025.08.27-r3</span>
+  <span id="ver" class="pill">v2025.08.27-r4</span>
   <select id="mode"><option>MODE:LISTEN</option><option>MODE:NORMAL</option></select>
   <select id="bit"><option>BIT:500</option><option selected>BIT:250</option></select>
   <select id="clk"><option>CLK:8</option><option selected>CLK:16</option></select>
@@ -56,12 +56,12 @@
 
   <div class="card" style="margin-top:12px">
     <div class="t">Log</div>
-    <div id="log">Ready. App v2025.08.27-r3</div>
+    <div id="log">Ready. App v2025.08.27-r4</div>
   </div>
 </div>
 
 <script>
-const APP_VERSION = "v2025.08.27-r3";
+const APP_VERSION = "v2025.08.27-r4";
 const UUID_SVC = "12345678-1234-5678-1234-56789abcdef0";
 const UUID_TX  = "12345678-1234-5678-1234-56789abcdef1";
 const UUID_RX  = "12345678-1234-5678-1234-56789abcdef2";
@@ -71,6 +71,7 @@ const $ = s => document.querySelector(s);
 const log = s => { $('#log').textContent = `[${new Date().toLocaleTimeString()}] ${s}\n` + $('#log').textContent; };
 
 let device, server, svc, chTX, chRX, chFILE;
+let verifyPoll = null;
 
 async function connect() {
   log("requestDevice…");
@@ -90,7 +91,6 @@ async function connect() {
   chRX = await svc.getCharacteristic(UUID_RX);
   chFILE = await svc.getCharacteristic(UUID_FILE);
 
-  // notify
   await chTX.startNotifications();
   chTX.addEventListener('characteristicvaluechanged', onNotify);
   log("READY ✔ 已連線，可用上方選單或 OTA");
@@ -101,6 +101,7 @@ function onDisconnect() {
   $('#dev').textContent = 'Disconnected';
   $('#btn').textContent = 'Connect';
   log('disconnected');
+  if (verifyPoll) { clearInterval(verifyPoll); verifyPoll = null; }
 }
 
 function onNotify(ev) {
@@ -118,21 +119,33 @@ function onNotify(ev) {
       log(`RAW id=0x${j.id.toString(16)} d=${j.d}`);
     } else if (j.t === 'err') {
       log(`ERR ${JSON.stringify(j)}`);
-    } else if (j.t === 'fw') {  // OTA 事件
+    } else if (j.t === 'fw') {
       if (j.ev === 'begin') {
         if (j.ok) { $('#fwinfo').textContent = `Begin OK → target=${j.target} size=${j.size}`; $('#fwprog').value = 0; }
         else { $('#fwinfo').textContent = `Begin ERR: ${j.err || ''}`; }
       } else if (j.ev === 'progress') {
         if (j.size) { $('#fwprog').max = j.size; $('#fwprog').value = j.rx || 0; }
         $('#fwinfo').textContent = `Uploading… ${j.rx}/${j.size}`;
+      } else if (j.ev === 'verify') {
+        $('#fwinfo').textContent = `Verifying… ${j.rx}/${j.size}`;
+      } else if (j.ev === 'stat') {
+        if (j.active) {
+          $('#fwinfo').textContent = `Waiting verify… ${j.rx}/${j.size}`;
+          if (j.size) { $('#fwprog').max = j.size; $('#fwprog').value = j.rx || 0; }
+        }
       } else if (j.ev === 'end') {
         if (j.ok) { $('#fwinfo').textContent = `Verify OK SHA=${j.sha}`; $('#fwprog').value = $('#fwprog').max; }
         else { $('#fwinfo').textContent = `End ERR (rx=${j.rx}/${j.size})`; }
+        if (verifyPoll) { clearInterval(verifyPoll); verifyPoll = null; }
       } else if (j.ev === 'abort') {
         $('#fwinfo').textContent = `Aborted: ${j.reason || ''}`;
+        if (verifyPoll) { clearInterval(verifyPoll); verifyPoll = null; }
       } else if (j.ev === 'apply') {
         $('#fwinfo').textContent = `Applying… rebooting`;
       }
+    } else if (j.t === 'info' && j.fw) {
+      $('#ver').textContent = j.fw;
+      log('FW ' + j.fw);
     } else {
       log(`RX ${s}`);
     }
@@ -170,7 +183,7 @@ $('#apply').onclick = async () => {
   await send($('#pid').value);
 };
 
-/* ===== OTA：選檔→BEGIN→DATA→END→（手動）APPLY ===== */
+/* ===== OTA：選檔→BEGIN→DATA→END→（APPLY） ===== */
 
 async function sha256Hex(buffer) {
   const hash = await crypto.subtle.digest('SHA-256', buffer);
@@ -188,12 +201,10 @@ async function fwUpload() {
   const sha = await sha256Hex(buf);
   const size = buf.byteLength;
 
-  // 告知裝置開始
   await send(`FW:BEGIN ${target} ${size} ${sha}`);
 
-  // 分塊上傳
   const u8 = new Uint8Array(buf);
-  const CHUNK = 180;  // 與裝置 notify chunk 相近
+  const CHUNK = 180;
   $('#fwprog').max = size; $('#fwprog').value = 0;
   $('#fwinfo').textContent = `Uploading… 0/${size}`;
 
@@ -209,14 +220,17 @@ async function fwUpload() {
       await send('FW:ABORT');
       return;
     }
-    // 適度節流，降低擠壓
     await new Promise(r => setTimeout(r, 8));
   }
 
-  // 結束並等待驗證
+  // 讓裝置把最後幾個 chunk 消化完，再送 END
+  await new Promise(r => setTimeout(r, 150));
   await send('FW:END');
   $('#fwinfo').textContent = 'Upload done, verifying on device…';
-  log('FW upload done, waiting for verify');
+
+  // 啟動狀態輪詢（裝置端會在主循環完成驗證後回 "end"）
+  if (verifyPoll) { clearInterval(verifyPoll); }
+  verifyPoll = setInterval(async () => { await send('FW:STAT'); }, 400);
 }
 
 async function fwApply() {
