@@ -66,13 +66,8 @@
 <script>
 const APP_VERSION = "v2025.08.27-r4";
 
-/* ===== 你自己的 GitHub Pages manifest URL（請改成你的實際網址） ===== */
-// 原本可能是 https://xxx.github.io/esp32c6-ota/ota/manifest.json
-const OTA_MANIFEST_URL = "/ota/manifest.json";
-
-/* 例如：
-   https://acme-inc.github.io/esp32c6-ota/ota/manifest.json
-*/
+/* ===== 唯一必改：你的 GitHub Pages manifest 相對路徑 ===== */
+const OTA_MANIFEST_URL = "ota/manifest.json";
 
 const UUID_SVC = "12345678-1234-5678-1234-56789abcdef0";
 const UUID_TX  = "12345678-1234-5678-1234-56789abcdef1";
@@ -266,7 +261,7 @@ async function oneClickUpdate() {
     const {version, target, url, sha256} = mani;
     log(`OTA: latest ${version} → ${target}`);
 
-    // 2) 抓韌體二進位
+    // 2) 抓韌體二進位（相對於 /prodrive/ 的相對路徑）
     log('OTA: download firmware…');
     const resp = await fetch(url, {cache:'no-store'});
     if(!resp.ok) throw new Error('firmware HTTP '+resp.status);
@@ -301,7 +296,7 @@ async function oneClickUpdate() {
     if (verifyPoll) clearInterval(verifyPoll);
     verifyPoll = setInterval(async ()=>{ await send('FW:STAT'); }, 400);
 
-    // 自動套用的動作在 onNotify 的 'end/ok' 事件裡觸發（Auto Apply 勾選時）
+    // 自動套用在 onNotify 的 'end/ok' 事件裡觸發（Auto Apply 勾選時）
   } catch (e) {
     log('OTA ERR '+ (e?.message || e));
     $('#fwinfo').textContent = 'OTA error: ' + (e?.message || e);
@@ -314,14 +309,6 @@ $('#fwUpload').onclick = fwUpload;
 $('#fwApply').onclick  = fwApply;
 $('#fwCheck').onclick  = oneClickUpdate;
 
-$('#btn').onclick = async () => {
-  try {
-    if (device && device.gatt && device.gatt.connected) { device.gatt.disconnect(); return; }
-    await connect();
-  } catch (e) {
-    log('ERROR ' + (e?.message || e));
-  }
-};
 </script>
 </body>
 </html>
