@@ -1,8 +1,8 @@
 {
   "channel": "internal",
   "version": "v2025.08.27-r4",
-  "target": "c6_can_listen_diag.py",
-  "url": "https://https://a0939219021.github.io/prodrive/ota/c6_can_listen_diag.py",
+  "target": "main.py",
+  "url": "https://https://a0939219021.github.io/prodrive/ota/main.py",
   "sha256": "<上一步算出的SHA256>",
   "notes": "Internal test via GitHub Pages"
 }
