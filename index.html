@@ -2,14 +2,14 @@
 <html lang="zh-Hant">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
-<title>ESP32-C6 OBD-II BLE Diag — v2025.08.26-r1</title>
+<title>ESP32-C6 OBD-II BLE Diag — v2025.08.27-r3 (OTA)</title>
 <style>
   :root{--bg:#0b1220;--card:#111827;--fg:#e5e7eb;--muted:#9ca3af;--acc:#22d3ee;--ok:#10b981;--warn:#f59e0b;--bad:#ef4444;--br:16px}
   *{box-sizing:border-box} body{margin:0;background:linear-gradient(180deg,#0b1220,#0f172a);color:var(--fg);font-family:system-ui,Segoe UI,Roboto}
   header{position:sticky;top:0;background:#0b1220cc;backdrop-filter:blur(8px);padding:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-  .btn{background:var(--acc);color:#001018;border:0;border-radius:12px;padding:10px 14px;font-weight:700}
+  .btn{background:var(--acc);color:#001018;border:0;border-radius:12px;padding:10px 14px;font-weight:700;cursor:pointer}
   .wrap{max-width:980px;margin:0 auto;padding:16px}
-  .pill{padding:6px 10px;border-radius:999px;background:#0e1a2d;color:var(--muted)}
+  .pill{padding:6px 10px;border-radius:999px;background:#0e1a2d;color:#93c5fd}
   .grid{display:grid;gap:12px;grid-template-columns:repeat(4,1fr)} @media(max-width:1100px){.grid{grid-template-columns:repeat(2,1fr)}} @media(max-width:700px){.grid{grid-template-columns:1fr}}
   .card{background:var(--card);border-radius:var(--br);padding:16px;box-shadow:0 6px 18px #0006}
   .t{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
@@ -17,32 +17,20 @@
   .u{font-size:14px;color:var(--muted);margin-left:6px}
   #log{font-family:ui-monospace,Consolas,monospace;font-size:12px;white-space:pre-wrap;max-height:280px;overflow:auto}
   select,input{background:#0b1629;color:#e5e7eb;border:1px solid #1f2a44;border-radius:10px;padding:8px 10px}
+  progress{width:100%;height:10px;border-radius:999px;appearance:none}
+  progress::-webkit-progress-bar{background:#0b1629;border-radius:999px}
+  progress::-webkit-progress-value{background:var(--ok);border-radius:999px}
 </style>
 <body>
 <header>
   <button id="btn" class="btn">Connect</button>
   <span id="dev" class="pill">Not connected</span>
-  <span id="ver" class="pill">v2025.08.26-r1</span>
-  <select id="mode">
-    <option>MODE:LISTEN</option>
-    <option>MODE:NORMAL</option>
-  </select>
-  <select id="bit">
-    <option>BIT:500</option>
-    <option selected>BIT:250</option>
-  </select>
-  <select id="clk">
-    <option>CLK:8</option>
-    <option selected>CLK:16</option>
-  </select>
-  <select id="dump">
-    <option selected>DUMP:ON</option>
-    <option>DUMP:OFF</option>
-  </select>
-  <select id="pid">
-    <option selected>PID:OFF</option>
-    <option>PID:ON</option>
-  </select>
+  <span id="ver" class="pill">v2025.08.27-r3</span>
+  <select id="mode"><option>MODE:LISTEN</option><option>MODE:NORMAL</option></select>
+  <select id="bit"><option>BIT:500</option><option selected>BIT:250</option></select>
+  <select id="clk"><option>CLK:8</option><option selected>CLK:16</option></select>
+  <select id="dump"><option selected>DUMP:ON</option><option>DUMP:OFF</option></select>
+  <select id="pid"><option selected>PID:OFF</option><option>PID:ON</option></select>
   <button id="apply" class="btn">Apply</button>
 </header>
 
@@ -53,22 +41,36 @@
     <div class="card"><div class="t">Throttle</div><div><span class="v" id="thr">—</span><span class="u">%</span></div></div>
     <div class="card"><div class="t">MAP</div><div><span class="v" id="map">—</span><span class="u">kPa</span></div></div>
   </div>
+
+  <div class="card" style="margin-top:12px">
+    <div class="t">Firmware Update (OTA)</div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0">
+      <input type="file" id="fwfile" accept=".py,.mpy,.zip,.bin,.txt">
+      <input type="text" id="fwpath" placeholder="Target path on device" value="c6_can_listen_diag.py" style="min-width:260px">
+      <button id="fwUpload" class="btn">Upload</button>
+      <button id="fwApply"  class="btn">Apply & Reboot</button>
+    </div>
+    <progress id="fwprog" value="0" max="1"></progress>
+    <div id="fwinfo" class="t" style="margin-top:8px">Select a file and click Upload</div>
+  </div>
+
   <div class="card" style="margin-top:12px">
     <div class="t">Log</div>
-    <div id="log">Ready. App v2025.08.26-r1</div>
+    <div id="log">Ready. App v2025.08.27-r3</div>
   </div>
 </div>
 
 <script>
-const APP_VERSION = "v2025.08.26-r1";
+const APP_VERSION = "v2025.08.27-r3";
 const UUID_SVC = "12345678-1234-5678-1234-56789abcdef0";
 const UUID_TX  = "12345678-1234-5678-1234-56789abcdef1";
 const UUID_RX  = "12345678-1234-5678-1234-56789abcdef2";
+const UUID_FILE= "12345678-1234-5678-1234-56789abcdef3";
 
 const $ = s => document.querySelector(s);
 const log = s => { $('#log').textContent = `[${new Date().toLocaleTimeString()}] ${s}\n` + $('#log').textContent; };
 
-let device, server, svc, chTX, chRX;
+let device, server, svc, chTX, chRX, chFILE;
 
 async function connect() {
   log("requestDevice…");
@@ -86,10 +88,12 @@ async function connect() {
   svc = await server.getPrimaryService(UUID_SVC);
   chTX = await svc.getCharacteristic(UUID_TX);
   chRX = await svc.getCharacteristic(UUID_RX);
+  chFILE = await svc.getCharacteristic(UUID_FILE);
 
+  // notify
   await chTX.startNotifications();
   chTX.addEventListener('characteristicvaluechanged', onNotify);
-  log("READY ✔ 已連線，可用上方選單送指令");
+  log("READY ✔ 已連線，可用上方選單或 OTA");
   $('#btn').textContent = 'Disconnect';
 }
 
@@ -114,6 +118,21 @@ function onNotify(ev) {
       log(`RAW id=0x${j.id.toString(16)} d=${j.d}`);
     } else if (j.t === 'err') {
       log(`ERR ${JSON.stringify(j)}`);
+    } else if (j.t === 'fw') {  // OTA 事件
+      if (j.ev === 'begin') {
+        if (j.ok) { $('#fwinfo').textContent = `Begin OK → target=${j.target} size=${j.size}`; $('#fwprog').value = 0; }
+        else { $('#fwinfo').textContent = `Begin ERR: ${j.err || ''}`; }
+      } else if (j.ev === 'progress') {
+        if (j.size) { $('#fwprog').max = j.size; $('#fwprog').value = j.rx || 0; }
+        $('#fwinfo').textContent = `Uploading… ${j.rx}/${j.size}`;
+      } else if (j.ev === 'end') {
+        if (j.ok) { $('#fwinfo').textContent = `Verify OK SHA=${j.sha}`; $('#fwprog').value = $('#fwprog').max; }
+        else { $('#fwinfo').textContent = `End ERR (rx=${j.rx}/${j.size})`; }
+      } else if (j.ev === 'abort') {
+        $('#fwinfo').textContent = `Aborted: ${j.reason || ''}`;
+      } else if (j.ev === 'apply') {
+        $('#fwinfo').textContent = `Applying… rebooting`;
+      }
     } else {
       log(`RX ${s}`);
     }
@@ -125,7 +144,9 @@ function onNotify(ev) {
 async function send(cmd) {
   if (!chRX) { log('尚未連線'); return; }
   try {
-    await chRX.writeValue(new TextEncoder().encode(cmd));
+    const enc = new TextEncoder().encode(cmd);
+    if (chRX.writeValueWithResponse) await chRX.writeValueWithResponse(enc);
+    else await chRX.writeValue(enc);
     log('TX ' + cmd);
   } catch (e) {
     log('TX ERR ' + e.message);
@@ -134,9 +155,7 @@ async function send(cmd) {
 
 $('#btn').onclick = async () => {
   try {
-    if (device && device.gatt && device.gatt.connected) {
-      device.gatt.disconnect(); return;
-    }
+    if (device && device.gatt && device.gatt.connected) { device.gatt.disconnect(); return; }
     await connect();
   } catch (e) {
     log('ERROR ' + (e?.message || e));
@@ -150,6 +169,62 @@ $('#apply').onclick = async () => {
   await send($('#dump').value);
   await send($('#pid').value);
 };
+
+/* ===== OTA：選檔→BEGIN→DATA→END→（手動）APPLY ===== */
+
+async function sha256Hex(buffer) {
+  const hash = await crypto.subtle.digest('SHA-256', buffer);
+  const bytes = new Uint8Array(hash);
+  return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function fwUpload() {
+  if (!chFILE) { log('未連線'); return; }
+  const f = $('#fwfile').files[0];
+  if (!f) { $('#fwinfo').textContent = '請先選擇檔案'; return; }
+  const target = ($('#fwpath').value || 'c6_can_listen_diag.py').trim();
+
+  const buf = await f.arrayBuffer();
+  const sha = await sha256Hex(buf);
+  const size = buf.byteLength;
+
+  // 告知裝置開始
+  await send(`FW:BEGIN ${target} ${size} ${sha}`);
+
+  // 分塊上傳
+  const u8 = new Uint8Array(buf);
+  const CHUNK = 180;  // 與裝置 notify chunk 相近
+  $('#fwprog').max = size; $('#fwprog').value = 0;
+  $('#fwinfo').textContent = `Uploading… 0/${size}`;
+
+  for (let i=0; i<u8.length; i+=CHUNK) {
+    const slice = u8.subarray(i, Math.min(i+CHUNK, u8.length));
+    try {
+      if (chFILE.writeValueWithoutResponse) await chFILE.writeValueWithoutResponse(slice);
+      else if (chFILE.writeValue) await chFILE.writeValue(slice);
+      $('#fwprog').value = i + slice.length;
+    } catch (e) {
+      $('#fwinfo').textContent = 'Write error: ' + e.message;
+      log('FW write error: ' + e.message);
+      await send('FW:ABORT');
+      return;
+    }
+    // 適度節流，降低擠壓
+    await new Promise(r => setTimeout(r, 8));
+  }
+
+  // 結束並等待驗證
+  await send('FW:END');
+  $('#fwinfo').textContent = 'Upload done, verifying on device…';
+  log('FW upload done, waiting for verify');
+}
+
+async function fwApply() {
+  await send('FW:APPLY');
+}
+
+$('#fwUpload').onclick = fwUpload;
+$('#fwApply').onclick  = fwApply;
 </script>
 </body>
 </html>
