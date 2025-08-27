@@ -2,7 +2,7 @@
 <html lang="zh-Hant">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
-<title>ESP32-C6 OBD-II BLE Diag — v2025.08.27-r4 (One-Click OTA, iOS tuned)</title>
+<title>ESP32-C6 OBD-II BLE Diag — v2025.08.27-r4 (One-Click OTA, iOS safe)</title>
 <style>
   :root{--bg:#0b1220;--card:#111827;--fg:#e5e7eb;--muted:#9ca3af;--acc:#22d3ee;--ok:#10b981;--warn:#f59e0b;--bad:#ef4444;--br:16px}
   *{box-sizing:border-box} body{margin:0;background:linear-gradient(180deg,#0b1220,#0f172a);color:var(--fg);font-family:system-ui,Segoe UI,Roboto}
@@ -59,7 +59,7 @@
 
   <div class="card" style="margin-top:12px">
     <div class="t">Log</div>
-    <div id="log">Ready. App v2025.08.27-r4 (iOS tuned)</div>
+    <div id="log">Ready. App v2025.08.27-r4 (iOS safe)</div>
   </div>
 </div>
 
@@ -78,7 +78,12 @@ const UUID_FILE= "12345678-1234-5678-1234-56789abcdef3";
 /* ===== Utilities ===== */
 const $ = s => document.querySelector(s);
 const log = s => { $('#log').textContent = `[${new Date().toLocaleTimeString()}] ${s}\n` + $('#log').textContent; };
-function isIOS(){ return /iPad|iPhone|iPod/.test(navigator.userAgent); }
+function isIOS(){
+  const ua = navigator.userAgent;
+  const iOS = /iPad|iPhone|iPod/.test(ua);
+  const iPadOS = (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  return iOS || iPadOS;
+}
 function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
 
 let device, server, svc, chTX, chRX, chFILE;
@@ -210,7 +215,7 @@ async function sha256Hex(buffer) {
   return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-/* ===== 手動上傳（iOS 調整：小分塊 + 慢節流 + writeValue） ===== */
+/* ===== 手動上傳：iOS 用 20 bytes / 35ms / writeValue ===== */
 async function fwUpload() {
   if (!chFILE) { log('未連線'); return; }
   const f = $('#fwfile').files[0];
@@ -224,12 +229,15 @@ async function fwUpload() {
   await send(`FW:BEGIN ${target} ${size} ${sha}`);
 
   const u8 = new Uint8Array(buf);
-  const CHUNK = isIOS() ? 100 : 180;   // iOS 更保守
-  const GAP   = isIOS() ? 25  : 8;     // iOS 更慢
+  const CHUNK = isIOS() ? 20 : 180;
+  const GAP   = isIOS() ? 35 : 8;
   const USE_WNR = (!isIOS()) && !!chFILE.writeValueWithoutResponse;
 
   $('#fwprog').max = size; $('#fwprog').value = 0;
   $('#fwinfo').textContent = `Uploading… 0/${size}`;
+
+  // iOS：給裝置一點準備時間
+  await sleep(isIOS()?200:80);
 
   for (let i=0; i<u8.length; i+=CHUNK) {
     const slice = u8.subarray(i, Math.min(i+CHUNK, u8.length));
@@ -237,6 +245,7 @@ async function fwUpload() {
       if (USE_WNR) await chFILE.writeValueWithoutResponse(slice);
       else         await chFILE.writeValue(slice);
       $('#fwprog').value = i + slice.length;
+      if ((i % (CHUNK*50)) === 0) log(`FW up ${i + slice.length}/${size}`);
     } catch (e) {
       $('#fwinfo').textContent = 'Write error: ' + e.message;
       log('FW write error: ' + e.message);
@@ -246,11 +255,11 @@ async function fwUpload() {
     await sleep(GAP);
   }
 
-  await sleep(200);
+  await sleep(isIOS()?600:200);
   await send('FW:END');
   $('#fwinfo').textContent = 'Upload done, verifying on device…';
 
-  if (verifyPoll) { clearInterval(verifyPoll); }
+  if (verifyPoll) clearInterval(verifyPoll);
   verifyPoll = setInterval(async () => { await send('FW:STAT'); }, 400);
 }
 
@@ -266,7 +275,7 @@ async function fetchJSON(url){
   return await r.json();
 }
 
-/* ===== 一鍵更新（iOS 調整：小分塊 + 慢節流 + writeValue） ===== */
+/* ===== 一鍵更新：iOS 用 20 bytes / 35ms / writeValue ===== */
 async function oneClickUpdate() {
   try {
     if (!chRX || !chFILE) { log('請先 Connect'); return; }
@@ -280,7 +289,7 @@ async function oneClickUpdate() {
     // 2) 下載韌體（二進位）
     const base = new URL(OTA_MANIFEST_URL, location.href);
     const fwUrl = new URL(url, base).toString();
-    log('OTA: download firmware…');
+    log('OTA: download firmware… ' + fwUrl);
     const resp = await fetch(fwUrl, {cache:'no-store'});
     if(!resp.ok) throw new Error('firmware HTTP '+resp.status);
     const buf = await resp.arrayBuffer();
@@ -294,31 +303,34 @@ async function oneClickUpdate() {
     const size = buf.byteLength;
     await send(`FW:BEGIN ${target} ${size} ${sha}`);
 
-    // 5) 分塊上傳（iOS 降載）
     const u8 = new Uint8Array(buf);
-    const CHUNK = isIOS() ? 100 : 180;
-    const GAP   = isIOS() ? 25  : 8;
+    const CHUNK = isIOS() ? 20 : 180;
+    const GAP   = isIOS() ? 35 : 8;
     const USE_WNR = (!isIOS()) && !!chFILE.writeValueWithoutResponse;
 
     $('#fwprog').max = size; $('#fwprog').value = 0;
     $('#fwinfo').textContent = `Uploading… 0/${size}`;
 
+    await sleep(isIOS()?200:80);
+
+    // 5) 分塊上傳（依平台調整）
     for (let i=0; i<u8.length; i+=CHUNK) {
       const slice = u8.subarray(i, Math.min(i+CHUNK, u8.length));
       if (USE_WNR) await chFILE.writeValueWithoutResponse(slice);
       else         await chFILE.writeValue(slice);
       $('#fwprog').value = i + slice.length;
+      if ((i % (CHUNK*50)) === 0) log(`FW up ${i + slice.length}/${size}`);
       await sleep(GAP);
     }
 
     // 6) END + 輪詢 STAT 等 Verify OK
-    await sleep(200);
+    await sleep(isIOS()?600:200);
     await send('FW:END');
     $('#fwinfo').textContent = 'Upload done, verifying on device…';
     if (verifyPoll) clearInterval(verifyPoll);
     verifyPoll = setInterval(async ()=>{ await send('FW:STAT'); }, 400);
 
-    // Auto Apply：在 onNotify 收到 {"t":"fw","ev":"end","ok":true} 時，若勾選會自動送 FW:APPLY
+    // Auto Apply：在 onNotify 收到 {"t":"fw","ev":"end","ok":true} 且勾選時觸發
   } catch (e) {
     log('OTA ERR '+ (e?.message || e));
     $('#fwinfo').textContent = 'OTA error: ' + (e?.message || e);
