@@ -1,7 +1,6 @@
-# main.py  (v2025.08.27-r4-iosfix2)
+# main.py  (v2025.08.27-r4-iosfix2a)
 # ESP32-C6-Pico + Pico-CAN-B  — BLE + OBD2 over MCP2515 + OTA
-# 變更重點：檔案特徵值 UUID 改為 …def4，且 flags=WRITE | WRITE_NO_RESPONSE
-# iOS/Bluefy 若曾快取舊 GATT，請在 iOS 設定→藍牙「忽略此裝置」後重連。
+# 修正：去除 dict 展開（**payload）與所有 type hints；保持 iOS/Bluefy 兼容（FILE UUID …def4）
 
 import time, ujson, os
 import uhashlib as hashlib
@@ -20,13 +19,13 @@ def pix(c): np[0]=c; np.write()
 OFF=(0,0,0); BLUE=(0,0,60); GREEN=(0,60,0); RED=(60,0,0)
 
 # ========= 版本字串 =========
-FW_VERSION = "v2025.08.27-r4-iosfix2"
+FW_VERSION = "v2025.08.27-r4-iosfix2a"
 
 # ========= BLE UUIDs（128-bit）=========
 SVC = "12345678-1234-5678-1234-56789abcdef0"
 TX  = "12345678-1234-5678-1234-56789abcdef1"  # notify/read
 RX  = "12345678-1234-5678-1234-56789abcdef2"  # write (控制指令)
-FCH = "12345678-1234-5678-1234-56789abcdef4"  # write / write_no_response (韌體資料流) ← 改了
+FCH = "12345678-1234-5678-1234-56789abcdef4"  # write / write_no_response (韌體資料流)
 
 # ========= OBD =========
 REQ = 0x7DF
@@ -108,10 +107,14 @@ class OTA:
         self.size=0; self.rx=0; self.sha=None; self.f=None
         self._notify=ble_notify; self._tick=time.ticks_ms()
     def _n(self, payload):
-        try: self._notify({"t":"fw", **payload})
-        except: pass
-    def begin(self, target:str, size:int, sha_hex:str):
-        self.abort(reason="new begin")
+        try:
+            d={"t":"fw"}; 
+            if isinstance(payload, dict): d.update(payload)
+            self._notify(d)
+        except: 
+            pass
+    def begin(self, target, size, sha_hex):
+        self.abort("new begin")
         self.target=target; self.tmp=target+".part"; self.size=int(size or 0)
         self.rx=0; self.sha=(sha_hex or "").lower()
         try:
@@ -124,7 +127,7 @@ class OTA:
         except Exception as e:
             self._n({"ev":"begin","ok":False,"err":str(e)}); self.active=False; self.f=None
             return False
-    def on_chunk(self, data:bytes):
+    def on_chunk(self, data):
         if not self.active or not self.f: return
         try:
             self.f.write(data); self.rx += len(data)
@@ -132,7 +135,7 @@ class OTA:
             if time.ticks_diff(now, self._tick)>=200:
                 self._tick=now; self._n({"ev":"progress","rx":self.rx,"size":self.size})
         except Exception as e:
-            self._n({"ev":"abort","reason":"write_err:"+str(e)}); self.abort(reason="write_err")
+            self._n({"ev":"abort","reason":"write_err:"+str(e)}); self.abort("write_err")
     def stat(self):
         self._n({"ev":"stat","active":bool(self.active),"rx":self.rx,"size":self.size})
     def _sha256_file(self, path):
@@ -279,13 +282,16 @@ def main():
 
     ble=BLEWrap("C6-LED")
 
+    # OTA 物件
     ota = OTA(ble.notify_json)
 
+    # CAN 預設設定
     state={"bit":250,"clk":16,"mode":"LISTEN","dump":True,"poll":False}
     mcp=MCP2515(spi, CS, INT)
     mcp.cfg(state["bit"], state["clk"]); mcp.start_listen()
     print("[CAN] LISTEN @%dk, clk %dMHz" % (state["bit"], state["clk"]))
 
+    # 指令處理
     def on_cmd(s):
         up=s.strip().upper()
         if up.startswith("BIT:"):
@@ -331,13 +337,13 @@ def main():
         elif up=="FW:APPLY":
             ota.apply()
         elif up=="FW:ABORT":
-            ota.abort(reason="host_abort")
+            ota.abort("host_abort")
         elif up=="VER?":
             ble.notify_json({"t":"info","fw":FW_VERSION})
         else:
             print("[BLE] unknown cmd:", s)
 
-    def on_file(chunk:bytes):
+    def on_file(chunk):
         ota.on_chunk(chunk)
 
     ble.on_cmd=on_cmd
