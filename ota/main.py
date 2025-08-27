@@ -1,7 +1,7 @@
-# main.py  (r4-ios-fix, 2025-08-27)
+# main.py  (v2025.08.27-r4-iosfix2)
 # ESP32-C6-Pico + Pico-CAN-B  — BLE + OBD2 over MCP2515 + OTA
-# 變更重點：FW 檔案特徵值 flags 加上 WRITE 與 WRITE_NO_RESPONSE（兩者皆有）
-# 其他：iOS 友好的 ADV、同一套 FW:BEGIN/END/STAT/APPLY 流程，與 index.html(r4) 相容。
+# 變更重點：檔案特徵值 UUID 改為 …def4，且 flags=WRITE | WRITE_NO_RESPONSE
+# iOS/Bluefy 若曾快取舊 GATT，請在 iOS 設定→藍牙「忽略此裝置」後重連。
 
 import time, ujson, os
 import uhashlib as hashlib
@@ -10,23 +10,23 @@ import ubluetooth as bt
 import neopixel
 
 # ========= 硬體腳位 =========
-SCK, MOSI, MISO, CS, INT = 14, 15, 6, 7, 23   # 依你最新接法
+SCK, MOSI, MISO, CS, INT = 14, 15, 6, 7, 23
 WS_PIN, WS_NUM = 8, 1
-CAN_STB_PIN = None  # 若收發器有 STB/EN 腳可填 GPIO，並在 main() 解除待機
+CAN_STB_PIN = None
 
 # ========= WS2812 =========
 np = neopixel.NeoPixel(Pin(WS_PIN), WS_NUM)
 def pix(c): np[0]=c; np.write()
-OFF=(0,0,0); BLUE=(0,0,60); GREEN=(0,60,0); RED=(60,0,0); WHITE=(60,60,60)
+OFF=(0,0,0); BLUE=(0,0,60); GREEN=(0,60,0); RED=(60,0,0)
 
-# ========= 版本字串（回報給 App）=========
-FW_VERSION = "v2025.08.27-r4-iosfix"
+# ========= 版本字串 =========
+FW_VERSION = "v2025.08.27-r4-iosfix2"
 
 # ========= BLE UUIDs（128-bit）=========
 SVC = "12345678-1234-5678-1234-56789abcdef0"
 TX  = "12345678-1234-5678-1234-56789abcdef1"  # notify/read
 RX  = "12345678-1234-5678-1234-56789abcdef2"  # write (控制指令)
-FCH = "12345678-1234-5678-1234-56789abcdef3"  # write / write_no_response (韌體資料流)
+FCH = "12345678-1234-5678-1234-56789abcdef4"  # write / write_no_response (韌體資料流) ← 改了
 
 # ========= OBD =========
 REQ = 0x7DF
@@ -104,28 +104,17 @@ class MCP2515:
 # ========= OTA（檔案接收 + 驗證 + 置換）=========
 class OTA:
     def __init__(self, ble_notify):
-        self.active=False
-        self.target=None
-        self.tmp=None
-        self.size=0
-        self.rx=0
-        self.sha=None
-        self.f=None
-        self._notify=ble_notify
-        self._tick=time.ticks_ms()
+        self.active=False; self.target=None; self.tmp=None
+        self.size=0; self.rx=0; self.sha=None; self.f=None
+        self._notify=ble_notify; self._tick=time.ticks_ms()
     def _n(self, payload):
         try: self._notify({"t":"fw", **payload})
         except: pass
     def begin(self, target:str, size:int, sha_hex:str):
-        # 關掉舊狀態
         self.abort(reason="new begin")
-        self.target=target
-        self.tmp=target+".part"
-        self.size=int(size or 0)
-        self.rx=0
-        self.sha=sha_hex.lower()
+        self.target=target; self.tmp=target+".part"; self.size=int(size or 0)
+        self.rx=0; self.sha=(sha_hex or "").lower()
         try:
-            # 先刪除舊 .part
             try: os.remove(self.tmp)
             except: pass
             self.f=open(self.tmp, "wb")
@@ -133,22 +122,17 @@ class OTA:
             self._n({"ev":"begin","ok":True,"target":self.target,"size":self.size})
             return True
         except Exception as e:
-            self._n({"ev":"begin","ok":False,"err":str(e)})
-            self.active=False; self.f=None
+            self._n({"ev":"begin","ok":False,"err":str(e)}); self.active=False; self.f=None
             return False
     def on_chunk(self, data:bytes):
         if not self.active or not self.f: return
         try:
-            self.f.write(data)
-            self.rx += len(data)
+            self.f.write(data); self.rx += len(data)
             now=time.ticks_ms()
-            # 200ms 報一次進度，避免太多 notify
             if time.ticks_diff(now, self._tick)>=200:
-                self._tick=now
-                self._n({"ev":"progress","rx":self.rx,"size":self.size})
+                self._tick=now; self._n({"ev":"progress","rx":self.rx,"size":self.size})
         except Exception as e:
-            self._n({"ev":"abort","reason":"write_err:"+str(e)})
-            self.abort(reason="write_err")
+            self._n({"ev":"abort","reason":"write_err:"+str(e)}); self.abort(reason="write_err")
     def stat(self):
         self._n({"ev":"stat","active":bool(self.active),"rx":self.rx,"size":self.size})
     def _sha256_file(self, path):
@@ -160,24 +144,16 @@ class OTA:
                 h.update(b)
         return "".join("%02x"%b for b in h.digest())
     def end(self):
-        if not self.active: 
-            self._n({"ev":"end","ok":False,"rx":self.rx,"size":self.size})
-            return False
+        if not self.active:
+            self._n({"ev":"end","ok":False,"rx":self.rx,"size":self.size}); return False
         try:
-            if self.f: 
-                self.f.flush(); self.f.close(); self.f=None
-            # 驗證大小（可選）
+            if self.f: self.f.flush(); self.f.close(); self.f=None
             if self.size>0 and self.rx!=self.size:
-                self._n({"ev":"end","ok":False,"rx":self.rx,"size":self.size})
-                self.abort(reason="size_mismatch")
-                return False
+                self._n({"ev":"end","ok":False,"rx":self.rx,"size":self.size}); self.abort("size_mismatch"); return False
             self._n({"ev":"verify","rx":self.rx,"size":self.size})
             sha = self._sha256_file(self.tmp)
-            if sha != (self.sha or "").lower():
-                self._n({"ev":"end","ok":False,"rx":self.rx,"size":self.size,"sha":sha})
-                self.abort(reason="sha_mismatch")
-                return False
-            # 置換檔：先刪舊 target，再 rename
+            if sha != (self.sha or ""):
+                self._n({"ev":"end","ok":False,"rx":self.rx,"size":self.size,"sha":sha}); self.abort("sha_mismatch"); return False
             try: os.remove(self.target)
             except: pass
             os.rename(self.tmp, self.target)
@@ -185,13 +161,9 @@ class OTA:
             self._n({"ev":"end","ok":True,"rx":self.rx,"size":self.size,"sha":sha})
             return True
         except Exception as e:
-            self._n({"ev":"abort","reason":"end_err:"+str(e)})
-            self.abort(reason="end_err")
-            return False
+            self._n({"ev":"abort","reason":"end_err:"+str(e)}); self.abort("end_err"); return False
     def apply(self):
-        self._n({"ev":"apply"})
-        time.sleep_ms(200)
-        reset()
+        self._n({"ev":"apply"}); time.sleep_ms(200); reset()
     def abort(self, reason=""):
         if self.f:
             try: self.f.close()
@@ -211,7 +183,6 @@ IRQ_DISC  = getattr(bt, "_IRQ_CENTRAL_DISCONNECT", 2)
 IRQ_WRITE = getattr(bt, "_IRQ_GATTS_WRITE", 3)
 
 def uuid128_to_le(uuid_str):
-    # 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx' -> 小端 16 bytes（避免負步長切片）
     hx = uuid_str.replace("-", "")
     arr = bytearray(16)
     for i in range(16):
@@ -225,46 +196,40 @@ class BLEWrap:
         self._name=name
         self.ble=bt.BLE(); self.ble.active(True)
         try:
-            # 設定 GAP 名稱，iOS 會用此名稱
             self.ble.config(gap_name=self._name)
+            self.ble.config(rxbuf=512)  # 擴大 BLE RX ring buffer
         except: pass
         self.ble.irq(self._irq)
 
         svc=bt.UUID(SVC); tx=bt.UUID(TX); rx=bt.UUID(RX); fch=bt.UUID(FCH)
         _tx=(tx, bt.FLAG_NOTIFY|bt.FLAG_READ)
-        _rx=(rx, bt.FLAG_WRITE)  # 指令：必須允許 WRITE（有回應）
-        # 🔧 檔案通道：同時允許 WRITE 與 WRITE_NO_RESPONSE（iOS/Bluefy 需要）
-        _f =(fch, bt.FLAG_WRITE | bt.FLAG_WRITE_NO_RESPONSE)
+        _rx=(rx, bt.FLAG_WRITE)  # 指令：WRITE (有回應)
+        _f =(fch, bt.FLAG_WRITE | bt.FLAG_WRITE_NO_RESPONSE)  # 檔案：兩者都允許
 
         ((self.hTX,self.hRX,self.hFILE),)=self.ble.gatts_register_services([(svc,(_tx,_rx,_f))])
 
-        # 擴大 TX/RX/FILE buffer
         try:
             self.ble.gatts_set_buffer(self.hTX, 200, False)
             self.ble.gatts_set_buffer(self.hRX, 200, True)
-            self.ble.gatts_set_buffer(self.hFILE, 200, True)
+            self.ble.gatts_set_buffer(self.hFILE, 512, True)  # FILE 放大一點
         except: pass
 
         adv=self._adv_payload(name=self._name, svcs=[SVC])
         self.ble.gap_advertise(200_000, adv_data=adv, resp_data=None)
         self.conns=set(); self.on_cmd=None; self.on_file=None
 
-        # 上線回報版本
-        self._info_fw()
-
-    def _info_fw(self):
-        try: self.notify_json({"t":"info","fw":FW_VERSION})
-        except: pass
+        # 上線告知版本
+        self.notify_json({"t":"info","fw":FW_VERSION})
 
     def _adv_payload(self, name=None, svcs=None):
         p=bytearray()
         def a(t,v): p.extend(bytes((len(v)+1,t))+v)
-        a(0x01, b"\x06")  # Flags
+        a(0x01, b"\x06")
         if svcs:
             buf=bytearray()
             for u in svcs: buf.extend(uuid128_to_le(u))
             if buf: a(0x07, bytes(buf))
-        if name: a(0x09, name.encode())  # 名稱放 ADV，iOS 較穩
+        if name: a(0x09, name.encode())
         return bytes(p)
 
     def _irq(self, ev, data):
@@ -274,7 +239,6 @@ class BLEWrap:
             self.conns.discard(data[0])
             self.ble.gap_advertise(200_000, adv_data=self._adv_payload(name=self._name, svcs=[SVC]), resp_data=None)
         elif ev==IRQ_WRITE:
-            # data = (conn_handle, attr_handle)
             ah = data[1]
             if ah == self.hRX and self.on_cmd:
                 try:
@@ -299,12 +263,10 @@ class BLEWrap:
 # ========= 主程式 =========
 def main():
     pix(OFF)
-    # 若能控制收發器待機腳，這裡解除待機
     if CAN_STB_PIN is not None:
         try: Pin(CAN_STB_PIN, Pin.OUT, value=0)
         except: pass
 
-    # SPI（試 2→1）
     spi=None
     for bus in (2,1):
         try:
@@ -313,27 +275,22 @@ def main():
         except: pass
     if not spi:
         print("[SPI] init failed")
-        while True:
-            pix(RED); time.sleep_ms(200); pix(OFF); time.sleep_ms(200)
+        while True: pix(RED); time.sleep_ms(200); pix(OFF); time.sleep_ms(200)
 
-    # BLE
     ble=BLEWrap("C6-LED")
 
-    # OTA
     ota = OTA(ble.notify_json)
 
-    # CAN 預設：CLK=16、BIT=250、LISTEN、DUMP:ON
     state={"bit":250,"clk":16,"mode":"LISTEN","dump":True,"poll":False}
     mcp=MCP2515(spi, CS, INT)
     mcp.cfg(state["bit"], state["clk"]); mcp.start_listen()
     print("[CAN] LISTEN @%dk, clk %dMHz" % (state["bit"], state["clk"]))
 
-    # 指令處理
     def on_cmd(s):
         up=s.strip().upper()
         if up.startswith("BIT:"):
             try:
-                v=int(up.split(":")[1]); 
+                v=int(up.split(":")[1])
                 if v in (250,500):
                     state["bit"]=v; mcp.cfg(state["bit"], state["clk"])
                     ok=mcp.start_listen() if state["mode"]=="LISTEN" else mcp.start_normal()
@@ -361,7 +318,6 @@ def main():
             state["poll"]=False; print("[OBD] poll OFF")
         # ===== OTA 指令 =====
         elif up.startswith("FW:BEGIN"):
-            # FW:BEGIN <target> <size> <sha>
             try:
                 parts=s.split()
                 tgt=parts[1]; size=int(parts[2]); sha=parts[3]
@@ -389,16 +345,8 @@ def main():
 
     vals={"rpm":None,"maf":None,"thr":None,"map":None}
     i=0; tQ=0
-    t_led=time.ticks_ms()
 
     while True:
-        now=time.ticks_ms()
-        # 狀態：連線快綠、廣播慢藍
-        period=100 if ble.conns else 600
-        if time.ticks_diff(now,t_led)>=period:
-            pix(GREEN if ble.conns else BLUE); time.sleep_ms(30); pix(OFF); t_led=now
-
-        # Listen：Dump raw 幀 + 嘗試解析 OBD 回覆
         rx=mcp.recv()
         if rx:
             canid,data=rx
@@ -410,14 +358,11 @@ def main():
                     k,v=pr; vals[k]=v
                     msg={"t":"obd"}; msg.update(vals)
                     ble.notify_json(msg)
-
-        # NORMAL + PID:ON：輪詢三個 PID
-        if state["mode"]=="NORMAL" and state["poll"] and time.ticks_diff(now,tQ)>=120:
+        if state["mode"]=="NORMAL" and state["poll"] and time.ticks_ms()-tQ>=120:
             pid=PIDS[i]; i=(i+1)%len(PIDS)
             ok=mcp.send(REQ, mk_req(pid), timeout_ms=60)
             if not ok: ble.notify_json({"t":"err","tx":"timeout","pid":pid})
-            tQ=now
-
+            tQ=time.ticks_ms()
         time.sleep_ms(2)
 
 if __name__=="__main__":
