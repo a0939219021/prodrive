@@ -2,7 +2,7 @@
 <html lang="zh-Hant">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
-<title>ESP32-C6 OBD-II BLE Diag — v2025.08.27-r4 (OTA fix)</title>
+<title>ESP32-C6 OBD-II BLE Diag — v2025.08.27-r4 (One-Click OTA)</title>
 <style>
   :root{--bg:#0b1220;--card:#111827;--fg:#e5e7eb;--muted:#9ca3af;--acc:#22d3ee;--ok:#10b981;--warn:#f59e0b;--bad:#ef4444;--br:16px}
   *{box-sizing:border-box} body{margin:0;background:linear-gradient(180deg,#0b1220,#0f172a);color:var(--fg);font-family:system-ui,Segoe UI,Roboto}
@@ -20,6 +20,7 @@
   progress{width:100%;height:10px;border-radius:999px;appearance:none}
   progress::-webkit-progress-bar{background:#0b1629;border-radius:999px}
   progress::-webkit-progress-value{background:var(--ok);border-radius:999px}
+  label.chk{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#9ca3af}
 </style>
 <body>
 <header>
@@ -49,9 +50,11 @@
       <input type="text" id="fwpath" placeholder="Target path on device" value="c6_can_listen_diag.py" style="min-width:260px">
       <button id="fwUpload" class="btn">Upload</button>
       <button id="fwApply"  class="btn">Apply & Reboot</button>
+      <button id="fwCheck"  class="btn">Update Firmware</button>
+      <label class="chk"><input type="checkbox" id="autoApply" checked>Auto Apply</label>
     </div>
     <progress id="fwprog" value="0" max="1"></progress>
-    <div id="fwinfo" class="t" style="margin-top:8px">Select a file and click Upload</div>
+    <div id="fwinfo" class="t" style="margin-top:8px">Select a file and click Upload — or use “Update Firmware”.</div>
   </div>
 
   <div class="card" style="margin-top:12px">
@@ -62,6 +65,13 @@
 
 <script>
 const APP_VERSION = "v2025.08.27-r4";
+
+/* ===== 你自己的 GitHub Pages manifest URL（請改成你的實際網址） ===== */
+const OTA_MANIFEST_URL = "https://<your-user>.github.io/<your-repo>/ota/manifest.json";
+/* 例如：
+   https://acme-inc.github.io/esp32c6-ota/ota/manifest.json
+*/
+
 const UUID_SVC = "12345678-1234-5678-1234-56789abcdef0";
 const UUID_TX  = "12345678-1234-5678-1234-56789abcdef1";
 const UUID_RX  = "12345678-1234-5678-1234-56789abcdef2";
@@ -134,8 +144,13 @@ function onNotify(ev) {
           if (j.size) { $('#fwprog').max = j.size; $('#fwprog').value = j.rx || 0; }
         }
       } else if (j.ev === 'end') {
-        if (j.ok) { $('#fwinfo').textContent = `Verify OK SHA=${j.sha}`; $('#fwprog').value = $('#fwprog').max; }
-        else { $('#fwinfo').textContent = `End ERR (rx=${j.rx}/${j.size})`; }
+        if (j.ok) {
+          $('#fwinfo').textContent = `Verify OK SHA=${j.sha}`;
+          $('#fwprog').value = $('#fwprog').max;
+          if ($('#autoApply').checked) { setTimeout(()=>send('FW:APPLY'), 300); }
+        } else {
+          $('#fwinfo').textContent = `End ERR (rx=${j.rx}/${j.size})`;
+        }
         if (verifyPoll) { clearInterval(verifyPoll); verifyPoll = null; }
       } else if (j.ev === 'abort') {
         $('#fwinfo').textContent = `Aborted: ${j.reason || ''}`;
@@ -183,7 +198,7 @@ $('#apply').onclick = async () => {
   await send($('#pid').value);
 };
 
-/* ===== OTA：選檔→BEGIN→DATA→END→（APPLY） ===== */
+/* ===== OTA：手動傳檔（保留） ===== */
 
 async function sha256Hex(buffer) {
   const hash = await crypto.subtle.digest('SHA-256', buffer);
@@ -223,22 +238,88 @@ async function fwUpload() {
     await new Promise(r => setTimeout(r, 8));
   }
 
-  // 讓裝置把最後幾個 chunk 消化完，再送 END
   await new Promise(r => setTimeout(r, 150));
   await send('FW:END');
   $('#fwinfo').textContent = 'Upload done, verifying on device…';
 
-  // 啟動狀態輪詢（裝置端會在主循環完成驗證後回 "end"）
   if (verifyPoll) { clearInterval(verifyPoll); }
   verifyPoll = setInterval(async () => { await send('FW:STAT'); }, 400);
 }
 
-async function fwApply() {
-  await send('FW:APPLY');
+/* ===== 一鍵更新：從 GitHub Pages 取 manifest & firmware ===== */
+
+async function fetchJSON(url){
+  const r = await fetch(url, {cache:'no-store'});
+  if(!r.ok) throw new Error('HTTP '+r.status);
+  return await r.json();
 }
+
+async function oneClickUpdate() {
+  try {
+    if (!chRX || !chFILE) { log('請先 Connect'); return; }
+
+    // 1) 取 manifest
+    log('OTA: fetch manifest…');
+    const mani = await fetchJSON(OTA_MANIFEST_URL);
+    const {version, target, url, sha256} = mani;
+    log(`OTA: latest ${version} → ${target}`);
+
+    // 2) 抓韌體二進位
+    log('OTA: download firmware…');
+    const resp = await fetch(url, {cache:'no-store'});
+    if(!resp.ok) throw new Error('firmware HTTP '+resp.status);
+    const buf = await resp.arrayBuffer();
+
+    // 3) 前端自行計算 SHA 與 manifest 比對
+    const sha = await sha256Hex(buf);
+    if (sha !== sha256) { throw new Error('SHA mismatch'); }
+    log('OTA: SHA OK '+sha.slice(0,8)+'…');
+
+    // 4) BEGIN
+    const size = buf.byteLength;
+    await send(`FW:BEGIN ${target} ${size} ${sha}`);
+
+    // 5) 分塊上傳
+    const u8 = new Uint8Array(buf);
+    const CHUNK = 180;
+    $('#fwprog').max = size; $('#fwprog').value = 0;
+    $('#fwinfo').textContent = `Uploading… 0/${size}`;
+    for (let i=0; i<u8.length; i+=CHUNK) {
+      const slice = u8.subarray(i, Math.min(i+CHUNK, u8.length));
+      if (chFILE.writeValueWithoutResponse) await chFILE.writeValueWithoutResponse(slice);
+      else await chFILE.writeValue(slice);
+      $('#fwprog').value = i + slice.length;
+      await new Promise(r => setTimeout(r, 8));
+    }
+
+    // 6) END + 狀態輪詢直到 Verify OK
+    await new Promise(r => setTimeout(r, 150));
+    await send('FW:END');
+    $('#fwinfo').textContent = 'Upload done, verifying on device…';
+    if (verifyPoll) clearInterval(verifyPoll);
+    verifyPoll = setInterval(async ()=>{ await send('FW:STAT'); }, 400);
+
+    // 自動套用的動作在 onNotify 的 'end/ok' 事件裡觸發（Auto Apply 勾選時）
+  } catch (e) {
+    log('OTA ERR '+ (e?.message || e));
+    $('#fwinfo').textContent = 'OTA error: ' + (e?.message || e);
+  }
+}
+
+async function fwApply() { await send('FW:APPLY'); }
 
 $('#fwUpload').onclick = fwUpload;
 $('#fwApply').onclick  = fwApply;
+$('#fwCheck').onclick  = oneClickUpdate;
+
+$('#btn').onclick = async () => {
+  try {
+    if (device && device.gatt && device.gatt.connected) { device.gatt.disconnect(); return; }
+    await connect();
+  } catch (e) {
+    log('ERROR ' + (e?.message || e));
+  }
+};
 </script>
 </body>
 </html>
