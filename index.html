@@ -2,7 +2,7 @@
 <html lang="zh-Hant">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
-<title>ESP32-C6 OBD-II BLE Diag — v2025.08.27-r4 (One-Click OTA, iOS safe)</title>
+<title>ESP32-C6 OBD-II BLE Diag — v2025.08.27-r4-iosfix2</title>
 <style>
   :root{--bg:#0b1220;--card:#111827;--fg:#e5e7eb;--muted:#9ca3af;--acc:#22d3ee;--ok:#10b981;--warn:#f59e0b;--bad:#ef4444;--br:16px}
   *{box-sizing:border-box} body{margin:0;background:linear-gradient(180deg,#0b1220,#0f172a);color:var(--fg);font-family:system-ui,Segoe UI,Roboto}
@@ -26,7 +26,7 @@
 <header>
   <button id="btn" class="btn">Connect</button>
   <span id="dev" class="pill">Not connected</span>
-  <span id="ver" class="pill">v2025.08.27-r4</span>
+  <span id="ver" class="pill">v2025.08.27-r4-iosfix2</span>
   <select id="mode"><option>MODE:LISTEN</option><option>MODE:NORMAL</option></select>
   <select id="bit"><option>BIT:500</option><option selected>BIT:250</option></select>
   <select id="clk"><option>CLK:8</option><option selected>CLK:16</option></select>
@@ -59,20 +59,21 @@
 
   <div class="card" style="margin-top:12px">
     <div class="t">Log</div>
-    <div id="log">Ready. App v2025.08.27-r4 (iOS safe)</div>
+    <div id="log">Ready. App v2025.08.27-r4-iosfix2</div>
   </div>
 </div>
 
 <script>
-const APP_VERSION = "v2025.08.27-r4";
+const APP_VERSION = "v2025.08.27-r4-iosfix2";
 
-/* ===== GitHub Pages manifest（相對於 https://a0939219021.github.io/prodrive/） ===== */
+/* ===== GitHub Pages manifest（相對於 https://你的使用者.github.io/prodrive/） ===== */
 const OTA_MANIFEST_URL = "ota/manifest.json";
 
 /* ===== BLE UUIDs ===== */
 const UUID_SVC = "12345678-1234-5678-1234-56789abcdef0";
 const UUID_TX  = "12345678-1234-5678-1234-56789abcdef1";
 const UUID_RX  = "12345678-1234-5678-1234-56789abcdef2";
+/* ⚠ FILE UUID 要與裝置端 main.py 一致：iosfix2 版使用 …def4 */
 const UUID_FILE= "12345678-1234-5678-1234-56789abcdef4";
 
 /* ===== Utilities ===== */
@@ -86,7 +87,7 @@ function isIOS(){
 }
 function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
 
-let device, server, svc, chTX, chRX, chFILE;
+let device=null, server=null, svc=null, chTX=null, chRX=null, chFILE=null;
 let verifyPoll = null;
 
 /* ===== BLE connect/disconnect ===== */
@@ -103,10 +104,11 @@ async function connect() {
   server = await device.gatt.connect();
   log("gatt.connect ok");
 
-  svc = await server.getPrimaryService(UUID_SVC);
-  chTX = await svc.getCharacteristic(UUID_TX);
-  chRX = await svc.getCharacteristic(UUID_RX);
-  chFILE = await svc.getCharacteristic(UUID_FILE);
+  svc   = await server.getPrimaryService(UUID_SVC);
+  chTX  = await svc.getCharacteristic(UUID_TX);
+  chRX  = await svc.getCharacteristic(UUID_RX);
+  /* 這裡若找不到 FILE 會丟錯，請確認裝置端 UUID 與此一致 */
+  chFILE= await svc.getCharacteristic(UUID_FILE);
 
   await chTX.startNotifications();
   chTX.addEventListener('characteristicvaluechanged', onNotify);
@@ -118,6 +120,12 @@ function onDisconnect() {
   $('#dev').textContent = 'Disconnected';
   $('#btn').textContent = 'Connect';
   log('disconnected');
+
+  /* ⚠ 清理舊的 GATT handle，避免「no longer valid」錯誤 */
+  chTX = null; chRX = null; chFILE = null;
+  svc = null; server = null;
+  device = null;
+
   if (verifyPoll) { clearInterval(verifyPoll); verifyPoll = null; }
 }
 
@@ -179,7 +187,9 @@ function onNotify(ev) {
 
 /* ===== TX helper ===== */
 async function send(cmd) {
-  if (!chRX) { log('尚未連線'); return; }
+  if (!chRX || !device || !device.gatt || !device.gatt.connected) {
+    log('尚未連線'); return;
+  }
   try {
     const enc = new TextEncoder().encode(cmd);
     if (chRX.writeValueWithResponse) await chRX.writeValueWithResponse(enc);
@@ -215,9 +225,9 @@ async function sha256Hex(buffer) {
   return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-/* ===== 手動上傳：iOS 用 20 bytes / 35ms / writeValue ===== */
+/* ===== 手動上傳（iOS 安全：20 bytes / 35ms / writeValue） ===== */
 async function fwUpload() {
-  if (!chFILE) { log('未連線'); return; }
+  if (!chFILE || !device || !device.gatt || !device.gatt.connected) { log('未連線'); return; }
   const f = $('#fwfile').files[0];
   if (!f) { $('#fwinfo').textContent = '請先選擇檔案'; return; }
   const target = ($('#fwpath').value || 'main.py').trim();
@@ -236,7 +246,6 @@ async function fwUpload() {
   $('#fwprog').max = size; $('#fwprog').value = 0;
   $('#fwinfo').textContent = `Uploading… 0/${size}`;
 
-  // iOS：給裝置一點準備時間
   await sleep(isIOS()?200:80);
 
   for (let i=0; i<u8.length; i+=CHUNK) {
@@ -275,18 +284,16 @@ async function fetchJSON(url){
   return await r.json();
 }
 
-/* ===== 一鍵更新：iOS 用 20 bytes / 35ms / writeValue ===== */
+/* ===== 一鍵更新（iOS 安全：20 bytes / 35ms / writeValue） ===== */
 async function oneClickUpdate() {
   try {
-    if (!chRX || !chFILE) { log('請先 Connect'); return; }
+    if (!chRX || !chFILE || !device || !device.gatt || !device.gatt.connected) { log('請先 Connect'); return; }
 
-    // 1) 取 manifest
     log('OTA: fetch manifest…');
     const mani = await fetchJSON(OTA_MANIFEST_URL);
     const {version, target, url, sha256} = mani;
     log(`OTA: latest ${version} → ${target}`);
 
-    // 2) 下載韌體（二進位）
     const base = new URL(OTA_MANIFEST_URL, location.href);
     const fwUrl = new URL(url, base).toString();
     log('OTA: download firmware… ' + fwUrl);
@@ -294,12 +301,10 @@ async function oneClickUpdate() {
     if(!resp.ok) throw new Error('firmware HTTP '+resp.status);
     const buf = await resp.arrayBuffer();
 
-    // 3) 前端 SHA 驗證（大小寫不敏感）
     const sha = await sha256Hex(buf);
     if (sha.toLowerCase() !== String(sha256).toLowerCase()) throw new Error('SHA mismatch');
     log('OTA: SHA OK '+sha.slice(0,8)+'…');
 
-    // 4) BEGIN
     const size = buf.byteLength;
     await send(`FW:BEGIN ${target} ${size} ${sha}`);
 
@@ -313,7 +318,6 @@ async function oneClickUpdate() {
 
     await sleep(isIOS()?200:80);
 
-    // 5) 分塊上傳（依平台調整）
     for (let i=0; i<u8.length; i+=CHUNK) {
       const slice = u8.subarray(i, Math.min(i+CHUNK, u8.length));
       if (USE_WNR) await chFILE.writeValueWithoutResponse(slice);
@@ -323,14 +327,12 @@ async function oneClickUpdate() {
       await sleep(GAP);
     }
 
-    // 6) END + 輪詢 STAT 等 Verify OK
     await sleep(isIOS()?600:200);
     await send('FW:END');
     $('#fwinfo').textContent = 'Upload done, verifying on device…';
     if (verifyPoll) clearInterval(verifyPoll);
     verifyPoll = setInterval(async ()=>{ await send('FW:STAT'); }, 400);
 
-    // Auto Apply：在 onNotify 收到 {"t":"fw","ev":"end","ok":true} 且勾選時觸發
   } catch (e) {
     log('OTA ERR '+ (e?.message || e));
     $('#fwinfo').textContent = 'OTA error: ' + (e?.message || e);
@@ -338,9 +340,8 @@ async function oneClickUpdate() {
 }
 
 /* ===== Buttons ===== */
-async function fwApply() { await send('FW:APPLY'); }
 $('#fwUpload').onclick = fwUpload;
-$('#fwApply').onclick  = fwApply;
+$('#fwApply').onclick  = async ()=>{ await send('FW:APPLY'); };
 $('#fwCheck').onclick  = oneClickUpdate;
 
 </script>
