@@ -2,7 +2,7 @@
   "channel": "internal",
   "version": "v2025.08.27-r4",
   "target": "main.py",
-  "url": "https://https://a0939219021.github.io/prodrive/ota/main.py",
+  "url": "/ota/main.py",
   "sha256": "<上一步算出的SHA256>",
   "notes": "Internal test via GitHub Pages"
 }
