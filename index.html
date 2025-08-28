@@ -240,7 +240,7 @@ async function fwUpload() {
 
   const u8 = new Uint8Array(buf);
   const CHUNK = isIOS() ? 20 : 180;
-  const GAP   = isIOS() ? 35 : 8;
+  const GAP   = isIOS() ? 50 : 8;
   const USE_WNR = (!isIOS()) && !!chFILE.writeValueWithoutResponse;
 
   $('#fwprog').max = size; $('#fwprog').value = 0;
