@@ -2,7 +2,7 @@
 <html lang="zh-Hant">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
-<title>ESP32-C6 OBD-II BLE Diag — v2025.08.27-r4-iosfix3</title>
+<title>ESP32-C6 OBD-II BLE Diag — v2025.08.27-r4-iosfix5</title>
 <style>
   :root{--bg:#0b1220;--card:#111827;--fg:#e5e7eb;--muted:#9ca3af;--acc:#22d3ee;--ok:#10b981;--warn:#f59e0b;--bad:#ef4444;--br:16px}
   *{box-sizing:border-box} body{margin:0;background:linear-gradient(180deg,#0b1220,#0f172a);color:var(--fg);font-family:system-ui,Segoe UI,Roboto}
@@ -28,7 +28,7 @@
 <header>
   <button id="btn" class="btn">Connect</button>
   <span id="dev" class="pill">Not connected</span>
-  <span id="ver" class="pill">v2025.08.27-r4-iosfix3</span>
+  <span id="ver" class="pill">v2025.08.27-r4-iosfix5</span>
   <select id="mode"><option>MODE:LISTEN</option><option>MODE:NORMAL</option></select>
   <select id="bit"><option>BIT:500</option><option selected>BIT:250</option></select>
   <select id="clk"><option>CLK:8</option><option selected>CLK:16</option></select>
@@ -53,6 +53,7 @@
       <button id="fwUpload" class="btn">Upload</button>
       <button id="fwApply"  class="btn">Apply & Reboot</button>
       <button id="fwCheck"  class="btn">Update Firmware</button>
+      <button id="fwStat"   class="btn">Verify Now</button>
       <label class="chk"><input type="checkbox" id="autoApply" checked>Auto Apply</label>
     </div>
     <progress id="fwprog" value="0" max="1"></progress>
@@ -61,38 +62,30 @@
 
   <div class="card" style="margin-top:12px">
     <div class="t">Log</div>
-    <div id="log">Ready. App v2025.08.27-r4-iosfix3</div>
+    <div id="log">Ready. App v2025.08.27-r4-iosfix5</div>
   </div>
 </div>
 
 <script>
-const APP_VERSION = "v2025.08.27-r4-iosfix3";
-
-/* ===== GitHub Pages manifest（相對於 https://你的使用者.github.io/prodrive/） ===== */
-const OTA_MANIFEST_URL = "ota/manifest.json"; // ← 小寫 ota
+const APP_VERSION = "v2025.08.27-r4-iosfix5";
+const OTA_MANIFEST_URL = "ota/manifest.json"; // 小寫 ota
 
 /* ===== BLE UUIDs ===== */
 const UUID_SVC = "12345678-1234-5678-1234-56789abcdef0";
 const UUID_TX  = "12345678-1234-5678-1234-56789abcdef1";
 const UUID_RX  = "12345678-1234-5678-1234-56789abcdef2";
-/* FILE UUID 必須與裝置端 main.py 一致（…def4） */
 const UUID_FILE= "12345678-1234-5678-1234-56789abcdef4";
 
-/* ===== Utilities ===== */
+/* ===== Helpers ===== */
 const $ = s => document.querySelector(s);
 const log = s => { $('#log').textContent = `[${new Date().toLocaleTimeString()}] ${s}\n` + $('#log').textContent; };
-function isIOS(){
-  const ua = navigator.userAgent;
-  const iOS = /iPad|iPhone|iPod/.test(ua);
-  const iPadOS = (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-  return iOS || iPadOS;
-}
-function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
+const isIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints>1);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 /* ===== BLE state ===== */
 let device=null, server=null, svc=null, chTX=null, chRX=null, chFILE=null;
 
-/* ===== TX 佇列：避免 “GATT operation already in progress” ===== */
+/* ===== TX queue ===== */
 let txChain = Promise.resolve();
 function queue(fn){
   txChain = txChain.then(fn).catch(e => log('TX ERR ' + (e?.message || e)));
@@ -108,38 +101,45 @@ async function send(cmd){
   });
 }
 
-/* ===== 驗證輪詢（含 in-flight 鎖與 15s 看門狗） ===== */
-let verifyTimer=null, verifyInFlight=false, verifyWatch=null;
-function startVerifyPoll(){
+/* ===== Verify watchdog ===== */
+let verifyTimer=null, verifyWatch=null, gotEnd=false;
+function startVerifyPoll(expectedSize){
   stopVerifyPoll();
-  // 立即觸發一次
-  queue(async ()=>{ try{ await send('FW:STAT'); }catch(_){} });
+  gotEnd=false;
+
+  queue(async ()=>{ try{ await send('FW:STAT'); }catch{} });
 
   verifyTimer = setInterval(async ()=>{
-    if (verifyInFlight) return;
-    verifyInFlight = true;
-    try { await send('FW:STAT'); } finally { verifyInFlight = false; }
-  }, 1000); // 每秒查一次
+    try{ await send('FW:STAT'); }catch{}
+  }, 1000);
 
-  verifyWatch = setTimeout(()=>{
-    $('#fwinfo').textContent = 'Verify timeout — 裝置未回覆，請重連後再按 “FW:STAT” 或重試 OTA';
-    log('OTA WARN verify timeout — try reconnect then send FW:STAT');
-    stopVerifyPoll();
-  }, 15000);
+  verifyWatch = setTimeout(async ()=>{
+    if (gotEnd) return;
+    $('#fwinfo').textContent = 'No verify response — retrying END…';
+    log('OTA WARN no verify — retry FW:END');
+    try{
+      await send('FW:END');
+      await sleep(400);
+      await send('FW:STAT');
+    }catch(e){ log('OTA ERR ' + (e?.message || e)); }
+    // 10 秒後還是沒有 end，就停表，讓使用者手動 Verify/Apply
+    setTimeout(()=>{
+      if (!gotEnd){
+        $('#fwinfo').textContent = 'Verify timeout — press “Verify Now” 或直接 “Apply”。';
+        stopVerifyPoll();
+      }
+    }, 10000);
+  }, 5000);
 }
 function stopVerifyPoll(){
   if (verifyTimer){ clearInterval(verifyTimer); verifyTimer=null; }
   if (verifyWatch){ clearTimeout(verifyWatch); verifyWatch=null; }
-  verifyInFlight=false;
 }
 
-/* ===== BLE connect/disconnect ===== */
+/* ===== Connect ===== */
 async function connect() {
   log("requestDevice…");
-  device = await navigator.bluetooth.requestDevice({
-    acceptAllDevices: true,
-    optionalServices: [UUID_SVC]
-  });
+  device = await navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: [UUID_SVC] });
   $('#dev').textContent = device.name || 'Unknown';
   device.addEventListener('gattserverdisconnected', onDisconnect);
 
@@ -157,15 +157,12 @@ async function connect() {
   log("READY ✔ 已連線，可用上方選單或 OTA");
   $('#btn').textContent = 'Disconnect';
 }
-
 function onDisconnect() {
   $('#dev').textContent = 'Disconnected';
   $('#btn').textContent = 'Connect';
   log('disconnected');
-
-  // 清理舊 GATT handle & 停止輪詢
-  chTX = null; chRX = null; chFILE = null;
-  svc = null; server = null; device = null;
+  chTX = chRX = chFILE = null;
+  svc = server = device = null;
   stopVerifyPoll();
 }
 
@@ -178,29 +175,34 @@ function onNotify(ev) {
     const j = JSON.parse(s);
     if (j.t === 'fw') {
       if (j.ev === 'begin') {
-        if (j.ok) { $('#fwinfo').textContent = `Begin OK → target=${j.target} size=${j.size}`; $('#fwprog').value = 0; }
-        else { $('#fwinfo').textContent = `Begin ERR: ${j.err || ''}`; }
+        $('#fwinfo').textContent = j.ok ? `Begin OK → target=${j.target} size=${j.size}` : `Begin ERR: ${j.err||''}`;
+        if (j.ok) $('#fwprog').value = 0;
       } else if (j.ev === 'progress') {
-        if (j.size) { $('#fwprog').max = j.size; $('#fwprog').value = j.rx || 0; }
+        if (j.size) { $('#fwprog').max = j.size; $('#fwprog').value = j.rx||0; }
         $('#fwinfo').textContent = `Uploading… ${j.rx}/${j.size}`;
       } else if (j.ev === 'verify') {
         $('#fwinfo').textContent = `Verifying… ${j.rx}/${j.size}`;
       } else if (j.ev === 'stat') {
         if (j.active) {
           $('#fwinfo').textContent = `Waiting verify… ${j.rx}/${j.size}`;
-          if (j.size) { $('#fwprog').max = j.size; $('#fwprog').value = j.rx || 0; }
+          if (j.size) { $('#fwprog').max = j.size; $('#fwprog').value = j.rx||0; }
+        } else {
+          // 重要：沒有 active（裝置端回報已不在 OTA），但我們可能沒收到 end 事件
+          $('#fwinfo').textContent = `No active OTA on device（可能已完成）。可按「Verify Now」或直接「Apply」。`;
+          stopVerifyPoll();
         }
       } else if (j.ev === 'end') {
+        gotEnd = true;
         if (j.ok) {
-          $('#fwinfo').textContent = `Verify OK SHA=${j.sha}`;
+          $('#fwinfo').textContent = `Verify OK — SHA=${j.sha}`;
           $('#fwprog').value = $('#fwprog').max;
-          if ($('#autoApply').checked) { queue(async ()=>{ await send('FW:APPLY'); }); }
+          if ($('#autoApply').checked) queue(async ()=>{ await send('FW:APPLY'); });
         } else {
           $('#fwinfo').textContent = `End ERR (rx=${j.rx}/${j.size})`;
         }
         stopVerifyPoll();
       } else if (j.ev === 'abort') {
-        $('#fwinfo').textContent = `Aborted: ${j.reason || ''}`;
+        $('#fwinfo').textContent = `Aborted: ${j.reason||''}`;
         stopVerifyPoll();
       } else if (j.ev === 'apply') {
         $('#fwinfo').textContent = `Applying… rebooting`;
@@ -208,7 +210,6 @@ function onNotify(ev) {
       return;
     }
 
-    // 其他類型
     if (j.t === 'obd') {
       if (j.rpm != null) $('#rpm').textContent = j.rpm;
       if (j.maf != null) $('#maf').textContent = (+j.maf).toFixed(2);
@@ -224,21 +225,14 @@ function onNotify(ev) {
     } else {
       log(`RX ${s}`);
     }
-  } catch(e) {
-    log('RX ' + s);
-  }
+  } catch { log('RX ' + s); }
 }
 
-/* ===== UI handlers ===== */
+/* ===== UI ===== */
 $('#btn').onclick = async () => {
-  try {
-    if (device && device.gatt && device.gatt.connected) { device.gatt.disconnect(); return; }
-    await connect();
-  } catch (e) {
-    log('ERROR ' + (e?.message || e));
-  }
+  try { if (device?.gatt?.connected) { device.gatt.disconnect(); return; } await connect(); }
+  catch (e) { log('ERROR ' + (e?.message || e)); }
 };
-
 $('#apply').onclick = async () => {
   await send($('#mode').value);
   await send($('#bit').value);
@@ -246,28 +240,41 @@ $('#apply').onclick = async () => {
   await send($('#dump').value);
   await send($('#pid').value);
 };
+$('#fwApply').onclick = async ()=>{ await send('FW:APPLY'); };
+$('#fwStat').onclick  = async ()=>{ await send('FW:STAT'); };
 
-/* ===== Hash ===== */
-async function sha256Hex(buffer) {
+/* ===== Crypto ===== */
+async function sha256Hex(buffer){
   const hash = await crypto.subtle.digest('SHA-256', buffer);
-  const bytes = new Uint8Array(hash);
-  return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+  return Array.from(new Uint8Array(hash)).map(b=>b.toString(16).padStart(2,'0')).join('');
 }
 
-/* ===== fetch JSON（錯誤訊息更清楚） ===== */
+/* ===== fetch JSON ===== */
 async function fetchJSON(url){
   let r;
-  try {
-    r = await fetch(url, {cache:'no-store'});
-  } catch (e) {
-    throw new Error(`Failed to fetch ${url} — ${e?.message || e}`);
-  }
+  try { r = await fetch(url, {cache:'no-store'}); }
+  catch (e) { throw new Error(`Failed to fetch ${url} — ${e?.message||e}`); }
   if (!r.ok) throw new Error(`HTTP ${r.status} ${r.statusText} for ${url}`);
   return await r.json();
 }
 
-/* ===== 手動上傳（iOS：20 bytes / 50ms / writeValue） ===== */
-async function fwUpload() {
+/* ===== 前置靜默（很重要） ===== */
+async function quietDown(){
+  await send('MODE:LISTEN'); await sleep(250);
+  await send('PID:OFF');     await sleep(250);
+  await send('DUMP:OFF');    await sleep(250);
+}
+
+/* ===== 上傳後進入驗證 ===== */
+async function afterUploadEnd(size){
+  $('#fwinfo').textContent = 'Upload done, verifying on device…';
+  await sleep(300);
+  await send('FW:STAT');
+  startVerifyPoll(size);
+}
+
+/* ===== 手動上傳 ===== */
+async function fwUpload(){
   if (!chFILE || !device?.gatt?.connected) { log('未連線'); return; }
   const f = $('#fwfile').files[0];
   if (!f) { $('#fwinfo').textContent = '請先選擇檔案'; return; }
@@ -277,109 +284,82 @@ async function fwUpload() {
   const sha = await sha256Hex(buf);
   const size = buf.byteLength;
 
-  await send('PID:OFF'); await send('DUMP:OFF');
+  await quietDown();
   await send(`FW:BEGIN ${target} ${size} ${sha}`);
 
   const u8 = new Uint8Array(buf);
-  const CHUNK = isIOS() ? 20 : 180;
-  const GAP   = isIOS() ? 50 : 8;
+  const CHUNK = isIOS()?20:180;
+  const GAP   = isIOS()?50:8;
   const USE_WNR = (!isIOS()) && !!chFILE.writeValueWithoutResponse;
 
   $('#fwprog').max = size; $('#fwprog').value = 0;
   $('#fwinfo').textContent = `Uploading… 0/${size}`;
+  await sleep(isIOS()?300:100);
 
-  await sleep(isIOS()?250:80);
-
-  for (let i=0; i<u8.length; i+=CHUNK) {
+  for (let i=0;i<u8.length;i+=CHUNK){
     const slice = u8.subarray(i, Math.min(i+CHUNK, u8.length));
-    try {
-      if (USE_WNR) await chFILE.writeValueWithoutResponse(slice);
-      else         await chFILE.writeValue(slice);
-      $('#fwprog').value = i + slice.length;
-      if ((i % (CHUNK*50)) === 0) log(`FW up ${i + slice.length}/${size}`);
-    } catch (e) {
-      $('#fwinfo').textContent = 'Write error: ' + e.message;
-      log('FW write error: ' + e.message);
-      await send('FW:ABORT');
-      return;
-    }
+    try { if (USE_WNR) await chFILE.writeValueWithoutResponse(slice); else await chFILE.writeValue(slice); }
+    catch(e){ $('#fwinfo').textContent='Write error: '+e.message; log('FW write error: '+e.message); await send('FW:ABORT'); return; }
+    $('#fwprog').value = i + slice.length;
+    if ((i % (CHUNK*50))===0) log(`FW up ${i + slice.length}/${size}`);
     await sleep(GAP);
   }
-
-  await sleep(isIOS()?700:250);
+  await sleep(isIOS()?800:300);
   await send('FW:END');
-  $('#fwinfo').textContent = 'Upload done, verifying on device…';
-
-  // 立刻詢問一次，再啟動輪詢
-  await sleep(300);
-  await send('FW:STAT');
-  startVerifyPoll();
+  await afterUploadEnd(size);
 }
 
-/* ===== 一鍵更新（iOS：20 bytes / 50ms / writeValue） ===== */
-async function oneClickUpdate() {
-  try {
+/* ===== 一鍵更新 ===== */
+async function oneClickUpdate(){
+  try{
     if (!chRX || !chFILE || !device?.gatt?.connected) { log('請先 Connect'); return; }
-
     log('OTA: fetch manifest…');
     const mani = await fetchJSON(OTA_MANIFEST_URL);
     const {version, target, url, sha256} = mani;
     log(`OTA: latest ${version} → ${target}`);
 
-    const base = new URL(OTA_MANIFEST_URL, location.href);
-    const fwUrl = new URL(url, base).toString();
+    const fwUrl = new URL(url, new URL(OTA_MANIFEST_URL, location.href)).toString();
     log('OTA: download firmware… ' + fwUrl);
     const resp = await fetch(fwUrl, {cache:'no-store'});
-    if(!resp.ok) throw new Error('firmware HTTP '+resp.status);
+    if (!resp.ok) throw new Error('firmware HTTP ' + resp.status);
     const buf = await resp.arrayBuffer();
 
     const sha = await sha256Hex(buf);
     if (sha.toLowerCase() !== String(sha256).toLowerCase()) throw new Error('SHA mismatch');
-    log('OTA: SHA OK '+sha.slice(0,8)+'…');
+    log('OTA: SHA OK ' + sha.slice(0,8) + '…');
 
-    await send('PID:OFF'); await send('DUMP:OFF');
+    await quietDown();
     const size = buf.byteLength;
     await send(`FW:BEGIN ${target} ${size} ${sha}`);
 
     const u8 = new Uint8Array(buf);
-    const CHUNK = isIOS() ? 20 : 180;
-    const GAP   = isIOS() ? 50 : 8;
+    const CHUNK = isIOS()?20:180;
+    const GAP   = isIOS()?50:8;
     const USE_WNR = (!isIOS()) && !!chFILE.writeValueWithoutResponse;
 
     $('#fwprog').max = size; $('#fwprog').value = 0;
     $('#fwinfo').textContent = `Uploading… 0/${size}`;
+    await sleep(isIOS()?300:100);
 
-    await sleep(isIOS()?250:80);
-
-    for (let i=0; i<u8.length; i+=CHUNK) {
+    for (let i=0;i<u8.length;i+=CHUNK){
       const slice = u8.subarray(i, Math.min(i+CHUNK, u8.length));
-      if (USE_WNR) await chFILE.writeValueWithoutResponse(slice);
-      else         await chFILE.writeValue(slice);
+      if (USE_WNR) await chFILE.writeValueWithoutResponse(slice); else await chFILE.writeValue(slice);
       $('#fwprog').value = i + slice.length;
-      if ((i % (CHUNK*50)) === 0) log(`FW up ${i + slice.length}/${size}`);
+      if ((i % (CHUNK*50))===0) log(`FW up ${i + slice.length}/${size}`);
       await sleep(GAP);
     }
-
-    await sleep(isIOS()?700:250);
+    await sleep(isIOS()?800:300);
     await send('FW:END');
-    $('#fwinfo').textContent = 'Upload done, verifying on device…';
-
-    // 立刻詢問一次，再啟動輪詢
-    await sleep(300);
-    await send('FW:STAT');
-    startVerifyPoll();
-
-  } catch (e) {
-    log('OTA ERR '+ (e?.message || e));
+    await afterUploadEnd(size);
+  }catch(e){
+    log('OTA ERR '+(e?.message||e));
     $('#fwinfo').textContent = 'OTA error: ' + (e?.message || e);
   }
 }
 
 /* ===== Buttons ===== */
 $('#fwUpload').onclick = fwUpload;
-$('#fwApply').onclick  = async ()=>{ await send('FW:APPLY'); };
 $('#fwCheck').onclick  = oneClickUpdate;
-
 </script>
 </body>
 </html>
