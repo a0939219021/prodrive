@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
-<title>ESP32-C6 BLE Console</title>
+<title>ESP32-C6 BLE Console + OTA</title>
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
 <meta http-equiv="Pragma" content="no-cache" />
 <meta http-equiv="Expires" content="0" />
@@ -17,17 +17,19 @@
   *{box-sizing:border-box}
   html,body{height:100%}
   body{margin:0; background:linear-gradient(160deg,#0b1220,#0a0f1a); color:var(--fg); font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans",Ubuntu,"Helvetica Neue",Arial}
-  .wrap{max-width:880px;margin:0 auto;padding:calc(14px + var(--safe-top)) 16px calc(18px + var(--safe-bot))}
+  .wrap{max-width:980px;margin:0 auto;padding:calc(14px + var(--safe-top)) 16px calc(18px + var(--safe-bot))}
   h1{font-size:22px;margin:0 0 10px}
   .row{display:flex;gap:var(--gap);flex-wrap:wrap}
   .card{background:var(--card); border:1px solid rgba(255,255,255,.07); border-radius:var(--br); padding:14px; flex:1}
   button{background:#111827;color:var(--fg);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:10px 14px;font-size:14px;cursor:pointer}
   button:hover{border-color:var(--acc)}
-  #log{white-space:pre-wrap; font-family:ui-monospace,Consolas,monospace; font-size:13px; line-height:1.35; max-height:48vh; overflow:auto; background:#0b1020; border-radius:10px; padding:10px; border:1px solid rgba(255,255,255,.05)}
+  #log{white-space:pre-wrap; font-family:ui-monospace,Consolas,monospace; font-size:13px; line-height:1.35; max-height:46vh; overflow:auto; background:#0b1020; border-radius:10px; padding:10px; border:1px solid rgba(255,255,255,.05)}
   .kv{display:grid;grid-template-columns:120px 1fr;gap:6px 10px;align-items:center}
   .muted{color:var(--muted)}
   .badge{display:inline-block;padding:2px 8px;border-radius:999px;border:1px solid rgba(255,255,255,.15);font-size:12px}
   .ok{color:var(--ok)} .err{color:var(--err)} .warn{color:var(--warn)}
+  progress{width:100%;height:12px}
+  .hint{font-size:12px;color:var(--muted)}
 </style>
 </head>
 <body>
@@ -35,7 +37,7 @@
   <h1>ESP32-C6 BLE Console <span id="status" class="badge muted">idle</span></h1>
 
   <div class="row">
-    <div class="card" style="min-width:260px;flex:0 0 280px">
+    <div class="card" style="min-width:280px;flex:0 0 300px">
       <div class="kv">
         <div>Device</div><div id="devName" class="muted">—</div>
         <div>FW Version</div><div id="fwVer" class="muted">—</div>
@@ -56,22 +58,33 @@
 
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-        <div>Logs</div>
+        <div>Firmware Update (OTA over BLE)</div>
         <button id="btnClear">Clear</button>
       </div>
-      <div id="log"></div>
+
+      <div class="row" style="align-items:center">
+        <input id="fileInput" type="file" accept=".py,.mpy,.bin,.txt,application/octet-stream" />
+        <button id="btnSend">Send Selected</button>
+        <button id="btnGit">Download from GitHub</button>
+      </div>
+      <div class="hint">流程：選檔 → 計算 SHA256 → `ota_begin` → 多段 `ota_chunk` → `ota_end` → 裝置校驗通過後自動 reboot。</div>
+
+      <div style="margin-top:10px">
+        <progress id="bar" value="0" max="100"></progress>
+        <div class="hint"><span id="ptext">0%</span> (<span id="sentBytes">0</span>/<span id="totalBytes">0</span> bytes)</div>
+      </div>
+
+      <div id="log" style="margin-top:10px"></div>
     </div>
   </div>
 </div>
 
 <script>
-/** ====== 基本設定（與韌體一致） ======
- * 16-bit 0xFFF0/1/2 的 128-bit 轉寫，Bluefy 友善
-*/
+/** ====== 基本設定（與韌體一致） ====== */
 const UUID_SERVICE =          "0000fff0-0000-1000-8000-00805f9b34fb";
 const UUID_CHAR_TX_NOTIFY =   "0000fff1-0000-1000-8000-00805f9b34fb"; // Peripheral→App (Notify)
 const UUID_CHAR_RX_WRITE =    "0000fff2-0000-1000-8000-00805f9b34fb"; // App→Peripheral (Write/WWR)
-const NAME_PREFIX = "C6-LED"; // 你目前裝置的廣播名稱（記憶：專案規劃）
+const NAME_PREFIX = "C6-LED";
 
 let device, server, service, chTx, chRx;
 let ctx = null;
@@ -86,7 +99,7 @@ function log(...args){
   el.scrollTop = el.scrollHeight;
 }
 
-/* 斷線保護 */
+/* 連線/斷線 */
 async function disconnect(){
   try{ device && device.gatt && device.gatt.connected && device.gatt.disconnect(); }catch(e){}
   device = server = service = chTx = chRx = null;
@@ -94,21 +107,12 @@ async function disconnect(){
   setStatus("disconnected");
 }
 
-/* 連線 & 啟用通知 */
 async function connect(){
   try{
     setStatus("requesting…");
-    // Bluefy 需要 filters；桌面 Chrome 可回退 acceptAllDevices
-    const options = {
-      filters: [{ namePrefix: NAME_PREFIX }, { services: [UUID_SERVICE] }],
-      optionalServices: [UUID_SERVICE]
-    };
-    try{
-      device = await navigator.bluetooth.requestDevice(options);
-    }catch(e){
-      // 回退：有些裝置名稱不同或掃不到
-      device = await navigator.bluetooth.requestDevice({ acceptAllDevices:true, optionalServices:[UUID_SERVICE] });
-    }
+    const options = { filters: [{ namePrefix: NAME_PREFIX }, { services: [UUID_SERVICE] }], optionalServices:[UUID_SERVICE] };
+    try{ device = await navigator.bluetooth.requestDevice(options); }
+    catch{ device = await navigator.bluetooth.requestDevice({ acceptAllDevices:true, optionalServices:[UUID_SERVICE] }); }
     $("#devName").textContent = device.name || "(unnamed)";
     device.addEventListener("gattserverdisconnected", ()=>{ log("** disconnected"); disconnect(); });
 
@@ -123,7 +127,6 @@ async function connect(){
 
     setStatus("connected");
     log("connected to", device.name || "device");
-    // 連上後自動送 hello
     await send({op:"hello", want:"status"});
   }catch(e){
     log({err:"connect", msg:e.message||String(e)});
@@ -131,7 +134,7 @@ async function connect(){
   }
 }
 
-/* Notify 黏包處理（\n 分隔的 JSON line） */
+/* Notify 黏包處理（\n 分隔 JSON line） */
 function onNotify(ev){
   const v = ev.target.value;
   const chunk = new TextDecoder().decode(v.buffer ? v : v);
@@ -150,7 +153,6 @@ function onNotify(ev){
   }
 }
 
-/* 處理裝置回傳 */
 function handleMsg(j){
   if (j.ok === "hello" && j.ctx){
     ctx = j.ctx;
@@ -167,32 +169,35 @@ function handleMsg(j){
     $("#fwVer").textContent  = j.fw.ver || "—";
     $("#fwSize").textContent = j.fw.size ?? "—";
     $("#fwSha").textContent  = j.fw.sha  || "—";
-    log("fw_info:", j.fw);
+    log("fw_info:", j.fw); return;
+  }
+  if (j.ack === "ota_begin"){
+    log(j); return;
+  }
+  if (j.ack === "ota_chunk"){
+    // 可選：顯示 echo 的進度
+    return;
+  }
+  if (j.ok === "ota_end"){
+    log("OTA OK:", j);
     return;
   }
   if (j.ack === "reboot"){
-    log({ack:"reboot"});
-    // 不再送指令，等待使用者手動重連
-    return;
+    log({ack:"reboot"}); return;
   }
-  if (j.err){
-    log(j);
-    return;
-  }
+  if (j.err){ log(j); return; }
   log(j);
 }
 
-/* 寫入（長字串分片 <= 180 bytes） */
-async function writeBle(str){
+/* BLE 寫入（<=180 bytes 分片） */
+async function writeBle(strOrBytes){
   if (!chRx) throw new Error("no RX characteristic");
-  const enc = new TextEncoder();
-  const data = enc.encode(str);
+  let data = (strOrBytes instanceof Uint8Array) ? strOrBytes : new TextEncoder().encode(strOrBytes);
   const MTU = 180;
   for (let i=0; i<data.length; i+=MTU){
     const chunk = data.slice(i, i+MTU);
     await chRx.writeValueWithoutResponse(chunk);
-    // 輕微節流，避免藍牙堆積
-    await new Promise(r=>setTimeout(r, 4));
+    await new Promise(r=>setTimeout(r, 3));
   }
 }
 
@@ -211,28 +216,67 @@ async function send(obj){
   }
 }
 
+/* ===== OTA：選檔傳送 ===== */
+
+$("#btnSend").onclick = async ()=>{
+  const f = $("#fileInput").files?.[0];
+  if (!f){ log({err:"nofile"}); return; }
+  if (!ctx){ log({err:"noctx"}); return; }
+
+  const buf = new Uint8Array(await f.arrayBuffer());
+  const size = buf.length;
+  const sha = await computeSHA256Hex(buf);
+
+  $("#totalBytes").textContent = size;
+  $("#sentBytes").textContent = 0;
+  setProgress(0);
+
+  // 1) begin
+  await send({op:"ota_begin", name:f.name, size, sha});
+
+  // 2) chunks（每片原始資料做 base64，再包 JSON）
+  const CHUNK = 512; // 原始 payload；實測 256~1024 皆可
+  let sent = 0, seq = 0;
+  while (sent < size){
+    const end = Math.min(sent + CHUNK, size);
+    const slice = buf.slice(sent, end);
+    const b64 = btoa(String.fromCharCode(...slice)); // base64
+    await send({op:"ota_chunk", seq, data:b64});
+    sent = end; seq++;
+
+    $("#sentBytes").textContent = sent;
+    setProgress(Math.round(sent*100/size));
+  }
+
+  // 3) end
+  await send({op:"ota_end", sha});
+  log("ota_end sent; waiting for device verify…");
+};
+
+$("#btnGit").onclick = async ()=>{
+  // 預留：若你要「從 GitHub 下載最新 main.py」→ 先 fetch → 再走同一個 send 流程
+  log("Download-from-GitHub stub. 請填入你的 raw 連結後沿用相同流程。");
+};
+
+function setProgress(p){
+  $("#bar").value = p; $("#ptext").textContent = p + "%";
+}
+
+/* SHA256 計算：window.devComputeSHA() 等價 */
+async function computeSHA256Hex(uint8){
+  const d = await crypto.subtle.digest("SHA-256", uint8.buffer);
+  const hex = [...new Uint8Array(d)].map(b=>b.toString(16).padStart(2,"0")).join("");
+  return hex;
+}
+window.devComputeSHA = computeSHA256Hex; // 兼容你之前的呼叫
+
 /* UI 綁定 */
 $("#btnConnect").onclick    = connect;
 $("#btnDisconnect").onclick = disconnect;
 $("#btnClear").onclick      = ()=>{ $("#log").textContent=""; };
-
-$("#btnHello").onclick  = async ()=>{ await send({op:"hello", want:"status"}); };
-$("#btnGetFw").onclick  = async ()=>{ await send({op:"get", what:"fw_info"}); };
-$("#btnReboot").onclick = async ()=>{ await send({op:"reboot"}); };
-
-/* 額外：如要從本地讀 manifest.json 顯示版本，可用 cache-buster */
-async function tryFetchManifest(){
-  try{
-    const res = await fetch("manifest.json?ts="+Date.now(), {cache:"no-store"});
-    if (!res.ok) return;
-    const mani = await res.json();
-    if (mani && mani.version){
-      log("manifest:", mani);
-      // 僅供參考，真正顯示仍以裝置回報為準
-    }
-  }catch(_){}
-}
-tryFetchManifest();
+$("#btnHello").onclick      = async ()=>{ await send({op:"hello", want:"status"}); };
+$("#btnGetFw").onclick      = async ()=>{ await send({op:"get", what:"fw_info"}); };
+$("#btnReboot").onclick     = async ()=>{ await send({op:"reboot"}); };
 </script>
 </body>
 </html>
