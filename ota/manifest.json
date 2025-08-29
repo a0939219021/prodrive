@@ -1,7 +1,18 @@
-{
-  "channel": "internal",
-  "version": "v2025.08.27-r4-iosfix5-quiet",
-  "target": "main.py",
-  "url": "main.py",
-  "sha256": "d01900e58ba3bdccafda5b84aeac63997d38a7fcc0238762e40d8faef1727304"
-}
+[
+  {
+    "channel": "internal",
+    "version": "v2025.08.27-r4-iosfix5-quiet",
+    "target": "main.py",
+    "url": "main.py",
+    "size": 9007,
+    "sha256": "f3de4d4ac2c3e25f9d8b0dde3b4d6e9a7881b5c6a83cfcf6f0e1d79d2d6c7b9a"
+  },
+  {
+    "channel": "internal",
+    "version": "v2025.08.27-r4-iosfix5-quiet",
+    "target": "index.html",
+    "url": "index.html",
+    "size": 7007,
+    "sha256": "9fbe8cfbd66483bfd56f60046a777617ceebdd03b6f1dff6b01576b3176e1"
+  }
+]
