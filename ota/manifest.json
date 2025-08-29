@@ -1,8 +1,10 @@
 {
-  "channel": "internal",
-  "version": "v2025.08.27-r4",
-  "target": "main.py",
-  "url": "main.py",
-  "sha256": "a6a1a64621661470e54d5be50cd2eabd153a0b3a2805ed1bd7f5a0ad013a7dc2",
-  "notes": "Internal test via GitHub Pages"
+  "version": "2025.08.27-r4-iosfix6",
+  "files": [
+    {
+      "name": "main.py",
+      "size": 16267,
+      "sha256": "a6a1a64621661470e54d5be50cd2eabd153a0b3a2805ed1bd7f5a0ad013a7dc2"
+    }
+  ]
 }
