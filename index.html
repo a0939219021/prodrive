@@ -1,125 +1,45 @@
 <!doctype html>
-<html lang="zh-Hant">
+<html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>C6 OTA (r4-iosfix5)</title>
-<style>
-  body{background:#0b1220;color:#e5e7eb;font-family:system-ui,-apple-system,Segoe UI,Arial,sans-serif;padding:16px}
-  button{padding:8px 14px;border:0;border-radius:10px;background:#22d3ee;color:#000;font-weight:700;margin:6px 8px 6px 0}
-  #log{white-space:pre-wrap;font:12px monospace;background:#111827;border-radius:10px;padding:12px;max-height:55vh;overflow:auto}
-  input[type=file]{margin:6px 0}
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>C6-LED Control</title>
+  <style>
+    body{background:#111;color:#eee;font-family:sans-serif;text-align:center}
+    button{margin:10px;padding:12px 20px;border-radius:8px;border:none;background:#28a;color:#fff;font-size:16px}
+    input[type=range]{width:80%}
+  </style>
 </head>
 <body>
-<h2>ESP32-C6 OTA – r4-iosfix5</h2>
-<p>
-  <button id="btnConnect">Connect</button>
-  <input type="file" id="file" />
-  <button id="btnUpdate">Update Firmware</button>
-</p>
-<div id="log"></div>
+  <h1>C6-LED</h1>
+  <button id="connect">Connect</button>
+  <p>Mode: <span id="modeVal">0</span></p>
+  <p><input id="bright" type="range" min="0" max="255"></p>
+  <p><input id="speed" type="range" min="1" max="32"></p>
 
-<script>
-let device, gatt, svc, chrRX, chrTX;
-let manifest;   // 會使用 manifest.json 的 size/sha（⚠ 這就是與實際 bytes 不一致時的地雷）
-const SVC  = "0000fff0-0000-1000-8000-00805f9b34fb";
-const RX   = "0000fff1-0000-1000-8000-00805f9b34fb";
-const TX   = "0000fff2-0000-1000-8000-00805f9b34fb";
+  <script>
+    let device, server, service, ch_mode, ch_bright, ch_speed;
 
-function log(s){ const el = document.querySelector('#log'); el.textContent += s + "\n"; el.scrollTop = el.scrollHeight; }
-
-async function loadManifest(){
-  try{
-    // r4-iosfix5：沒有加 no-store / cache bust，可能吃到舊 manifest
-    const res = await fetch("./manifest.json");
-    manifest = await res.json();
-    log("manifest loaded: " + (manifest.version||""));
-  }catch(e){
-    log("manifest load failed: " + e);
-  }
-}
-
-async function connect(){
-  try{
-    device = await navigator.bluetooth.requestDevice({
-      filters:[{ namePrefix: "C6-LED" }],
-      optionalServices:[SVC]
-    });
-    gatt = await device.gatt.connect();
-    svc  = await gatt.getPrimaryService(SVC);
-    chrRX = await svc.getCharacteristic(RX);
-    chrTX = await svc.getCharacteristic(TX);
-    await chrTX.startNotifications();
-    chrTX.addEventListener("characteristicvaluechanged", e=>{
-      const t = new TextDecoder().decode(e.target.value);
-      log("TX: " + t);
-      // r4-iosfix5：前端等待特定 JSON（verify/done），若裝置端未送 → 會一直卡住
-      try{
-        const j = JSON.parse(t);
-        if(j.t==="fw" && j.stage==="verify" && j.ok) {
-          log("Verify OK.");
-        }
-        if(j.t==="fw" && j.stage==="done" && j.ok){
-          log("Done.");
-        }
-      }catch(_){}
-    });
-    log("Connected.");
-  }catch(e){
-    log("Connect failed: " + e);
-  }
-}
-
-async function textToBytes(text){
-  // r4-iosfix5：以「文字」路徑讀檔，行尾/編碼可能被正規化，導致與 manifest size/sha 不符
-  return new TextEncoder().encode(text);
-}
-
-async function getFileBytes(){
-  const fi = document.querySelector('#file').files[0];
-  if(!fi){ throw new Error("no file chosen"); }
-  // r4-iosfix5：讀文字而非 arrayBuffer
-  const txt = await new Promise((resolve, reject)=>{
-    const fr = new FileReader();
-    fr.onload = () => resolve(fr.result);
-    fr.onerror = e => reject(e);
-    fr.readAsText(fi);        // ⚠️ 文字路徑（CRLF/LF 正規化雷）
-  });
-  return textToBytes(txt);
-}
-
-async function update(){
-  try{
-    if(!manifest){ await loadManifest(); }
-    const entry = (manifest && manifest.files || []).find(x => x.name === "main.py");
-    if(!entry){ throw new Error("manifest missing main.py"); }
-
-    const bytes = await getFileBytes();
-    const begin = `FW:BEGIN main.py ${entry.size} ${entry.sha256}\n`; // ⚠ 使用 manifest 的 size/sha（可能與 bytes 不同）
-    await chrRX.writeValue(new TextEncoder().encode(begin));
-
-    // r4-iosfix5：chunk 偏大、間隔短（在 iOS 上更容易丟包）
-    const CHUNK = 200;
-    for(let i=0;i<bytes.length;i+=CHUNK){
-      const chunk = bytes.slice(i, i+CHUNK);
-      // 嘗試 Write/WriteNR 自動切換（實際上 Web Bluetooth 只有 writeValue）
-      await chrRX.writeValue(chunk);
-      await sleep(5); // 間隔很短
+    async function connect() {
+      device = await navigator.bluetooth.requestDevice({
+        filters: [{ namePrefix: 'C6-LED' }],
+        optionalServices: ['0000fff0-0000-1000-8000-00805f9b34fb']
+      });
+      server = await device.gatt.connect();
+      service = await server.getPrimaryService('0000fff0-0000-1000-8000-00805f9b34fb');
+      ch_mode   = await service.getCharacteristic('0000fff1-0000-1000-8000-00805f9b34fb');
+      ch_bright = await service.getCharacteristic('0000fff2-0000-1000-8000-00805f9b34fb');
+      ch_speed  = await service.getCharacteristic('0000fff3-0000-1000-8000-00805f9b34fb');
+      console.log("Connected");
     }
-    await chrRX.writeValue(new TextEncoder().encode("FW:END\n"));
-    log("Upload done, verifying on device…");
 
-  }catch(e){
-    log("Update failed: " + e);
-  }
-}
-
-function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
-
-document.querySelector('#btnConnect').addEventListener('click', connect);
-document.querySelector('#btnUpdate').addEventListener('click', update);
-loadManifest(); // 頁面載入就抓 manifest（⚠ 可能命中快取）
-</script>
+    document.getElementById("connect").onclick = connect;
+    document.getElementById("bright").oninput = e=>{
+      if(ch_bright) ch_bright.writeValue(Uint8Array.of(e.target.value));
+    };
+    document.getElementById("speed").oninput = e=>{
+      if(ch_speed) ch_speed.writeValue(Uint8Array.of(e.target.value));
+    };
+  </script>
 </body>
 </html>
