@@ -1,10 +1,13 @@
-# main.py - v2025.08.27-r4-iosfix5 (as-is)
-# Known issues:
-# - gatts_notify(0, ...) 連線代號寫死，斷線/未啟用通知時可能丟 OSError(-128)
-# - 驗證失敗時未必會送出明確 JSON，前端可能卡在 "verifying"
-# - 未做 notify 分段（依 MTU <= 20/182），長訊息可能被丟棄
+# main.py - v2025.08.27-r4-iosfix5-minfix
+# Minimal fixes:
+# - Guard BLE IRQ operations (gatts_read/gap_advertise) to avoid OSError in IRQ
+# - Defer advertising after disconnect by 50ms (Timer ONE_SHOT)
+# - tx_json(): use valid conn_handle + <=20B chunking + exception guard
+#
+# NOTE: 仍保留 r4-iosfix5 的原始行為（例如 verify 失敗時可能不回 JSON）
 
 import bluetooth, ujson, os, ubinascii, uhashlib, machine, time
+from machine import Timer
 
 ble = bluetooth.BLE(); ble.active(True)
 
@@ -18,12 +21,16 @@ SERVICE = (UUID_SVC, (CHAR_RX, CHAR_TX))
 
 _handle_rx = None
 _handle_tx = None
+_conn = None  # 當前連線 handle
 
 fw_tmp = "/update.tmp"
 fw_expect_size = 0
 fw_expect_sha  = ""
 fw_receiving   = False
 fw_received    = 0
+
+# 用來延遲重新廣播，避免在 IRQ 當下調用 gap_advertise 觸發 OSError
+_adv_timer = Timer(0)
 
 def sha256_file(path, chunk=4096):
     h = uhashlib.sha256()
@@ -34,12 +41,24 @@ def sha256_file(path, chunk=4096):
             h.update(b)
     return ubinascii.hexlify(h.digest()).decode()
 
+def _notify_bytes(b):
+    # 安全分段（<=20 bytes）+ 連線檢查 + 例外防護
+    global _conn, _handle_tx
+    if not _conn or not _handle_tx:
+        return
+    for i in range(0, len(b), 20):
+        chunk = b[i:i+20]
+        try:
+            ble.gatts_notify(_conn, _handle_tx, chunk)
+        except OSError:
+            break
+        if len(b) > 20:
+            time.sleep_ms(2)
+
 def tx_json(obj):
-    # NOTE: 未分段，可能超過 MTU 造成例外，中斷流程
     try:
-        ble.gatts_notify(0, _handle_tx, ujson.dumps(obj))
-    except Exception as e:
-        # r4-iosfix5 原樣：忽略例外
+        _notify_bytes(ujson.dumps(obj).encode())
+    except Exception:
         pass
 
 def on_write(v):
@@ -87,7 +106,6 @@ def on_write(v):
         except:
             ok = False
 
-        # r4-iosfix5：只有成功時才送 verify OK；失敗時有機會不送明確結果（前端會卡住）
         if ok:
             try:
                 try: os.remove("main.py.old")
@@ -103,8 +121,7 @@ def on_write(v):
                 time.sleep_ms(300)
                 machine.reset()
         else:
-            # 原樣：可能只紀錄，不一定回報 JSON（這就是桌面卡 "verifying" 的主因之一）
-            # tx_json({"t":"fw","stage":"verify","ok":False,"got_size":got_size,"calc":calc,"expect_size":fw_expect_size,"expect":fw_expect_sha})
+            # 保留 r4-iosfix5 的原始（未回報詳細錯誤）的行為
             pass
 
         fw_receiving = False
@@ -116,40 +133,66 @@ def on_write(v):
             with open(fw_tmp, "ab") as f:
                 f.write(v)
             fw_received += len(v)
-            # 報進度（可能過長未分段）
             if (fw_received & 0x3FF) == 0:
                 tx_json({"t":"fw","stage":"recv","n":fw_received})
         except:
             fw_receiving = False
             tx_json({"t":"fw","stage":"recv","ok":False,"err":"write_failed"})
 
-def _irq(event, data):
-    if event == 3:  # _IRQ_GATTS_WRITE
-        conn_handle, attr_handle = data
-        if attr_handle == _handle_rx:
-            v = ble.gatts_read(_handle_rx)
-            on_write(v)
-    elif event == 1:  # _IRQ_CENTRAL_CONNECT
-        # 原樣：不保存 conn_handle，notify 一律用 0
-        pass
-    elif event == 2:  # _IRQ_CENTRAL_DISCONNECT
-        # 重新廣播
-        ble.gap_advertise(100, adv_data=_adv())
-
-def _adv():
-    # Flags + 16-bit UUID + Name (C6-LED)
+def _adv_payload():
+    # Flags + 16-bit Service UUID + Name
     return (
         b'\x02\x01\x06' +
         b'\x03\x03\xf0\xff' +
         b'\x07\x09C6-LED'
     )
 
+def _deferred_advertise(_t):
+    try:
+        ble.gap_advertise(100, adv_data=_adv_payload())
+    except OSError:
+        # 如果仍失敗就算了，下次再觸發
+        pass
+
+def _irq(event, data):
+    # 1: connect, 2: disconnect, 3: write
+    global _conn
+    try:
+        if event == 3:  # _IRQ_GATTS_WRITE
+            conn_handle, attr_handle = data
+            if attr_handle == _handle_rx:
+                try:
+                    v = ble.gatts_read(_handle_rx)
+                except OSError:
+                    return
+                on_write(v)
+
+        elif event == 1:  # _IRQ_CENTRAL_CONNECT
+            conn_handle, addr_type, addr = data
+            _conn = conn_handle
+            # 這裡不立刻 notify，避免對端尚未啟用通知造成 OSError
+
+        elif event == 2:  # _IRQ_CENTRAL_DISCONNECT
+            conn_handle, addr_type, addr = data
+            if _conn == conn_handle:
+                _conn = None
+            # 延遲 50ms 再廣播，避免在 IRQ 當下觸發 OSError
+            _adv_timer.init(mode=Timer.ONE_SHOT, period=50, callback=_deferred_advertise)
+
+    except Exception:
+        # 防止任何未處理例外把 IRQ 拉掛
+        pass
+
 def setup():
     global _handle_rx, _handle_tx
     (( _handle_rx, _handle_tx ),) = ble.gatts_register_services((SERVICE,))
     ble.irq(_irq)
-    ble.gap_advertise(100, adv_data=_adv())
+    # 初始廣播
+    try:
+        ble.gap_advertise(100, adv_data=_adv_payload())
+    except OSError:
+        pass
 
 setup()
-# 初始訊息（可能因未連線、未啟用通知而被丟）
+# 初始訊息（若尚未連線/未啟用通知，這條不一定送得出去）
 tx_json({"t":"fw","stage":"idle"})
