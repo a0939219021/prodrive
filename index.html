@@ -1,62 +1,125 @@
 <!doctype html>
-<html>
+<html lang="zh-Hant">
 <head>
-<meta charset="utf-8">
-<title>C6 Firmware Update</title>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>C6 OTA (r4-iosfix5)</title>
 <style>
-body{background:#0b1220;color:#e5e7eb;font-family:sans-serif;padding:1em}
-button{padding:0.5em 1em;margin:0.5em;border:0;border-radius:8px;background:#22d3ee;color:#000;font-weight:bold}
-#log{white-space:pre;font:12px monospace;background:#111827;padding:1em;border-radius:8px;max-height:50vh;overflow:auto}
+  body{background:#0b1220;color:#e5e7eb;font-family:system-ui,-apple-system,Segoe UI,Arial,sans-serif;padding:16px}
+  button{padding:8px 14px;border:0;border-radius:10px;background:#22d3ee;color:#000;font-weight:700;margin:6px 8px 6px 0}
+  #log{white-space:pre-wrap;font:12px monospace;background:#111827;border-radius:10px;padding:12px;max-height:55vh;overflow:auto}
+  input[type=file]{margin:6px 0}
 </style>
 </head>
 <body>
-<h2>ESP32-C6 Firmware Update</h2>
-<button onclick="connect()">Connect</button>
-<input type="file" id="file" />
-<button onclick="update()">Update Firmware</button>
+<h2>ESP32-C6 OTA – r4-iosfix5</h2>
+<p>
+  <button id="btnConnect">Connect</button>
+  <input type="file" id="file" />
+  <button id="btnUpdate">Update Firmware</button>
+</p>
 <div id="log"></div>
+
 <script>
-let device,gatt,tx,rx;
+let device, gatt, svc, chrRX, chrTX;
+let manifest;   // 會使用 manifest.json 的 size/sha（⚠ 這就是與實際 bytes 不一致時的地雷）
+const SVC  = "0000fff0-0000-1000-8000-00805f9b34fb";
+const RX   = "0000fff1-0000-1000-8000-00805f9b34fb";
+const TX   = "0000fff2-0000-1000-8000-00805f9b34fb";
 
-function log(m){document.querySelector('#log').textContent+=m+"\n"}
+function log(s){ const el = document.querySelector('#log'); el.textContent += s + "\n"; el.scrollTop = el.scrollHeight; }
 
-async function connect(){
-  device=await navigator.bluetooth.requestDevice({
-    filters:[{namePrefix:"C6-LED"}],
-    optionalServices:["0000fff0-0000-1000-8000-00805f9b34fb"]
-  });
-  gatt=await device.gatt.connect();
-  const srv=await gatt.getPrimaryService("0000fff0-0000-1000-8000-00805f9b34fb");
-  rx=await srv.getCharacteristic("0000fff1-0000-1000-8000-00805f9b34fb");
-  tx=await srv.getCharacteristic("0000fff2-0000-1000-8000-00805f9b34fb");
-  await tx.startNotifications();
-  tx.addEventListener("characteristicvaluechanged",e=>{
-    log("RX:"+new TextDecoder().decode(e.target.value));
-  });
-  log("Connected");
+async function loadManifest(){
+  try{
+    // r4-iosfix5：沒有加 no-store / cache bust，可能吃到舊 manifest
+    const res = await fetch("./manifest.json");
+    manifest = await res.json();
+    log("manifest loaded: " + (manifest.version||""));
+  }catch(e){
+    log("manifest load failed: " + e);
+  }
 }
 
-async function sha256Hex(u8){
-  const d=await crypto.subtle.digest("SHA-256",u8);
-  return [...new Uint8Array(d)].map(b=>b.toString(16).padStart(2,"0")).join("");
+async function connect(){
+  try{
+    device = await navigator.bluetooth.requestDevice({
+      filters:[{ namePrefix: "C6-LED" }],
+      optionalServices:[SVC]
+    });
+    gatt = await device.gatt.connect();
+    svc  = await gatt.getPrimaryService(SVC);
+    chrRX = await svc.getCharacteristic(RX);
+    chrTX = await svc.getCharacteristic(TX);
+    await chrTX.startNotifications();
+    chrTX.addEventListener("characteristicvaluechanged", e=>{
+      const t = new TextDecoder().decode(e.target.value);
+      log("TX: " + t);
+      // r4-iosfix5：前端等待特定 JSON（verify/done），若裝置端未送 → 會一直卡住
+      try{
+        const j = JSON.parse(t);
+        if(j.t==="fw" && j.stage==="verify" && j.ok) {
+          log("Verify OK.");
+        }
+        if(j.t==="fw" && j.stage==="done" && j.ok){
+          log("Done.");
+        }
+      }catch(_){}
+    });
+    log("Connected.");
+  }catch(e){
+    log("Connect failed: " + e);
+  }
+}
+
+async function textToBytes(text){
+  // r4-iosfix5：以「文字」路徑讀檔，行尾/編碼可能被正規化，導致與 manifest size/sha 不符
+  return new TextEncoder().encode(text);
+}
+
+async function getFileBytes(){
+  const fi = document.querySelector('#file').files[0];
+  if(!fi){ throw new Error("no file chosen"); }
+  // r4-iosfix5：讀文字而非 arrayBuffer
+  const txt = await new Promise((resolve, reject)=>{
+    const fr = new FileReader();
+    fr.onload = () => resolve(fr.result);
+    fr.onerror = e => reject(e);
+    fr.readAsText(fi);        // ⚠️ 文字路徑（CRLF/LF 正規化雷）
+  });
+  return textToBytes(txt);
 }
 
 async function update(){
-  const f=document.querySelector("#file").files[0];
-  if(!f){alert("choose file");return}
-  const buf=await f.arrayBuffer();
-  const u8=new Uint8Array(buf);
-  const sha=await sha256Hex(u8);
-  log(`size=${u8.length}, sha=${sha}`);
-  await rx.writeValue(new TextEncoder().encode(`FW:BEGIN main.py ${u8.length} ${sha}\n`));
-  const CHUNK=160;
-  for(let i=0;i<u8.length;i+=CHUNK){
-    await rx.writeValue(u8.slice(i,i+CHUNK));
-    await new Promise(r=>setTimeout(r,15));
+  try{
+    if(!manifest){ await loadManifest(); }
+    const entry = (manifest && manifest.files || []).find(x => x.name === "main.py");
+    if(!entry){ throw new Error("manifest missing main.py"); }
+
+    const bytes = await getFileBytes();
+    const begin = `FW:BEGIN main.py ${entry.size} ${entry.sha256}\n`; // ⚠ 使用 manifest 的 size/sha（可能與 bytes 不同）
+    await chrRX.writeValue(new TextEncoder().encode(begin));
+
+    // r4-iosfix5：chunk 偏大、間隔短（在 iOS 上更容易丟包）
+    const CHUNK = 200;
+    for(let i=0;i<bytes.length;i+=CHUNK){
+      const chunk = bytes.slice(i, i+CHUNK);
+      // 嘗試 Write/WriteNR 自動切換（實際上 Web Bluetooth 只有 writeValue）
+      await chrRX.writeValue(chunk);
+      await sleep(5); // 間隔很短
+    }
+    await chrRX.writeValue(new TextEncoder().encode("FW:END\n"));
+    log("Upload done, verifying on device…");
+
+  }catch(e){
+    log("Update failed: " + e);
   }
-  await rx.writeValue(new TextEncoder().encode("FW:END\n"));
-  log("Upload done, verifying on device…");
 }
+
+function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+
+document.querySelector('#btnConnect').addEventListener('click', connect);
+document.querySelector('#btnUpdate').addEventListener('click', update);
+loadManifest(); // 頁面載入就抓 manifest（⚠ 可能命中快取）
 </script>
 </body>
 </html>
