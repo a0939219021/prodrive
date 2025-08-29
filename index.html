@@ -3,50 +3,56 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
-<title>C6-LED OTA Console (r4-iosfix5-quiet)</title>
+<title>C6-LED — One‑Click OTA (iOS‑friendly)</title>
 <style>
   :root{
-    --bg:#0b1220; --card:#111827; --fg:#e5e7eb; --muted:#9ca3af; --acc:#22d3ee; --ok:#10b981; --warn:#f59e0b; --err:#ef4444;
+    --bg:#0b1220; --bg2:#0f172a; --card:#111827; --fg:#e5e7eb; --muted:#9ca3af; --acc:#22d3ee; --ok:#10b981; --warn:#f59e0b; --err:#ef4444;
     --br:16px; --gap:12px;
   }
   html,body{height:100%}
   body{margin:0;background:linear-gradient(160deg,#0b1220,#0f172a);color:var(--fg);font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Helvetica,Arial}
-  .wrap{max-width:900px;margin:0 auto;padding:20px}
+  .wrap{max-width:960px;margin:0 auto;padding:20px}
   .row{display:flex;gap:var(--gap);flex-wrap:wrap}
-  .card{background:var(--card);border-radius:var(--br);padding:16px;box-shadow:0 8px 24px rgba(0,0,0,.25);flex:1;min-width:260px}
-  button{border:0;border-radius:12px;padding:10px 14px;font-size:15px;color:#0b1220;background:var(--acc);cursor:pointer}
+  .card{background:var(--card);border-radius:var(--br);padding:16px;box-shadow:0 8px 24px rgba(0,0,0,.25);flex:1;min-width:280px}
+  button{border:0;border-radius:12px;padding:12px 16px;font-size:15px;color:#0b1220;background:var(--acc);cursor:pointer}
   button:disabled{opacity:.6;cursor:not-allowed}
   .muted{color:var(--muted);font-size:13px}
   .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace}
   progress{width:100%}
-  .ok{color:var(--ok)} .err{color:var(--err)} .warn{color:var(--warn)}
+  .pill{display:inline-block;padding:4px 10px;border-radius:999px;font-size:12px;margin-left:8px}
+  .ok{background:rgba(16,185,129,.15);color:var(--ok)}
+  .warn{background:rgba(245,158,11,.15);color:var(--warn)}
+  .err{background:rgba(239,68,68,.15);color:var(--err)}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h2>ESP32-C6 OTA / BLE Console <span class="muted">r4-iosfix5-quiet</span></h2>
+  <h2>C6‑LED <span class="muted">One‑Click OTA</span></h2>
 
   <div class="row">
     <div class="card">
-      <h3>Connection</h3>
-      <p id="status" class="muted">disconnected</p>
+      <h3>Device</h3>
+      <p>State: <span id="state" class="pill warn">disconnected</span></p>
+      <p>Device ver: <span id="devver" class="mono">—</span></p>
       <button id="btnConn">Connect</button>
-      <button id="btnReboot" disabled>Reboot device</button>
-      <div class="muted" style="margin-top:8px">Device name filter: <span class="mono">C6-LED</span></div>
+      <button id="btnReconnect" disabled>Reconnect</button>
+      <button id="btnReboot" disabled>Reboot</button>
     </div>
 
     <div class="card">
-      <h3>One-click OTA</h3>
-      <input id="file" type="file" accept=".py,.bin,.txt,.json,.html" />
-      <div class="muted">File: <span id="fname" class="mono">—</span></div>
-      <div class="muted">SHA-256: <span id="fsha" class="mono">—</span></div>
+      <h3>Firmware</h3>
+      <p>Embedded ver: <span class="mono">v2025.08.27-r4-iosfix5-quiet</span></p>
+      <p>File: <span class="mono">main.py</span> <span class="muted">(9939 bytes)</span></p>
+      <p>SHA‑256: <span class="mono">bc6339c6e7e9fd023a29e954d9e5b58ea26a248710f9130d2cd0ddcd8fe5db49</span></p>
+      <button id="btnUpdate" disabled>Update to embedded</button>
       <progress id="prog" value="0" max="100"></progress>
       <div class="muted">Progress: <span id="ptext">0%</span></div>
-      <div style="display:flex;gap:10px;margin-top:8px">
-        <button id="btnSend" disabled>Send</button>
-        <button id="btnCommit" disabled>Commit</button>
-      </div>
-      <div id="log" class="muted mono" style="margin-top:8px;white-space:pre-wrap;max-height:180px;overflow:auto"></div>
+      <div id="result" class="muted" style="margin-top:8px"></div>
+    </div>
+
+    <div class="card">
+      <h3>Log</h3>
+      <div id="log" class="muted mono" style="white-space:pre-wrap;max-height:240px;overflow:auto"></div>
     </div>
   </div>
 </div>
@@ -55,116 +61,136 @@
 const SVC = 0xFFF0;
 const TX  = 0xFFF1; // notify
 const RX  = 0xFFF2; // write / writeWithoutResponse
+const INF = 0xFFF3; // read (version)
 
-let dev, server, svc, chTX, chRX;
-let fileBuf = null, fileName = null, fileSha = null;
+// === Embedded payload (base64 of main.py) ===
+const EMBED_VER = "v2025.08.27-r4-iosfix5-quiet";
+const EMBED_NAME = "main.py";
+const EMBED_SHA256 = "bc6339c6e7e9fd023a29e954d9e5b58ea26a248710f9130d2cd0ddcd8fe5db49";
+const EMBED_B64 = "IyBtYWluLnB5IOKAlCBFU1AzMi1DNiBCTEUgKyBXUzI4MTIgKyBPVEEgKE1pY3JvUHl0aG9uLCBpT1MtZnJpZW5kbHksIHdpdGggSU5GTyBSRUFEIGNoYXIpCiMgVmVyc2lvbjogdjIwMjUuMDguMjctcjQtaW9zZml4NS1xdWlldCAoSU5GTyBjaGFyIGFkZGVkOyBoYW5kbGUgcGFyc2luZyB0b2xlcmFudDsgYWR2IGludGVydmFsIGZpeGVkKQojCmltcG9ydCBzeXMsIHRpbWUsIG1hY2hpbmUsIHVqc29uCmltcG9ydCB1b3MgYXMgb3MKaW1wb3J0IGJsdWV0b290aApmcm9tIG1hY2hpbmUgaW1wb3J0IFBpbgp0cnk6CiAgICBpbXBvcnQgbmVvcGl4ZWwKZXhjZXB0OgogICAgbmVvcGl4ZWwgPSBOb25lCgpGV19WRVJTSU9OID0gInYyMDI1LjA4LjI3LXI0LWlvc2ZpeDUtcXVpZXQiCkZXX0JVSUxEICAgPSAicjQtaW9zZml4NS1xdWlldCIKCiMgPT09PT0gUHJvamVjdCBjb25zdGFudHMgPT09PT0KREVWX05BTUUgPSAiQzYtTEVEIgpXU19QSU4gPSA4CldTX0NPVU5UID0gMQpPVEFfRElSID0gIi9vdGEiCkNGR19GSUxFID0gIi9jZmcuanNvbiIKCmRlZiBlbnN1cmVfZGlyKHBhdGg6IHN0cik6CiAgICBpZiBub3QgcGF0aCBvciBwYXRoID09ICIvIjoKICAgICAgICByZXR1cm4KICAgIHRyeToKICAgICAgICBvcy5zdGF0KHBhdGgpCiAgICAgICAgcmV0dXJuCiAgICBleGNlcHQgT1NFcnJvcjoKICAgICAgICBpID0gcGF0aC5yZmluZCgiLyIpCiAgICAgICAgaWYgaSA+IDA6CiAgICAgICAgICAgIGVuc3VyZV9kaXIocGF0aFs6aV0pCiAgICAgICAgdHJ5OgogICAgICAgICAgICBvcy5ta2RpcihwYXRoKQogICAgICAgIGV4Y2VwdCBPU0Vycm9yOgogICAgICAgICAgICB0cnk6CiAgICAgICAgICAgICAgICBvcy5zdGF0KHBhdGgpCiAgICAgICAgICAgIGV4Y2VwdCBPU0Vycm9yOgogICAgICAgICAgICAgICAgcmFpc2UKCmRlZiBsb2FkX2NmZygpOgogICAgdHJ5OgogICAgICAgIHdpdGggb3BlbihDRkdfRklMRSwgInIiKSBhcyBmOgogICAgICAgICAgICByZXR1cm4gdWpzb24ubG9hZHMoZi5yZWFkKCkpCiAgICBleGNlcHQ6CiAgICAgICAgcmV0dXJuIHsibW9kZSI6IDAsICJicmlnaHRuZXNzIjogMTI4LCAic3BlZWQiOiA4fQoKZGVmIHNhdmVfY2ZnKGNmZyk6CiAgICB0cnk6CiAgICAgICAgd2l0aCBvcGVuKENGR19GSUxFLCAidyIpIGFzIGY6CiAgICAgICAgICAgIGYud3JpdGUodWpzb24uZHVtcHMoY2ZnKSkKICAgIGV4Y2VwdCBFeGNlcHRpb24gYXMgZToKICAgICAgICBwcmludCgiQ0ZHIHNhdmUgZmFpbGVkOiIsIGUpCgpDRkcgPSBsb2FkX2NmZygpCgpjbGFzcyBTdGF0dXNMRUQ6CiAgICBkZWYgX19pbml0X18oc2VsZiwgcGluPVdTX1BJTiwgbj1XU19DT1VOVCk6CiAgICAgICAgc2VsZi5vayA9IEZhbHNlCiAgICAgICAgaWYgbmVvcGl4ZWw6CiAgICAgICAgICAgIHRyeToKICAgICAgICAgICAgICAgIHNlbGYubnAgPSBuZW9waXhlbC5OZW9QaXhlbChQaW4ocGluLCBQaW4uT1VUKSwgbikKICAgICAgICAgICAgICAgIHNlbGYub2sgPSBUcnVlCiAgICAgICAgICAgIGV4Y2VwdCBFeGNlcHRpb24gYXMgZToKICAgICAgICAgICAgICAgIHByaW50KCJuZW9waXhlbCBpbml0IGZhaWw6IiwgZSkKCiAgICBkZWYgc2V0X3JnYihzZWxmLCByLCBnLCBiLCBzaG93PVRydWUpOgogICAgICAgIGlmIG5vdCBzZWxmLm9rOiByZXR1cm4KICAgICAgICBmb3IgaSBpbiByYW5nZShXU19DT1VOVCk6CiAgICAgICAgICAgIHNlbGYubnBbaV0gPSAociwgZywgYikKICAgICAgICBpZiBzaG93OgogICAgICAgICAgICBzZWxmLm5wLndyaXRlKCkKCiAgICBkZWYgb2ZmKHNlbGYpOgogICAgICAgIHNlbGYuc2V0X3JnYigwLDAsMCkKCkxFRCA9IFN0YXR1c0xFRCgpCkxFRC5zZXRfcmdiKDAsIDgsIDApCgplbnN1cmVfZGlyKE9UQV9ESVIpCgpVVUlEX1NWQyA9IGJsdWV0b290aC5VVUlEKDB4RkZGMCkKVVVJRF9UWCAgPSBibHVldG9vdGguVVVJRCgweEZGRjEpICAjIE5vdGlmeQpVVUlEX1JYICA9IGJsdWV0b290aC5VVUlEKDB4RkZGMikgICMgV3JpdGUvV3JpdGVOUgpVVUlEX0lORiA9IGJsdWV0b290aC5VVUlEKDB4RkZGMykgICMgUmVhZCAoZGV2aWNlIGluZm8vdmVyc2lvbikKCkZMQUdfTk9USUZZID0gYmx1ZXRvb3RoLkZMQUdfTk9USUZZCkZMQUdfV1JJVEUgID0gYmx1ZXRvb3RoLkZMQUdfV1JJVEUKRkxBR19XTlIgICAgPSBibHVldG9vdGguRkxBR19XUklURV9OT19SRVNQT05TRQpGTEFHX1JFQUQgICA9IGJsdWV0b290aC5GTEFHX1JFQUQKCmNsYXNzIEJMRVVhcnRMaWtlOgogICAgZGVmIF9faW5pdF9fKHNlbGYsIG5hbWU9REVWX05BTUUpOgogICAgICAgIHNlbGYuX2JsZSA9IGJsdWV0b290aC5CTEUoKQogICAgICAgIHNlbGYuX2JsZS5hY3RpdmUoVHJ1ZSkKICAgICAgICBzZWxmLl9ibGUuaXJxKHNlbGYuX2lycSkKCiAgICAgICAgVFggID0gKFVVSURfVFgsICBGTEFHX05PVElGWSkKICAgICAgICBSWCAgPSAoVVVJRF9SWCwgIEZMQUdfV1JJVEUgfCBGTEFHX1dOUikKICAgICAgICBJTkYgPSAoVVVJRF9JTkYsIEZMQUdfUkVBRCkgICMgc2FmZSB0byByZWFkCgogICAgICAgIFNWQyA9IChVVUlEX1NWQywgKFRYLCBSWCwgSU5GKSkKCiAgICAgICAgaGFuZGxlcyA9IHNlbGYuX2JsZS5nYXR0c19yZWdpc3Rlcl9zZXJ2aWNlcygoU1ZDLCkpCiAgICAgICAgIyBUb2xlcmF0ZSBzaGFwZXM6ICgodHgsIHJ4LCBpbmYpLCkgIG9yICAodHgsIHJ4LCBpbmYpCiAgICAgICAgc2VsZi50eF9oID0gc2VsZi5yeF9oID0gc2VsZi5pbmZfaCA9IE5vbmUKICAgICAgICBpZiBpc2luc3RhbmNlKGhhbmRsZXMsIHR1cGxlKToKICAgICAgICAgICAgaWYgbGVuKGhhbmRsZXMpID09IDEgYW5kIGlzaW5zdGFuY2UoaGFuZGxlc1swXSwgKHR1cGxlLCBsaXN0KSk6CiAgICAgICAgICAgICAgICB2YWxzID0gaGFuZGxlc1swXQogICAgICAgICAgICAgICAgaWYgbGVuKHZhbHMpID49IDM6CiAgICAgICAgICAgICAgICAgICAgc2VsZi50eF9oLCBzZWxmLnJ4X2gsIHNlbGYuaW5mX2ggPSB2YWxzWzBdLCB2YWxzWzFdLCB2YWxzWzJdCiAgICAgICAgICAgIGVsaWYgbGVuKGhhbmRsZXMpID49IDMgYW5kIGlzaW5zdGFuY2UoaGFuZGxlc1swXSwgaW50KToKICAgICAgICAgICAgICAgIHNlbGYudHhfaCwgc2VsZi5yeF9oLCBzZWxmLmluZl9oID0gaGFuZGxlc1swXSwgaGFuZGxlc1sxXSwgaGFuZGxlc1syXQogICAgICAgIGlmIHNlbGYudHhfaCBpcyBOb25lIG9yIHNlbGYucnhfaCBpcyBOb25lIG9yIHNlbGYuaW5mX2ggaXMgTm9uZToKICAgICAgICAgICAgdHJ5OgogICAgICAgICAgICAgICAgc2VsZi50eF9oLCBzZWxmLnJ4X2gsIHNlbGYuaW5mX2ggPSBoYW5kbGVzWzBdCiAgICAgICAgICAgIGV4Y2VwdDoKICAgICAgICAgICAgICAgIHJhaXNlIFJ1bnRpbWVFcnJvcigiVW5leHBlY3RlZCBoYW5kbGUgc2hhcGU6ICVyIiAlIChoYW5kbGVzLCkpCgogICAgICAgICMgUHJlcGFyZSBJTkZPIHBheWxvYWQKICAgICAgICBpbmZvID0gdWpzb24uZHVtcHMoeyJ2ZXIiOiBGV19WRVJTSU9OLCAiYnVpbGQiOiBGV19CVUlMRH0pCiAgICAgICAgdHJ5OgogICAgICAgICAgICBzZWxmLl9ibGUuZ2F0dHNfd3JpdGUoc2VsZi5pbmZfaCwgaW5mbykKICAgICAgICBleGNlcHQgRXhjZXB0aW9uIGFzIGU6CiAgICAgICAgICAgIHByaW50KCJJTkZPIHdyaXRlIGZhaWxlZDoiLCBlKQoKICAgICAgICBzZWxmLl9jb25uZWN0aW9ucyA9IHNldCgpCiAgICAgICAgc2VsZi5fb3RhID0gTm9uZQogICAgICAgICMgQWR2ZXJ0aXNlIGV2ZXJ5IDEwMCBtcyAoTWljcm9QeXRob24gdGFrZXMgbWljcm9zZWNvbmRzKQogICAgICAgIHNlbGYuX2JsZS5nYXBfYWR2ZXJ0aXNlKDEwMDAwMCwgYWR2X2RhdGE9c2VsZi5fcGF5bG9hZChuYW1lKSkKCiAgICBkZWYgX3BheWxvYWQoc2VsZiwgbmFtZSk6CiAgICAgICAgbmFtZV9ieXRlcyA9IG5hbWUuZW5jb2RlKCkKICAgICAgICByZXR1cm4gYnl0ZWFycmF5KGIiXHgwMlx4MDFceDA2IikgKyBieXRlcygobGVuKG5hbWVfYnl0ZXMpKzEsIDB4MDkpKSArIG5hbWVfYnl0ZXMKCiAgICBkZWYgX2lycShzZWxmLCBldmVudCwgZGF0YSk6CiAgICAgICAgaWYgZXZlbnQgPT0gMTogICMgY2VudHJhbCBjb25uZWN0CiAgICAgICAgICAgIGNvbm5faGFuZGxlLCBhZGRyX3R5cGUsIGFkZHIgPSBkYXRhCiAgICAgICAgICAgIHNlbGYuX2Nvbm5lY3Rpb25zLmFkZChjb25uX2hhbmRsZSkKICAgICAgICAgICAgTEVELnNldF9yZ2IoMCwgMCwgOCkKICAgICAgICBlbGlmIGV2ZW50ID09IDI6ICAjIGNlbnRyYWwgZGlzY29ubmVjdAogICAgICAgICAgICBjb25uX2hhbmRsZSwgYWRkcl90eXBlLCBhZGRyID0gZGF0YQogICAgICAgICAgICBzZWxmLl9jb25uZWN0aW9ucy5kaXNjYXJkKGNvbm5faGFuZGxlKQogICAgICAgICAgICBzZWxmLl9vdGEgPSBOb25lCiAgICAgICAgICAgIExFRC5zZXRfcmdiKDAsIDgsIDApCiAgICAgICAgICAgIHNlbGYuX2JsZS5nYXBfYWR2ZXJ0aXNlKDEwMDAwMCwgYWR2X2RhdGE9c2VsZi5fcGF5bG9hZChERVZfTkFNRSkpCiAgICAgICAgZWxpZiBldmVudCA9PSAzOiAgIyB3cml0ZQogICAgICAgICAgICBjb25uX2hhbmRsZSwgdmFsdWVfaGFuZGxlID0gZGF0YQogICAgICAgICAgICBpZiB2YWx1ZV9oYW5kbGUgPT0gc2VsZi5yeF9oOgogICAgICAgICAgICAgICAgdHJ5OgogICAgICAgICAgICAgICAgICAgIHJhdyA9IHNlbGYuX2JsZS5nYXR0c19yZWFkKHNlbGYucnhfaCkKICAgICAgICAgICAgICAgICAgICBzZWxmLl9oYW5kbGVfcngocmF3LCBjb25uX2hhbmRsZSkKICAgICAgICAgICAgICAgIGV4Y2VwdCBFeGNlcHRpb24gYXMgZToKICAgICAgICAgICAgICAgICAgICBwcmludCgiUlggZXJyb3I6IiwgZSkKCiAgICBkZWYgbm90aWZ5KHNlbGYsIHBheWxvYWQ6IGJ5dGVzKToKICAgICAgICBmb3IgY2ggaW4gbGlzdChzZWxmLl9jb25uZWN0aW9ucyk6CiAgICAgICAgICAgIHRyeToKICAgICAgICAgICAgICAgIHNlbGYuX2JsZS5nYXR0c19ub3RpZnkoY2gsIHNlbGYudHhfaCwgcGF5bG9hZCkKICAgICAgICAgICAgZXhjZXB0IEV4Y2VwdGlvbjoKICAgICAgICAgICAgICAgIHBhc3MKCiAgICAjID09PT09IE9UQSBwcm90b2NvbCA9PT09PQogICAgIyBKU09OIGNvbnRyb2wgZnJhbWVzOgogICAgIyAgeyJvcCI6ImJlZ2luIiwgIm5hbWUiOiJtYWluLnB5IiwgInNpemUiOjEyMzQsICJzaGEyNTYiOiIuLi5oZXguLi4ifQogICAgIyAgeyJvcCI6ImVuZCJ9IC8geyJvcCI6ImNvbW1pdCJ9IC8geyJvcCI6InJlYm9vdCJ9CiAgICAjIEJpbmFyeSBmcmFtZXM6IHJhdyBjaHVuayBieXRlcyAoYXBwZW5kIHRvIHRlbXAgZmlsZSkKICAgIGRlZiBfaGFuZGxlX3J4KHNlbGYsIGJ1ZiwgY2gpOgogICAgICAgIGlmIGxlbihidWYpIGFuZCBidWZbOjFdIGluIChiJ3snLCk6CiAgICAgICAgICAgIHRyeToKICAgICAgICAgICAgICAgIG1zZyA9IHVqc29uLmxvYWRzKGJ1ZikKICAgICAgICAgICAgZXhjZXB0OgogICAgICAgICAgICAgICAgc2VsZi5ub3RpZnkoYid7ImVyciI6Impzb24ifScpCiAgICAgICAgICAgICAgICByZXR1cm4KICAgICAgICAgICAgb3AgPSBtc2cuZ2V0KCJvcCIpCiAgICAgICAgICAgIGlmIG9wID09ICJiZWdpbiI6CiAgICAgICAgICAgICAgICBuYW1lID0gbXNnLmdldCgibmFtZSIpIG9yICJpbmNvbWluZy5iaW4iCiAgICAgICAgICAgICAgICBzaXplID0gaW50KG1zZy5nZXQoInNpemUiKSBvciAwKQogICAgICAgICAgICAgICAgc2hhICA9IG1zZy5nZXQoInNoYTI1NiIpIG9yICIiCiAgICAgICAgICAgICAgICB0bXBmID0gT1RBX0RJUiArICIvaW5jb21pbmcudG1wIgogICAgICAgICAgICAgICAgc2VsZi5fb3RhID0geyJuYW1lIjogbmFtZSwgInNpemUiOiBzaXplLCAic2hhIjogc2hhLCAidyI6IDAsICJ0bXAiOiB0bXBmfQogICAgICAgICAgICAgICAgdHJ5OgogICAgICAgICAgICAgICAgICAgIHRyeToKICAgICAgICAgICAgICAgICAgICAgICAgb3MucmVtb3ZlKHRtcGYpCiAgICAgICAgICAgICAgICAgICAgZXhjZXB0OgogICAgICAgICAgICAgICAgICAgICAgICBwYXNzCiAgICAgICAgICAgICAgICAgICAgd2l0aCBvcGVuKHRtcGYsICJ3YiIpIGFzIGY6CiAgICAgICAgICAgICAgICAgICAgICAgIHBhc3MKICAgICAgICAgICAgICAgICAgICBMRUQuc2V0X3JnYig4LCA0LCAwKQogICAgICAgICAgICAgICAgICAgIHNlbGYubm90aWZ5KGIneyJhY2siOiJiZWdpbiJ9JykKICAgICAgICAgICAgICAgIGV4Y2VwdCBFeGNlcHRpb246CiAgICAgICAgICAgICAgICAgICAgc2VsZi5ub3RpZnkoYid7ImVyciI6ImZzIn0nKQogICAgICAgICAgICBlbGlmIG9wID09ICJlbmQiOgogICAgICAgICAgICAgICAgaWYgbm90IHNlbGYuX290YToKICAgICAgICAgICAgICAgICAgICBzZWxmLm5vdGlmeShiJ3siZXJyIjoibm9jdHgifScpCiAgICAgICAgICAgICAgICAgICAgcmV0dXJuCiAgICAgICAgICAgICAgICBvayA9IChzZWxmLl9vdGFbInciXSA9PSBzZWxmLl9vdGFbInNpemUiXSkKICAgICAgICAgICAgICAgIHNlbGYubm90aWZ5KHVqc29uLmR1bXBzKHsiYWNrIjoiZW5kIiwib2siOmJvb2wob2spLCJ3IjpzZWxmLl9vdGFbInciXX0pLmVuY29kZSgpKQogICAgICAgICAgICAgICAgTEVELnNldF9yZ2IoMCwgOCwgMCBpZiBvayBlbHNlIDgpCiAgICAgICAgICAgIGVsaWYgb3AgPT0gImNvbW1pdCI6CiAgICAgICAgICAgICAgICBpZiBub3Qgc2VsZi5fb3RhOgogICAgICAgICAgICAgICAgICAgIHNlbGYubm90aWZ5KGIneyJlcnIiOiJub2N0eCJ9JykKICAgICAgICAgICAgICAgICAgICByZXR1cm4KICAgICAgICAgICAgICAgIHRyeToKICAgICAgICAgICAgICAgICAgICBmaW5hbCA9IE9UQV9ESVIgKyAiLyIgKyBzZWxmLl9vdGFbIm5hbWUiXQogICAgICAgICAgICAgICAgICAgIHRyeToKICAgICAgICAgICAgICAgICAgICAgICAgb3MucmVtb3ZlKGZpbmFsKQogICAgICAgICAgICAgICAgICAgIGV4Y2VwdDoKICAgICAgICAgICAgICAgICAgICAgICAgcGFzcwogICAgICAgICAgICAgICAgICAgIG9zLnJlbmFtZShzZWxmLl9vdGFbInRtcCJdLCBmaW5hbCkKICAgICAgICAgICAgICAgICAgICB3aXRoIG9wZW4oT1RBX0RJUiArICIvcGVuZGluZy5qc29uIiwgInciKSBhcyBmOgogICAgICAgICAgICAgICAgICAgICAgICBmLndyaXRlKHVqc29uLmR1bXBzKHsiaW5zdGFsbCI6IGZpbmFsLCAidGFyZ2V0Ijogc2VsZi5fb3RhWyJuYW1lIl19KSkKICAgICAgICAgICAgICAgICAgICBzZWxmLm5vdGlmeShiJ3siYWNrIjoiY29tbWl0In0nKQogICAgICAgICAgICAgICAgICAgIExFRC5zZXRfcmdiKDAsIDAsIDgpCiAgICAgICAgICAgICAgICBleGNlcHQgRXhjZXB0aW9uOgogICAgICAgICAgICAgICAgICAgIHNlbGYubm90aWZ5KGIneyJlcnIiOiJjb21taXQifScpCiAgICAgICAgICAgIGVsaWYgb3AgPT0gInJlYm9vdCI6CiAgICAgICAgICAgICAgICBzZWxmLm5vdGlmeShiJ3siYWNrIjoicmVib290In0nKQogICAgICAgICAgICAgICAgdGltZS5zbGVlcF9tcygyMDApCiAgICAgICAgICAgICAgICBtYWNoaW5lLnJlc2V0KCkKICAgICAgICAgICAgZWxpZiBvcCA9PSAic2V0IjoKICAgICAgICAgICAgICAgIGNoYW5nZWQgPSBGYWxzZQogICAgICAgICAgICAgICAgZm9yIGsgaW4gKCJtb2RlIiwiYnJpZ2h0bmVzcyIsInNwZWVkIik6CiAgICAgICAgICAgICAgICAgICAgaWYgayBpbiBtc2c6CiAgICAgICAgICAgICAgICAgICAgICAgIHRyeToKICAgICAgICAgICAgICAgICAgICAgICAgICAgIENGR1trXSA9IGludChtc2dba10pCiAgICAgICAgICAgICAgICAgICAgICAgICAgICBjaGFuZ2VkID0gVHJ1ZQogICAgICAgICAgICAgICAgICAgICAgICBleGNlcHQ6CiAgICAgICAgICAgICAgICAgICAgICAgICAgICBwYXNzCiAgICAgICAgICAgICAgICBpZiBjaGFuZ2VkOgogICAgICAgICAgICAgICAgICAgIHNhdmVfY2ZnKENGRykKICAgICAgICAgICAgICAgIHNlbGYubm90aWZ5KHVqc29uLmR1bXBzKHsiYWNrIjoic2V0IiwiY2ZnIjpDRkd9KS5lbmNvZGUoKSkKICAgICAgICAgICAgZWxzZToKICAgICAgICAgICAgICAgIHNlbGYubm90aWZ5KGIneyJlcnIiOiJvcCJ9JykKICAgICAgICBlbHNlOgogICAgICAgICAgICBpZiBub3Qgc2VsZi5fb3RhOgogICAgICAgICAgICAgICAgc2VsZi5ub3RpZnkoYid7ImVyciI6Im5vY3R4In0nKQogICAgICAgICAgICAgICAgcmV0dXJuCiAgICAgICAgICAgIHRyeToKICAgICAgICAgICAgICAgIHdpdGggb3BlbihzZWxmLl9vdGFbInRtcCJdLCAiYWIiKSBhcyBmOgogICAgICAgICAgICAgICAgICAgIGYud3JpdGUoYnVmKQogICAgICAgICAgICAgICAgc2VsZi5fb3RhWyJ3Il0gKz0gbGVuKGJ1ZikKICAgICAgICAgICAgICAgIGlmIChzZWxmLl9vdGFbInciXSAlIDQwOTYpIDwgbGVuKGJ1Zik6CiAgICAgICAgICAgICAgICAgICAgc2VsZi5ub3RpZnkodWpzb24uZHVtcHMoeyJwZyI6IHNlbGYuX290YVsidyJdfSkuZW5jb2RlKCkpCiAgICAgICAgICAgIGV4Y2VwdCBFeGNlcHRpb246CiAgICAgICAgICAgICAgICBzZWxmLm5vdGlmeShiJ3siZXJyIjoid3JpdGUifScpCgpCTEUgPSBCTEVVYXJ0TGlrZSgpCgpkZWYgX2FwcGx5X3BlbmRpbmcoKToKICAgIHAgPSBPVEFfRElSICsgIi9wZW5kaW5nLmpzb24iCiAgICB0cnk6CiAgICAgICAgd2l0aCBvcGVuKHAsICJyIikgYXMgZjoKICAgICAgICAgICAgaW5mbyA9IHVqc29uLmxvYWRzKGYucmVhZCgpKQogICAgICAgIHNyYyA9IGluZm8uZ2V0KCJpbnN0YWxsIikKICAgICAgICB0Z3QgPSBpbmZvLmdldCgidGFyZ2V0IikKICAgICAgICBpZiBzcmMgYW5kIHRndDoKICAgICAgICAgICAgZGVzdCA9ICIvIiArIHRndAogICAgICAgICAgICBiYWsgPSBkZXN0ICsgIi5iYWsiCiAgICAgICAgICAgIHRyeToKICAgICAgICAgICAgICAgIG9zLnN0YXQoZGVzdCkKICAgICAgICAgICAgICAgIHRyeToKICAgICAgICAgICAgICAgICAgICBvcy5yZW1vdmUoYmFrKQogICAgICAgICAgICAgICAgZXhjZXB0OgogICAgICAgICAgICAgICAgICAgIHBhc3MKICAgICAgICAgICAgICAgIG9zLnJlbmFtZShkZXN0LCBiYWspCiAgICAgICAgICAgIGV4Y2VwdCBPU0Vycm9yOgogICAgICAgICAgICAgICAgcGFzcwogICAgICAgICAgICB0cnk6CiAgICAgICAgICAgICAgICB0cnk6CiAgICAgICAgICAgICAgICAgICAgb3MucmVtb3ZlKGRlc3QpCiAgICAgICAgICAgICAgICBleGNlcHQ6CiAgICAgICAgICAgICAgICAgICAgcGFzcwogICAgICAgICAgICAgICAgb3MucmVuYW1lKHNyYywgZGVzdCkKICAgICAgICAgICAgICAgIHRyeToKICAgICAgICAgICAgICAgICAgICBvcy5yZW1vdmUocCkKICAgICAgICAgICAgICAgIGV4Y2VwdDoKICAgICAgICAgICAgICAgICAgICBwYXNzCiAgICAgICAgICAgICAgICBwcmludCgiT1RBIGluc3RhbGxlZDoiLCBkZXN0KQogICAgICAgICAgICAgICAgTEVELnNldF9yZ2IoMCwgOCwgMCkKICAgICAgICAgICAgZXhjZXB0IEV4Y2VwdGlvbiBhcyBlOgogICAgICAgICAgICAgICAgcHJpbnQoIk9UQSBpbnN0YWxsIGZhaWxlZDoiLCBlKQogICAgICAgICAgICAgICAgTEVELnNldF9yZ2IoOCwgMCwgMCkKICAgIGV4Y2VwdCBFeGNlcHRpb246CiAgICAgICAgcGFzcwoKX2FwcGx5X3BlbmRpbmcoKQoKZGVmIGhlYXJ0YmVhdCgpOgogICAgd2hpbGUgVHJ1ZToKICAgICAgICB0cnk6CiAgICAgICAgICAgIGlmIExFRC5vazoKICAgICAgICAgICAgICAgIGIgPSAoQ0ZHLmdldCgiYnJpZ2h0bmVzcyIsMTI4KSAmIDB4RkYpIC8vIDgKICAgICAgICAgICAgICAgIGlmIGIgPCAxOiBiID0gMQogICAgICAgICAgICAgICAgTEVELnNldF9yZ2IoMCwgYiwgMCkKICAgICAgICAgICAgdGltZS5zbGVlcF9tcyg1MDApCiAgICAgICAgZXhjZXB0IEV4Y2VwdGlvbjoKICAgICAgICAgICAgdGltZS5zbGVlcF9tcyg1MDApCgp0cnk6CiAgICBoZWFydGJlYXQoKQpleGNlcHQgS2V5Ym9hcmRJbnRlcnJ1cHQ6CiAgICBwYXNz";
 
-const $ = (sel)=>document.querySelector(sel);
+let dev, server, svc, chTX, chRX, chINF;
+
+const $ = (s)=>document.querySelector(s);
 const log = (s)=>{ const el=$("#log"); el.textContent += s + "\n"; el.scrollTop = el.scrollHeight; };
 
-async function sha256Hex(ab){
-  const d = await crypto.subtle.digest("SHA-256", ab);
-  const b = new Uint8Array(d);
-  return [...b].map(x=>x.toString(16).padStart(2,"0")).join("");
+function setState(text, cls){ const s=$("#state"); s.textContent=text; s.className="pill " + (cls||""); }
+function setResult(text, cls){ const r=$("#result"); r.textContent=text; r.className="muted " + (cls||""); }
+
+async function readDevVersion() {
+  try {
+    const v = await chINF.readValue();
+    const t = new TextDecoder().decode(v);
+    const j = JSON.parse(t);
+    $("#devver").textContent = j.ver || t;
+    return j.ver || t;
+  } catch(e) {
+    $("#devver").textContent = "n/a";
+    return null;
+  }
 }
 
-$("#file").addEventListener("change", async (e)=>{
-  const f = e.target.files[0];
-  if (!f) return;
-  fileName = f.name;
-  fileBuf  = await f.arrayBuffer();
-  fileSha  = await sha256Hex(fileBuf);
-  $("#fname").textContent = f.name + ` (${f.size} bytes)`;
-  $("#fsha").textContent  = fileSha;
-  $("#btnSend").disabled  = !chRX;
-});
+async function connect() {
+  dev = await navigator.bluetooth.requestDevice({
+    filters: [{ namePrefix: "C6-LED" }],
+    optionalServices: [SVC]
+  });
+  dev.addEventListener("gattserverdisconnected", onDisconnected);
+  server = await dev.gatt.connect();
+  svc    = await server.getPrimaryService(SVC);
+  chTX   = await svc.getCharacteristic(TX);
+  chRX   = await svc.getCharacteristic(RX);
+  chINF  = await svc.getCharacteristic(INF);
+  await chTX.startNotifications();
+  chTX.addEventListener("characteristicvaluechanged", (ev)=>{
+    const u8 = new Uint8Array(ev.target.value.buffer);
+    try {
+      const txt = new TextDecoder().decode(u8);
+      if (txt && txt[0]==="{") log(txt);
+      else log("[bin " + u8.length + "]");
+    } catch(e) { log("[notify " + u8.length + "]"); }
+  });
+  $("#btnReboot").disabled = false;
+  $("#btnUpdate").disabled = false;
+  setState("connected","ok");
+  await readDevVersion();
+}
 
-$("#btnConn").addEventListener("click", async ()=>{
-  try{
-    dev = await navigator.bluetooth.requestDevice({
-      filters: [{ namePrefix: "C6-LED" }],
-      optionalServices: [SVC]
-    });
+async function reconnect() {
+  if (!dev) return;
+  try {
     server = await dev.gatt.connect();
     svc    = await server.getPrimaryService(SVC);
     chTX   = await svc.getCharacteristic(TX);
     chRX   = await svc.getCharacteristic(RX);
-    await chTX.startNotifications(); // ✅ important for iOS
-    chTX.addEventListener("characteristicvaluechanged", (ev)=>{
-      const u8 = new Uint8Array(ev.target.value.buffer);
-      try{
-        const txt = new TextDecoder().decode(u8);
-        if (txt && txt[0]==="{") {
-          const j = JSON.parse(txt);
-          if (j.pg){ const p = Math.min(100, Math.floor(100*j.pg/(fileBuf?fileBuf.byteLength:1))); $("#prog").value=p; $("#ptext").textContent = p+"%"; }
-          log(txt);
-        } else {
-          log("[bin " + u8.length + "]");
-        }
-      }catch(e){
-        log("[notify " + u8.length + "]");
-      }
-    });
-    $("#status").textContent = "connected";
+    chINF  = await svc.getCharacteristic(INF);
+    await chTX.startNotifications();
+    setState("connected","ok");
+    await readDevVersion();
+    $("#btnUpdate").disabled = false;
     $("#btnReboot").disabled = false;
-    $("#btnSend").disabled   = !fileBuf;
-    $("#btnCommit").disabled = false;
-  }catch(e){
-    log("connect error: " + e);
+  } catch(e) {
+    log("reconnect failed: " + e);
   }
-});
-
-$("#btnReboot").addEventListener("click", async ()=>{
-  if (!chRX) return;
-  await chRX.writeValue(new TextEncoder().encode(JSON.stringify({op:"reboot"})));
-});
-
-function sliceBuffer(buf, chunk){
-  const out=[]; let i=0;
-  while(i<buf.byteLength){ out.push(buf.slice(i, i+=chunk)); }
-  return out;
 }
 
-$("#btnSend").addEventListener("click", async ()=>{
-  if (!chRX || !fileBuf) return;
+function onDisconnected() {
+  setState("disconnected","warn");
+  $("#btnReconnect").disabled = false;
+}
+
+function sliceBuffer(buf, chunk){ const out=[]; for(let i=0;i<buf.byteLength;i+=chunk) out.push(buf.slice(i,i+chunk)); return out; }
+
+async function sha256Hex(ab){
+  const d = await crypto.subtle.digest("SHA-256", ab);
+  return Array.from(new Uint8Array(d)).map(x=>x.toString(16).padStart(2,"0")).join("");
+}
+
+async function updateEmbedded() {
+  setResult("", "");
   $("#prog").value = 0; $("#ptext").textContent = "0%";
-  try{
-    // begin
-    const meta = {op:"begin", name:fileName, size:fileBuf.byteLength, sha256:fileSha};
-    await chRX.writeValue(new TextEncoder().encode(JSON.stringify(meta)));
-    // chunks (prefer WNR, fallback to withResponse)
-    const chunks = sliceBuffer(fileBuf, 128); // conservative for iOS
-    const useWNR = typeof chRX.writeValueWithoutResponse === "function";
-    let sent=0;
-    for (const c of chunks){
-      try{
-        if (useWNR) await chRX.writeValueWithoutResponse(c);
-        else await chRX.writeValue(c);
-      }catch(e){
-        if (useWNR) await chRX.writeValue(c);
-        else throw e;
-      }
-      sent += c.byteLength;
-      const p = Math.min(100, Math.floor(100*sent/fileBuf.byteLength));
-      $("#prog").value = p; $("#ptext").textContent = p+"%";
-      await new Promise(r=>setTimeout(r, 2));
-    }
-    await chRX.writeValue(new TextEncoder().encode(JSON.stringify({op:"end"})));
-    log("send done");
-  }catch(e){
-    log("send error: " + e);
+  const bin = Uint8Array.from(atob(EMBED_B64), c=>c.charCodeAt(0)).buffer;
+  const sha = await sha256Hex(bin);
+  if (sha !== EMBED_SHA256) { setResult("Embedded SHA mismatch", "err"); return; }
+
+  // begin
+  const meta = {op:"begin", name:EMBED_NAME, size:bin.byteLength, sha256:EMBED_SHA256};
+  await chRX.writeValue(new TextEncoder().encode(JSON.stringify(meta)));
+
+  const chunks = sliceBuffer(bin, 128);
+  const useWNR = typeof chRX.writeValueWithoutResponse === "function";
+  let sent=0;
+  for (const c of chunks) {
+    try { if (useWNR) await chRX.writeValueWithoutResponse(c); else await chRX.writeValue(c); }
+    catch(e) { if (useWNR) await chRX.writeValue(c); else throw e; }
+    sent += c.byteLength;
+    const p = Math.min(100, Math.floor(100*sent/bin.byteLength));
+    $("#prog").value = p; $("#ptext").textContent = p+"%";
+    await new Promise(r=>setTimeout(r, 2));
   }
+
+  await chRX.writeValue(new TextEncoder().encode(JSON.stringify({op:"end"})));
+  await chRX.writeValue(new TextEncoder().encode(JSON.stringify({op:"commit"})));
+  setResult("Commit sent. Rebooting…", "warn");
+  await chRX.writeValue(new TextEncoder().encode(JSON.stringify({op:"reboot"})));
+
+  // Wait for disconnect -> reconnect -> verify version
+  await new Promise(r=>setTimeout(r, 500));
+  setState("rebooting…", "warn");
+}
+
+$("#btnConn").addEventListener("click", async ()=>{ try{ await connect(); }catch(e){ log("connect error: "+e); } });
+$("#btnReconnect").addEventListener("click", async ()=>{ $("#btnReconnect").disabled=true; await reconnect(); });
+$("#btnReboot").addEventListener("click", async ()=>{ if (!chRX) return; await chRX.writeValue(new TextEncoder().encode(JSON.stringify({op:"reboot"}))); setState("rebooting…","warn"); });
+$("#btnUpdate").addEventListener("click", async ()=>{
+  try {
+    await updateEmbedded();
+  } catch(e) { setResult("Update failed: "+e, "err"); }
 });
 
-$("#btnCommit").addEventListener("click", async ()=>{
-  if (!chRX) return;
-  try{
-    await chRX.writeValue(new TextEncoder().encode(JSON.stringify({op:"commit"})));
-    log("commit requested");
-  }catch(e){
-    log("commit error: " + e);
-  }
-});
+// After page focus regain, if disconnected but we have device, try reconnect (iOS-friendly)
+window.addEventListener("focus", async ()=>{ if (dev && (!server || !server.connected)) { try{ await reconnect(); const ver=await readDevVersion(); if (ver===EMBED_VER) setResult("Update success ✓ ("+ver+")","ok"); }catch(_){} } });
 </script>
 </body>
 </html>
+
