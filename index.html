@@ -1,368 +1,170 @@
 <!doctype html>
 <html lang="zh-Hant">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
-<title>ESP32-C6 OBD-II BLE Diag — v2025.08.27-r4-iosfix5-quiet</title>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
+<title>C6-LED OTA Console (r4-iosfix5-quiet)</title>
 <style>
-  :root{--bg:#0b1220;--card:#111827;--fg:#e5e7eb;--muted:#9ca3af;--acc:#22d3ee;--ok:#10b981;--warn:#f59e0b;--bad:#ef4444;--br:16px}
-  *{box-sizing:border-box} body{margin:0;background:linear-gradient(180deg,#0b1220,#0f172a);color:var(--fg);font-family:system-ui,Segoe UI,Roboto}
-  header{position:sticky;top:0;background:#0b1220cc;backdrop-filter:blur(8px);padding:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-  .btn{background:var(--acc);color:#001018;border:0;border-radius:12px;padding:10px 14px;font-weight:700;cursor:pointer}
-  .wrap{max-width:980px;margin:0 auto;padding:16px}
-  .pill{padding:6px 10px;border-radius:999px;background:#0e1a2d;color:#93c5fd}
-  .grid{display:grid;gap:12px;grid-template-columns:repeat(4,1fr)}
-  @media(max-width:1100px){.grid{grid-template-columns:repeat(2,1fr)}}
-  @media(max-width:700px){.grid{grid-template-columns:1fr}}
-  .card{background:var(--card);border-radius:var(--br);padding:16px;box-shadow:0 6px 18px #0006}
-  .t{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
-  .v{font-size:44px;font-weight:800}
-  .u{font-size:14px;color:var(--muted);margin-left:6px}
-  #log{font-family:ui-monospace,Consolas,monospace;font-size:12px;white-space:pre-wrap;max-height:280px;overflow:auto}
-  select,input{background:#0b1629;color:#e5e7eb;border:1px solid #1f2a44;border-radius:10px;padding:8px 10px}
-  progress{width:100%;height:10px;border-radius:999px;appearance:none}
-  progress::-webkit-progress-bar{background:#0b1629;border-radius:999px}
-  progress::-webkit-progress-value{background:var(--ok);border-radius:999px}
-  label.chk{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#9ca3af}
+  :root{
+    --bg:#0b1220; --card:#111827; --fg:#e5e7eb; --muted:#9ca3af; --acc:#22d3ee; --ok:#10b981; --warn:#f59e0b; --err:#ef4444;
+    --br:16px; --gap:12px;
+  }
+  html,body{height:100%}
+  body{margin:0;background:linear-gradient(160deg,#0b1220,#0f172a);color:var(--fg);font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Helvetica,Arial}
+  .wrap{max-width:900px;margin:0 auto;padding:20px}
+  .row{display:flex;gap:var(--gap);flex-wrap:wrap}
+  .card{background:var(--card);border-radius:var(--br);padding:16px;box-shadow:0 8px 24px rgba(0,0,0,.25);flex:1;min-width:260px}
+  button{border:0;border-radius:12px;padding:10px 14px;font-size:15px;color:#0b1220;background:var(--acc);cursor:pointer}
+  button:disabled{opacity:.6;cursor:not-allowed}
+  .muted{color:var(--muted);font-size:13px}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace}
+  progress{width:100%}
+  .ok{color:var(--ok)} .err{color:var(--err)} .warn{color:var(--warn)}
 </style>
 </head>
 <body>
-<header>
-  <button id="btn" class="btn">Connect</button>
-  <span id="dev" class="pill">Not connected</span>
-  <span id="ver" class="pill">v2025.08.27-r4-iosfix5-quiet</span>
-  <select id="mode"><option>MODE:LISTEN</option><option>MODE:NORMAL</option></select>
-  <select id="bit"><option>BIT:500</option><option selected>BIT:250</option></select>
-  <select id="clk"><option>CLK:8</option><option selected>CLK:16</option></select>
-  <select id="dump"><option selected>DUMP:ON</option><option>DUMP:OFF</option></select>
-  <select id="pid"><option selected>PID:OFF</option><option>PID:ON</option></select>
-  <button id="apply" class="btn">Apply</button>
-</header>
-
 <div class="wrap">
-  <div class="grid">
-    <div class="card"><div class="t">RPM</div><div><span class="v" id="rpm">—</span><span class="u">rpm</span></div></div>
-    <div class="card"><div class="t">MAF</div><div><span class="v" id="maf">—</span><span class="u">g/s</span></div></div>
-    <div class="card"><div class="t">Throttle</div><div><span class="v" id="thr">—</span><span class="u">%</span></div></div>
-    <div class="card"><div class="t">MAP</div><div><span class="v" id="map">—</span><span class="u">kPa</span></div></div>
-  </div>
+  <h2>ESP32-C6 OTA / BLE Console <span class="muted">r4-iosfix5-quiet</span></h2>
 
-  <div class="card" style="margin-top:12px">
-    <div class="t">Firmware Update (OTA)</div>
-    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0">
-      <input type="file" id="fwfile" accept=".py,.mpy,.zip,.bin,.txt">
-      <input type="text" id="fwpath" placeholder="Target path on device" value="main.py" style="min-width:260px">
-      <button id="fwUpload" class="btn">Upload</button>
-      <button id="fwApply"  class="btn">Apply & Reboot</button>
-      <button id="fwCheck"  class="btn">Update Firmware</button>
-      <label class="chk"><input type="checkbox" id="autoApply" checked>Auto Apply</label>
+  <div class="row">
+    <div class="card">
+      <h3>Connection</h3>
+      <p id="status" class="muted">disconnected</p>
+      <button id="btnConn">Connect</button>
+      <button id="btnReboot" disabled>Reboot device</button>
+      <div class="muted" style="margin-top:8px">Device name filter: <span class="mono">C6-LED</span></div>
     </div>
-    <progress id="fwprog" value="0" max="1"></progress>
-    <div id="fwinfo" class="t" style="margin-top:8px">Select a file and click Upload — or use “Update Firmware”.</div>
-  </div>
 
-  <div class="card" style="margin-top:12px">
-    <div class="t">Log</div>
-    <div id="log">Ready. App v2025.08.27-r4-iosfix5-quiet</div>
+    <div class="card">
+      <h3>One-click OTA</h3>
+      <input id="file" type="file" accept=".py,.bin,.txt,.json,.html" />
+      <div class="muted">File: <span id="fname" class="mono">—</span></div>
+      <div class="muted">SHA-256: <span id="fsha" class="mono">—</span></div>
+      <progress id="prog" value="0" max="100"></progress>
+      <div class="muted">Progress: <span id="ptext">0%</span></div>
+      <div style="display:flex;gap:10px;margin-top:8px">
+        <button id="btnSend" disabled>Send</button>
+        <button id="btnCommit" disabled>Commit</button>
+      </div>
+      <div id="log" class="muted mono" style="margin-top:8px;white-space:pre-wrap;max-height:180px;overflow:auto"></div>
+    </div>
   </div>
 </div>
 
 <script>
-const APP_VERSION = "v2025.08.27-r4-iosfix5-quiet";
+const SVC = 0xFFF0;
+const TX  = 0xFFF1; // notify
+const RX  = 0xFFF2; // write / writeWithoutResponse
 
-/* ===== GitHub Pages manifest（相對於 https://你的使用者.github.io/prodrive/） ===== */
-const OTA_MANIFEST_URL = "ota/manifest.json";
+let dev, server, svc, chTX, chRX;
+let fileBuf = null, fileName = null, fileSha = null;
 
-/* ===== BLE UUIDs ===== */
-const UUID_SVC = "12345678-1234-5678-1234-56789abcdef0";
-const UUID_TX  = "12345678-1234-5678-1234-56789abcdef1";
-const UUID_RX  = "12345678-1234-5678-1234-56789abcdef2";
-/* ⚠ FILE UUID 要與裝置端 main.py 一致：iOS 版使用 …def4 */
-const UUID_FILE= "12345678-1234-5678-1234-56789abcdef4";
+const $ = (sel)=>document.querySelector(sel);
+const log = (s)=>{ const el=$("#log"); el.textContent += s + "\n"; el.scrollTop = el.scrollHeight; };
 
-/* ===== Utilities ===== */
-const $ = s => document.querySelector(s);
-const log = s => { $('#log').textContent = `[${new Date().toLocaleTimeString()}] ${s}\n` + $('#log').textContent; };
-function isIOS(){
-  const ua = navigator.userAgent;
-  const iOS = /iPad|iPhone|iPod/.test(ua);
-  const iPadOS = (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-  return iOS || iPadOS;
-}
-function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
-
-/* ===== BLE handles ===== */
-let device=null, server=null, svc=null, chTX=null, chRX=null, chFILE=null;
-let verifyPoll = null;
-
-/* ===== Simple TX queue to avoid "GATT operation already in progress" ===== */
-let txChain = Promise.resolve();
-function send(cmd){
-  txChain = txChain.then(async () => {
-    if (!chRX || !device || !device.gatt || !device.gatt.connected) throw new Error('not connected');
-    const enc = new TextEncoder().encode(cmd);
-    if (chRX.writeValueWithResponse) await chRX.writeValueWithResponse(enc);
-    else await chRX.writeValue(enc);
-    log('TX ' + cmd);
-    await sleep(20); // small gap between commands
-  }).catch(e => log('TX ERR ' + (e?.message || e)));
-  return txChain;
+async function sha256Hex(ab){
+  const d = await crypto.subtle.digest("SHA-256", ab);
+  const b = new Uint8Array(d);
+  return [...b].map(x=>x.toString(16).padStart(2,"0")).join("");
 }
 
-/* ===== BLE connect/disconnect ===== */
-async function connect() {
-  log("requestDevice…");
-  device = await navigator.bluetooth.requestDevice({
-    acceptAllDevices: true,
-    optionalServices: [UUID_SVC]
-  });
-  $('#dev').textContent = device.name || 'Unknown';
-  device.addEventListener('gattserverdisconnected', onDisconnect);
+$("#file").addEventListener("change", async (e)=>{
+  const f = e.target.files[0];
+  if (!f) return;
+  fileName = f.name;
+  fileBuf  = await f.arrayBuffer();
+  fileSha  = await sha256Hex(fileBuf);
+  $("#fname").textContent = f.name + ` (${f.size} bytes)`;
+  $("#fsha").textContent  = fileSha;
+  $("#btnSend").disabled  = !chRX;
+});
 
-  log("gatt.connect…");
-  server = await device.gatt.connect();
-  log("gatt.connect ok");
-
-  svc   = await server.getPrimaryService(UUID_SVC);
-  chTX  = await svc.getCharacteristic(UUID_TX);
-  chRX  = await svc.getCharacteristic(UUID_RX);
-  chFILE= await svc.getCharacteristic(UUID_FILE);
-
-  await chTX.startNotifications();
-  chTX.addEventListener('characteristicvaluechanged', onNotify);
-  log("READY ✔ 已連線，可用上方選單或 OTA");
-  $('#btn').textContent = 'Disconnect';
-}
-
-function onDisconnect() {
-  $('#dev').textContent = 'Disconnected';
-  $('#btn').textContent = 'Connect';
-  log('disconnected');
-
-  chTX = null; chRX = null; chFILE = null;
-  svc = null; server = null; device = null;
-
-  if (verifyPoll) { clearInterval(verifyPoll); verifyPoll = null; }
-}
-
-/* ===== Notifications ===== */
-function onNotify(ev) {
-  const dv = ev.target.value;
-  let s = "";
-  for (let i = 0; i < dv.byteLength; i++) s += String.fromCharCode(dv.getUint8(i));
-  try {
-    const j = JSON.parse(s);
-    if (j.t === 'obd') {
-      if (j.rpm != null) $('#rpm').textContent = j.rpm;
-      if (j.maf != null) $('#maf').textContent = (+j.maf).toFixed(2);
-      if (j.thr != null) $('#thr').textContent = (+j.thr).toFixed(1);
-      if (j.map != null) $('#map').textContent = j.map;
-    } else if (j.t === 'raw') {
-      log(`RAW id=0x${j.id.toString(16)} d=${j.d}`);
-    } else if (j.t === 'err') {
-      log(`ERR ${JSON.stringify(j)}`);
-    } else if (j.t === 'fw') {
-      if (j.ev === 'begin') {
-        if (j.ok) { $('#fwinfo').textContent = `Begin OK → target=${j.target} size=${j.size}`; $('#fwprog').value = 0; }
-        else { $('#fwinfo').textContent = `Begin ERR: ${j.err || ''}`; }
-      } else if (j.ev === 'progress') {
-        if (j.size) { $('#fwprog').max = j.size; $('#fwprog').value = j.rx || 0; }
-        $('#fwinfo').textContent = `Uploading… ${j.rx}/${j.size}`;
-      } else if (j.ev === 'verify') {
-        $('#fwinfo').textContent = `Verifying… ${j.rx}/${j.size}`;
-      } else if (j.ev === 'stat') {
-        if (j.active) {
-          $('#fwinfo').textContent = `Waiting verify… ${j.rx}/${j.size}`;
-          if (j.size) { $('#fwprog').max = j.size; $('#fwprog').value = j.rx || 0; }
-        }
-      } else if (j.ev === 'end') {
-        if (j.ok) {
-          $('#fwinfo').textContent = `Verify OK SHA=${j.sha}`;
-          $('#fwprog').value = $('#fwprog').max;
-          if ($('#autoApply').checked) { setTimeout(()=>send('FW:APPLY'), 300); }
+$("#btnConn").addEventListener("click", async ()=>{
+  try{
+    dev = await navigator.bluetooth.requestDevice({
+      filters: [{ namePrefix: "C6-LED" }],
+      optionalServices: [SVC]
+    });
+    server = await dev.gatt.connect();
+    svc    = await server.getPrimaryService(SVC);
+    chTX   = await svc.getCharacteristic(TX);
+    chRX   = await svc.getCharacteristic(RX);
+    await chTX.startNotifications(); // ✅ important for iOS
+    chTX.addEventListener("characteristicvaluechanged", (ev)=>{
+      const u8 = new Uint8Array(ev.target.value.buffer);
+      try{
+        const txt = new TextDecoder().decode(u8);
+        if (txt && txt[0]==="{") {
+          const j = JSON.parse(txt);
+          if (j.pg){ const p = Math.min(100, Math.floor(100*j.pg/(fileBuf?fileBuf.byteLength:1))); $("#prog").value=p; $("#ptext").textContent = p+"%"; }
+          log(txt);
         } else {
-          $('#fwinfo').textContent = `End ERR (rx=${j.rx}/${j.size})`;
+          log("[bin " + u8.length + "]");
         }
-        if (verifyPoll) { clearInterval(verifyPoll); verifyPoll = null; }
-        send('FW:QUIET OFF');
-      } else if (j.ev === 'abort') {
-        $('#fwinfo').textContent = `Aborted: ${j.reason || ''}`;
-        if (verifyPoll) { clearInterval(verifyPoll); verifyPoll = null; }
-        send('FW:QUIET OFF');
-      } else if (j.ev === 'apply') {
-        $('#fwinfo').textContent = `Applying… rebooting`;
+      }catch(e){
+        log("[notify " + u8.length + "]");
       }
-    } else if (j.t === 'info' && j.fw) {
-      $('#ver').textContent = j.fw;
-      log('FW ' + j.fw);
-    } else {
-      log(`RX ${s}`);
-    }
-  } catch(e) {
-    log('RX ' + s);
+    });
+    $("#status").textContent = "connected";
+    $("#btnReboot").disabled = false;
+    $("#btnSend").disabled   = !fileBuf;
+    $("#btnCommit").disabled = false;
+  }catch(e){
+    log("connect error: " + e);
   }
+});
+
+$("#btnReboot").addEventListener("click", async ()=>{
+  if (!chRX) return;
+  await chRX.writeValue(new TextEncoder().encode(JSON.stringify({op:"reboot"})));
+});
+
+function sliceBuffer(buf, chunk){
+  const out=[]; let i=0;
+  while(i<buf.byteLength){ out.push(buf.slice(i, i+=chunk)); }
+  return out;
 }
 
-/* ===== UI handlers ===== */
-$('#btn').onclick = async () => {
-  try {
-    if (device && device.gatt && device.gatt.connected) { device.gatt.disconnect(); return; }
-    await connect();
-  } catch (e) {
-    log('ERROR ' + (e?.message || e));
-  }
-};
-
-$('#apply').onclick = async () => {
-  await send($('#mode').value);
-  await send($('#bit').value);
-  await send($('#clk').value);
-  await send($('#dump').value);
-  await send($('#pid').value);
-};
-
-/* ===== Hash ===== */
-async function sha256Hex(buffer) {
-  const hash = await crypto.subtle.digest('SHA-256', buffer);
-  const bytes = new Uint8Array(hash);
-  return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
-/* ===== 手動上傳 ===== */
-async function fwUpload() {
-  if (!chFILE || !device || !device.gatt || !device.gatt.connected) { log('未連線'); return; }
-  const f = $('#fwfile').files[0];
-  if (!f) { $('#fwinfo').textContent = '請先選擇檔案'; return; }
-  const target = ($('#fwpath').value || 'main.py').trim();
-
-  const buf = await f.arrayBuffer();
-  const sha = await sha256Hex(buf);
-  const size = buf.byteLength;
-
-  await send('FW:QUIET ON');
-  await sleep(100);
-  await send(`FW:BEGIN ${target} ${size} ${sha}`);
-
-  const u8 = new Uint8Array(buf);
-  const CHUNK = isIOS() ? 20 : 180;
-  const GAP   = isIOS() ? 35 : 8;
-  const USE_WNR = (!isIOS()) && !!chFILE.writeValueWithoutResponse;
-
-  $('#fwprog').max = size; $('#fwprog').value = 0;
-  $('#fwinfo').textContent = `Uploading… 0/${size}`;
-
-  await sleep(isIOS()?200:80);
-
-  for (let i=0; i<u8.length; i+=CHUNK) {
-    const slice = u8.subarray(i, Math.min(i+CHUNK, u8.length));
-    try {
-      if (USE_WNR) await chFILE.writeValueWithoutResponse(slice);
-      else         await chFILE.writeValue(slice);
-      $('#fwprog').value = i + slice.length;
-      if ((i % (CHUNK*50)) === 0) log(`FW up ${i + slice.length}/${size}`);
-    } catch (e) {
-      $('#fwinfo').textContent = 'Write error: ' + e.message;
-      log('FW write error: ' + e.message);
-      await send('FW:ABORT');
-      return;
+$("#btnSend").addEventListener("click", async ()=>{
+  if (!chRX || !fileBuf) return;
+  $("#prog").value = 0; $("#ptext").textContent = "0%";
+  try{
+    // begin
+    const meta = {op:"begin", name:fileName, size:fileBuf.byteLength, sha256:fileSha};
+    await chRX.writeValue(new TextEncoder().encode(JSON.stringify(meta)));
+    // chunks (prefer WNR, fallback to withResponse)
+    const chunks = sliceBuffer(fileBuf, 128); // conservative for iOS
+    const useWNR = typeof chRX.writeValueWithoutResponse === "function";
+    let sent=0;
+    for (const c of chunks){
+      try{
+        if (useWNR) await chRX.writeValueWithoutResponse(c);
+        else await chRX.writeValue(c);
+      }catch(e){
+        if (useWNR) await chRX.writeValue(c);
+        else throw e;
+      }
+      sent += c.byteLength;
+      const p = Math.min(100, Math.floor(100*sent/fileBuf.byteLength));
+      $("#prog").value = p; $("#ptext").textContent = p+"%";
+      await new Promise(r=>setTimeout(r, 2));
     }
-    await sleep(GAP);
+    await chRX.writeValue(new TextEncoder().encode(JSON.stringify({op:"end"})));
+    log("send done");
+  }catch(e){
+    log("send error: " + e);
   }
+});
 
-  await sleep(isIOS()?600:200);
-  await send('FW:END');
-  $('#fwinfo').textContent = 'Upload done, verifying on device…';
-
-  if (verifyPoll) clearInterval(verifyPoll);
-  verifyPoll = setInterval(async () => { await send('FW:STAT'); }, 500);
-}
-
-/* ===== fetch JSON（錯誤訊息更清楚） ===== */
-async function fetchJSON(url){
-  let r;
-  try { r = await fetch(url, {cache:'no-store'}); }
-  catch (e) { throw new Error(`Failed to fetch ${url} — ${e?.message || e}`); }
-  if (!r.ok) throw new Error(`HTTP ${r.status} ${r.statusText} for ${url}`);
-  return await r.json();
-}
-
-/* ===== 一鍵更新（若 manifest 沒有 sha256，會自算） ===== */
-async function oneClickUpdate() {
-  try {
-    if (!chRX || !chFILE || !device || !device.gatt || !device.gatt.connected) { log('請先 Connect'); return; }
-
-    log('OTA: fetch manifest…');
-    const mani = await fetchJSON(OTA_MANIFEST_URL);
-    const {version, target, url, sha256} = mani;
-    log(`OTA: latest ${version} → ${target}`);
-
-    // 建出韌體 URL
-    const base = new URL(OTA_MANIFEST_URL, location.href);
-    const fwUrl = new URL(url, base).toString();
-    log('OTA: download firmware… ' + fwUrl);
-    const resp = await fetch(fwUrl, {cache:'no-store'});
-    if(!resp.ok) throw new Error('firmware HTTP '+resp.status);
-    const buf = await resp.arrayBuffer();
-
-    // 若 manifest 沒給 SHA，就用檔案本身計算
-    const fileSha = await sha256Hex(buf);
-    if (sha256 && fileSha.toLowerCase() !== String(sha256).toLowerCase()) {
-      throw new Error('SHA mismatch');
-    }
-    log('OTA: SHA ' + (sha256 ? 'OK ' : '(computed) ') + fileSha.slice(0,8)+'…');
-
-    const size = buf.byteLength;
-
-    // 先進入靜音，停 OBD/DUMP，避免 GATT 佔滿
-    await send('FW:QUIET ON');
-
-    await send(`FW:BEGIN ${target} ${size} ${fileSha}`);
-
-    const u8 = new Uint8Array(buf);
-    const CHUNK = isIOS() ? 20 : 180;
-    const GAP   = isIOS() ? 35 : 8;
-    const USE_WNR = (!isIOS()) && !!chFILE.writeValueWithoutResponse;
-
-    $('#fwprog').max = size; $('#fwprog').value = 0;
-    $('#fwinfo').textContent = `Uploading… 0/${size}`;
-
-    await sleep(isIOS()?200:80);
-
-    for (let i=0; i<u8.length; i+=CHUNK) {
-      const slice = u8.subarray(i, Math.min(i+CHUNK, u8.length));
-      if (USE_WNR) await chFILE.writeValueWithoutResponse(slice);
-      else         await chFILE.writeValue(slice);
-      $('#fwprog').value = i + slice.length;
-      if ((i % (CHUNK*50)) === 0) log(`FW up ${i + slice.length}/${size}`);
-      await sleep(GAP);
-    }
-
-    await sleep(isIOS()?600:200);
-    await send('FW:END');
-    $('#fwinfo').textContent = 'Upload done, verifying on device…';
-
-    if (verifyPoll) clearInterval(verifyPoll);
-    verifyPoll = setInterval(async ()=>{ await send('FW:STAT'); }, 500);
-
-  } catch (e) {
-    log('OTA ERR '+ (e?.message || e));
-    $('#fwinfo').textContent = 'OTA error: ' + (e?.message || e);
-    try { await send('FW:QUIET OFF'); } catch {}
+$("#btnCommit").addEventListener("click", async ()=>{
+  if (!chRX) return;
+  try{
+    await chRX.writeValue(new TextEncoder().encode(JSON.stringify({op:"commit"})));
+    log("commit requested");
+  }catch(e){
+    log("commit error: " + e);
   }
-}
-
-/* ===== Buttons ===== */
-$('#fwUpload').onclick = fwUpload;
-$('#fwApply').onclick  = async ()=>{ await send('FW:APPLY'); };
-$('#fwCheck').onclick  = oneClickUpdate;
-
-/* ===== 小工具：在 Console 呼叫 devComputeSHA() 計算線上 /ota/main.py 的 SHA ===== */
-window.devComputeSHA = async () => {
-  const r = await fetch('ota/main.py', {cache:'no-store'});
-  const b = await r.arrayBuffer();
-  const h = await sha256Hex(b);
-  console.log('file SHA =', h, 'byte size =', b.byteLength);
-};
+});
 </script>
 </body>
 </html>
