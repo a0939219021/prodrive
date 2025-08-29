@@ -3,261 +3,236 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
-<title>C6-LED — One-Click OTA (iOS-friendly)</title>
+<title>ESP32-C6 BLE Console</title>
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="0" />
 <style>
   :root{
-    --bg:#0b1220; --bg2:#0f172a; --card:#111827; --fg:#e5e7eb; --muted:#9ca3af; --acc:#22d3ee; --ok:#10b981; --warn:#f59e0b; --err:#ef4444;
-    --br:16px; --gap:12px;
+    --bg:#0b1220; --card:#0f172a; --fg:#e5e7eb; --muted:#94a3b8; --acc:#22d3ee;
+    --ok:#22c55e; --warn:#f59e0b; --err:#ef4444; --br:14px; --gap:12px;
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bot: env(safe-area-inset-bottom, 0px);
   }
+  *{box-sizing:border-box}
   html,body{height:100%}
-  body{margin:0;background:linear-gradient(160deg,#0b1220,#0f172a);color:var(--fg);font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Helvetica,Arial}
-  .wrap{max-width:960px;margin:0 auto;padding:20px}
+  body{margin:0; background:linear-gradient(160deg,#0b1220,#0a0f1a); color:var(--fg); font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans",Ubuntu,"Helvetica Neue",Arial}
+  .wrap{max-width:880px;margin:0 auto;padding:calc(14px + var(--safe-top)) 16px calc(18px + var(--safe-bot))}
+  h1{font-size:22px;margin:0 0 10px}
   .row{display:flex;gap:var(--gap);flex-wrap:wrap}
-  .card{background:var(--card);border-radius:var(--br);padding:16px;box-shadow:0 8px 24px rgba(0,0,0,.25);flex:1;min-width:280px}
-  button{border:0;border-radius:12px;padding:12px 16px;font-size:15px;color:#0b1220;background:var(--acc);cursor:pointer}
-  button:disabled{opacity:.6;cursor:not-allowed}
-  .muted{color:var(--muted);font-size:13px}
-  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace}
-  progress{width:100%}
-  .pill{display:inline-block;padding:4px 10px;border-radius:999px;font-size:12px;margin-left:8px}
-  .ok{background:rgba(16,185,129,.15);color:var(--ok)}
-  .warn{background:rgba(245,158,11,.15);color:var(--warn)}
-  .err{background:rgba(239,68,68,.15);color:var(--err)}
-  a.link{color:var(--acc)}
+  .card{background:var(--card); border:1px solid rgba(255,255,255,.07); border-radius:var(--br); padding:14px; flex:1}
+  button{background:#111827;color:var(--fg);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:10px 14px;font-size:14px;cursor:pointer}
+  button:hover{border-color:var(--acc)}
+  #log{white-space:pre-wrap; font-family:ui-monospace,Consolas,monospace; font-size:13px; line-height:1.35; max-height:48vh; overflow:auto; background:#0b1020; border-radius:10px; padding:10px; border:1px solid rgba(255,255,255,.05)}
+  .kv{display:grid;grid-template-columns:120px 1fr;gap:6px 10px;align-items:center}
+  .muted{color:var(--muted)}
+  .badge{display:inline-block;padding:2px 8px;border-radius:999px;border:1px solid rgba(255,255,255,.15);font-size:12px}
+  .ok{color:var(--ok)} .err{color:var(--err)} .warn{color:var(--warn)}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h2>C6-LED <span class="muted">One-Click OTA</span></h2>
-  <p class="muted">GitHub Pages: <a class="link" href="https://a0939219021.github.io/prodrive/ota/" target="_blank">/prodrive/ota/</a></p>
+  <h1>ESP32-C6 BLE Console <span id="status" class="badge muted">idle</span></h1>
 
   <div class="row">
-    <div class="card">
-      <h3>Device</h3>
-      <p>State: <span id="state" class="pill warn">disconnected</span></p>
-      <p>Device ver: <span id="devver" class="mono">—</span></p>
-      <div style="display:flex;gap:10px;flex-wrap:wrap">
-        <button id="btnConn">Connect</button>
-        <button id="btnReconnect" disabled>Reconnect</button>
-        <button id="btnReboot" disabled>Reboot</button>
+    <div class="card" style="min-width:260px;flex:0 0 280px">
+      <div class="kv">
+        <div>Device</div><div id="devName" class="muted">—</div>
+        <div>FW Version</div><div id="fwVer" class="muted">—</div>
+        <div>FW Size</div><div id="fwSize" class="muted">—</div>
+        <div>FW SHA256</div><div id="fwSha" class="muted" style="word-break:break-all">—</div>
+      </div>
+      <div style="height:10px"></div>
+      <div class="row">
+        <button id="btnConnect">Connect</button>
+        <button id="btnDisconnect">Disconnect</button>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button id="btnHello">Hello</button>
+        <button id="btnGetFw">Get FW Info</button>
+        <button id="btnReboot" class="warn">Reboot</button>
       </div>
     </div>
 
     <div class="card">
-      <h3>Target Firmware</h3>
-      <p>Target ver: <span id="targetVer" class="mono">—</span></p>
-      <p>File: <span id="targetFile" class="mono">—</span> <span class="muted">(<span id="targetSize">0</span> bytes)</span></p>
-      <p>SHA-256: <span id="targetSha" class="mono">—</span></p>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;margin:6px 0 10px">
-        <button id="btnFetch">Check latest</button>
-        <button id="btnUpdate" disabled>Update to latest</button>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <div>Logs</div>
+        <button id="btnClear">Clear</button>
       </div>
-      <progress id="prog" value="0" max="100"></progress>
-      <div class="muted">Progress: <span id="ptext">0%</span></div>
-      <div id="result" class="muted" style="margin-top:8px"></div>
-    </div>
-
-    <div class="card">
-      <h3>Log</h3>
-      <div id="log" class="muted mono" style="white-space:pre-wrap;max-height:260px;overflow:auto"></div>
+      <div id="log"></div>
     </div>
   </div>
 </div>
 
 <script>
-const SVC = 0xFFF0;
-const TX  = 0xFFF1; // notify
-const RX  = 0xFFF2; // write / writeWithoutResponse
-const INF = 0xFFF3; // read (version)
+/** ====== 基本設定（與韌體一致） ======
+ * 16-bit 0xFFF0/1/2 的 128-bit 轉寫，Bluefy 友善
+*/
+const UUID_SERVICE =          "0000fff0-0000-1000-8000-00805f9b34fb";
+const UUID_CHAR_TX_NOTIFY =   "0000fff1-0000-1000-8000-00805f9b34fb"; // Peripheral→App (Notify)
+const UUID_CHAR_RX_WRITE =    "0000fff2-0000-1000-8000-00805f9b34fb"; // App→Peripheral (Write/WWR)
+const NAME_PREFIX = "C6-LED"; // 你目前裝置的廣播名稱（記憶：專案規劃）
 
-let dev, server, svc, chTX, chRX, chINF;
-let target = { ver:null, url:"main.py", sha:null, size:0, bin:null };
+let device, server, service, chTx, chRx;
+let ctx = null;
+let rxBuf = "";
 
-const $ = (s)=>document.querySelector(s);
-const log = (s)=>{ const el=$("#log"); el.textContent += s + "\n"; el.scrollTop = el.scrollHeight; };
-const setState = (txt, cls)=>{ const el=$("#state"); el.textContent=txt; el.className="pill "+(cls||""); };
-const setResult= (txt, cls)=>{ const el=$("#result"); el.textContent=txt; el.className="muted "+(cls||""); };
-
-function isBenignGattError(e){
-  return e && (e.name === 'NotSupportedError' ||
-               /GATT operation failed/i.test(String(e)) ||
-               /disconnected|not connected/i.test(String(e)));
+const $ = sel => document.querySelector(sel);
+function setStatus(s){ $("#status").textContent = s; }
+function log(...args){
+  const s = args.map(x => (typeof x==="string"? x : JSON.stringify(x))).join(" ");
+  const el = $("#log");
+  el.textContent += s + "\n";
+  el.scrollTop = el.scrollHeight;
 }
 
-async function sha256Hex(ab){
-  const d = await crypto.subtle.digest("SHA-256", ab);
-  return Array.from(new Uint8Array(d)).map(x=>x.toString(16).padStart(2,"0")).join("");
+/* 斷線保護 */
+async function disconnect(){
+  try{ device && device.gatt && device.gatt.connected && device.gatt.disconnect(); }catch(e){}
+  device = server = service = chTx = chRx = null;
+  ctx = null;
+  setStatus("disconnected");
 }
 
-async function readDevVersion(){
-  try{
-    const v = await chINF.readValue();
-    const t = new TextDecoder().decode(v);
-    const j = JSON.parse(t);
-    const ver = j.ver || t;
-    $("#devver").textContent = ver;
-    return ver;
-  }catch(e){
-    $("#devver").textContent = "n/a";
-    return null;
-  }
-}
-
+/* 連線 & 啟用通知 */
 async function connect(){
-  dev = await navigator.bluetooth.requestDevice({
-    filters: [{ namePrefix: "C6-LED" }],
-    optionalServices: [SVC]
-  });
-  dev.addEventListener("gattserverdisconnected", onDisconnected);
-  server = await dev.gatt.connect();
-  svc    = await server.getPrimaryService(SVC);
-  chTX   = await svc.getCharacteristic(TX);
-  chRX   = await svc.getCharacteristic(RX);
-  chINF  = await svc.getCharacteristic(INF);
-  await chTX.startNotifications();
-  chTX.addEventListener("characteristicvaluechanged", (ev)=>{
-    const u8 = new Uint8Array(ev.target.value.buffer);
-    try{ const txt = new TextDecoder().decode(u8); if (txt && txt[0]==="{") log(txt); else log("[bin "+u8.length+"]"); }
-    catch(e){ log("[notify "+u8.length+"]"); }
-  });
-  $("#btnReboot").disabled = false;
-  setState("connected","ok");
-  await readDevVersion();
-  $("#btnUpdate").disabled = !(target && target.bin);
-}
-
-async function reconnect(){
-  if (!dev) return;
   try{
-    server = await dev.gatt.connect();
-    svc    = await server.getPrimaryService(SVC);
-    chTX   = await svc.getCharacteristic(TX);
-    chRX   = await svc.getCharacteristic(RX);
-    chINF  = await svc.getCharacteristic(INF);
-    await chTX.startNotifications();
-    setState("connected","ok");
-    const ver = await readDevVersion();
-    if (target.ver && ver === target.ver) setResult("Update success ✓ ("+ver+")", "ok");
-    $("#btnUpdate").disabled = !(target && target.bin);
-    $("#btnReboot").disabled = false;
-  }catch(e){ log("reconnect failed: " + e); }
-}
+    setStatus("requesting…");
+    // Bluefy 需要 filters；桌面 Chrome 可回退 acceptAllDevices
+    const options = {
+      filters: [{ namePrefix: NAME_PREFIX }, { services: [UUID_SERVICE] }],
+      optionalServices: [UUID_SERVICE]
+    };
+    try{
+      device = await navigator.bluetooth.requestDevice(options);
+    }catch(e){
+      // 回退：有些裝置名稱不同或掃不到
+      device = await navigator.bluetooth.requestDevice({ acceptAllDevices:true, optionalServices:[UUID_SERVICE] });
+    }
+    $("#devName").textContent = device.name || "(unnamed)";
+    device.addEventListener("gattserverdisconnected", ()=>{ log("** disconnected"); disconnect(); });
 
-function onDisconnected(){
-  setState("disconnected","warn");
-  $("#btnReconnect").disabled = false;
-}
+    setStatus("connecting…");
+    server = await device.gatt.connect();
+    service = await server.getPrimaryService(UUID_SERVICE);
+    chTx = await service.getCharacteristic(UUID_CHAR_TX_NOTIFY);
+    chRx = await service.getCharacteristic(UUID_CHAR_RX_WRITE);
 
-function sliceBuffer(buf, chunk){
-  const out=[]; for(let i=0;i<buf.byteLength;i+=chunk) out.push(buf.slice(i,i+chunk)); return out;
-}
+    await chTx.startNotifications();
+    chTx.addEventListener("characteristicvaluechanged", onNotify);
 
-function parseVersionFromSource(text){
-  const m = text.match(/FW_VERSION\s*=\s*["']([^"']+)["']/);
-  return m ? m[1] : null;
-}
-
-async function fetchManifest(){
-  try{
-    const res = await fetch("manifest.json", {cache:"no-store"});
-    if (!res.ok) throw new Error("manifest fetch "+res.status);
-    const arr = await res.json();
-    let item = arr.find(x=>/main\.py$/i.test(x.target || x.url)) || arr[0];
-    if (!item) throw new Error("manifest empty");
-    return { ver: item.version || null, url: item.url || "main.py", sha: item.sha256 || null };
+    setStatus("connected");
+    log("connected to", device.name || "device");
+    // 連上後自動送 hello
+    await send({op:"hello", want:"status"});
   }catch(e){
-    log("manifest not found or invalid, fallback to main.py ("+e+")");
-    return null;
+    log({err:"connect", msg:e.message||String(e)});
+    await disconnect();
   }
 }
 
-async function fetchFirmware(){
-  $("#targetVer").textContent = "—";
-  $("#targetFile").textContent = "—";
-  $("#targetSha").textContent  = "—";
-  $("#targetSize").textContent = "0";
-  setResult("", "");
+/* Notify 黏包處理（\n 分隔的 JSON line） */
+function onNotify(ev){
+  const v = ev.target.value;
+  const chunk = new TextDecoder().decode(v.buffer ? v : v);
+  rxBuf += chunk;
+  let idx;
+  while ((idx = rxBuf.indexOf("\n")) >= 0){
+    const line = rxBuf.slice(0, idx).trim();
+    rxBuf = rxBuf.slice(idx+1);
+    if (!line) continue;
+    try{
+      const j = JSON.parse(line);
+      handleMsg(j);
+    }catch(e){
+      log({err:"json", line});
+    }
+  }
+}
 
-  const mf = await fetchManifest();
-  if (mf) target.ver = mf.ver, target.url = mf.url, target.sha = mf.sha;
+/* 處理裝置回傳 */
+function handleMsg(j){
+  if (j.ok === "hello" && j.ctx){
+    ctx = j.ctx;
+    log("hello ok, ctx=", ctx);
+    if (j.fw){
+      $("#fwVer").textContent  = j.fw.ver || "—";
+      $("#fwSize").textContent = j.fw.size ?? "—";
+      $("#fwSha").textContent  = j.fw.sha  || "—";
+      log(`firmware ready: ver=${j.fw.ver} size=${j.fw.size} sha=${j.fw.sha}`);
+    }
+    return;
+  }
+  if (j.ok === "fw_info" && j.fw){
+    $("#fwVer").textContent  = j.fw.ver || "—";
+    $("#fwSize").textContent = j.fw.size ?? "—";
+    $("#fwSha").textContent  = j.fw.sha  || "—";
+    log("fw_info:", j.fw);
+    return;
+  }
+  if (j.ack === "reboot"){
+    log({ack:"reboot"});
+    // 不再送指令，等待使用者手動重連
+    return;
+  }
+  if (j.err){
+    log(j);
+    return;
+  }
+  log(j);
+}
 
-  const res = await fetch(target.url, {cache:"no-store"});
-  if (!res.ok) throw new Error("fw fetch "+res.status);
-  const text = await res.text();
-  const verInFile = parseVersionFromSource(text);
+/* 寫入（長字串分片 <= 180 bytes） */
+async function writeBle(str){
+  if (!chRx) throw new Error("no RX characteristic");
   const enc = new TextEncoder();
-  const bin = enc.encode(text).buffer;
-  const sha = await sha256Hex(bin);
-
-  target.bin  = bin;
-  target.size = bin.byteLength;
-  target.ver  = target.ver || verInFile || "(unknown)";
-  // 若 manifest 有 sha，顯示並提示不一致（但不阻擋）
-  target.sha  = target.sha || sha;
-  const mismatch = (mf && mf.sha && mf.sha !== sha);
-
-  $("#targetVer").textContent = target.ver;
-  $("#targetFile").textContent= target.url;
-  $("#targetSha").textContent = target.sha + (mismatch ? " (mismatch!)" : "");
-  $("#targetSize").textContent= String(target.size);
-  $("#btnUpdate").disabled    = !chRX;
-  if (mismatch) setResult("Warning: manifest SHA mismatch with downloaded main.py", "warn");
-  log("firmware ready: ver="+target.ver+" size="+target.size+" sha="+sha);
+  const data = enc.encode(str);
+  const MTU = 180;
+  for (let i=0; i<data.length; i+=MTU){
+    const chunk = data.slice(i, i+MTU);
+    await chRx.writeValueWithoutResponse(chunk);
+    // 輕微節流，避免藍牙堆積
+    await new Promise(r=>setTimeout(r, 4));
+  }
 }
 
-async function doUpdate(){
-  if (!chRX) throw new Error("BLE not connected");
-  if (!target.bin) await fetchFirmware();
-
-  $("#prog").value = 0; $("#ptext").textContent = "0%";
-  setResult("", "");
-
-  const meta = {op:"begin", name: (target.url || "main.py"), size:target.bin.byteLength, sha256:target.sha};
-  await chRX.writeValue(new TextEncoder().encode(JSON.stringify(meta)));
-
-  const chunks = sliceBuffer(target.bin, 128);
-  const useWNR = typeof chRX.writeValueWithoutResponse === "function";
-  let sent=0;
-  for (const c of chunks){
-    try { if (useWNR) await chRX.writeValueWithoutResponse(c); else await chRX.writeValue(c); }
-    catch(e){ if (useWNR) await chRX.writeValue(c); else throw e; }
-    sent += c.byteLength;
-    const p = Math.min(100, Math.floor(100*sent/target.bin.byteLength));
-    $("#prog").value = p; $("#ptext").textContent = p+"%";
-    await new Promise(r=>setTimeout(r, 2));
+/* 統一送指令：非 hello 一律帶 ctx；每包以 \n 收尾 */
+async function send(obj){
+  if (!obj || typeof obj !== "object") return;
+  if (obj.op !== "hello"){
+    if (!ctx){ log({err:"noctx"}); return; }
+    obj.ctx = ctx;
   }
-
-  await chRX.writeValue(new TextEncoder().encode(JSON.stringify({op:"end"})));
-  await chRX.writeValue(new TextEncoder().encode(JSON.stringify({op:"commit"})))
-    .catch(e => { if (!isBenignGattError(e)) throw e; });
-  setResult("Commit sent. Rebooting…", "warn");
-  await chRX.writeValue(new TextEncoder().encode(JSON.stringify({op:"reboot"})))
-    .catch(e => { if (!isBenignGattError(e)) throw e; });
-
-  await new Promise(r=>setTimeout(r, 600));
-  setState("rebooting…", "warn");
+  try{
+    const line = JSON.stringify(obj) + "\n";
+    await writeBle(line);
+  }catch(e){
+    log({err:"send", msg:e.message||String(e)});
+  }
 }
 
-$("#btnFetch").addEventListener("click", async ()=>{
-  try{ await fetchFirmware(); setResult("Firmware ready.", "ok"); }
-  catch(e){ setResult("Fetch failed: "+e, "err"); }
-});
-$("#btnUpdate").addEventListener("click", async ()=>{
-  try{ await doUpdate(); }
-  catch(e){ if (isBenignGattError(e)) setResult("Reconnecting to verify…", "warn"); else setResult("Update failed: "+e, "err"); }
-});
-$("#btnConn").addEventListener("click", async ()=>{ try{ await connect(); }catch(e){ log("connect error: "+e); } });
-$("#btnReconnect").addEventListener("click", async ()=>{ $("#btnReconnect").disabled=true; await reconnect(); });
-$("#btnReboot").addEventListener("click", async ()=>{ if (!chRX) return; await chRX.writeValue(new TextEncoder().encode(JSON.stringify({op:"reboot"})))
-  .catch(e => { if (!isBenignGattError(e)) throw e; }); setState("rebooting…","warn"); });
+/* UI 綁定 */
+$("#btnConnect").onclick    = connect;
+$("#btnDisconnect").onclick = disconnect;
+$("#btnClear").onclick      = ()=>{ $("#log").textContent=""; };
 
-// Page focus regain: try reconnect and verify
-window.addEventListener("focus", async ()=>{
-  if (dev && (!server || !server.connected)) {
-    try{ await reconnect(); const ver = await readDevVersion(); if (target.ver && ver === target.ver) setResult("Update success ✓ ("+ver+")", "ok"); }
-    catch(_){}
-  }
-});
+$("#btnHello").onclick  = async ()=>{ await send({op:"hello", want:"status"}); };
+$("#btnGetFw").onclick  = async ()=>{ await send({op:"get", what:"fw_info"}); };
+$("#btnReboot").onclick = async ()=>{ await send({op:"reboot"}); };
+
+/* 額外：如要從本地讀 manifest.json 顯示版本，可用 cache-buster */
+async function tryFetchManifest(){
+  try{
+    const res = await fetch("manifest.json?ts="+Date.now(), {cache:"no-store"});
+    if (!res.ok) return;
+    const mani = await res.json();
+    if (mani && mani.version){
+      log("manifest:", mani);
+      // 僅供參考，真正顯示仍以裝置回報為準
+    }
+  }catch(_){}
+}
+tryFetchManifest();
 </script>
 </body>
 </html>
