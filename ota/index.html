@@ -23,11 +23,13 @@
   .ok{background:rgba(16,185,129,.15);color:var(--ok)}
   .warn{background:rgba(245,158,11,.15);color:var(--warn)}
   .err{background:rgba(239,68,68,.15);color:var(--err)}
+  a.link{color:var(--acc)}
 </style>
 </head>
 <body>
 <div class="wrap">
   <h2>C6-LED <span class="muted">One-Click OTA</span></h2>
+  <p class="muted">GitHub Pages: <a class="link" href="https://a0939219021.github.io/prodrive/ota/" target="_blank">/prodrive/ota/</a></p>
 
   <div class="row">
     <div class="card">
@@ -115,11 +117,8 @@ async function connect(){
   await chTX.startNotifications();
   chTX.addEventListener("characteristicvaluechanged", (ev)=>{
     const u8 = new Uint8Array(ev.target.value.buffer);
-    try{
-      const txt = new TextDecoder().decode(u8);
-      if (txt && txt[0]==="{") log(txt);
-      else log("[bin " + u8.length + "]");
-    }catch(e){ log("[notify " + u8.length + "]"); }
+    try{ const txt = new TextDecoder().decode(u8); if (txt && txt[0]==="{") log(txt); else log("[bin "+u8.length+"]"); }
+    catch(e){ log("[notify "+u8.length+"]"); }
   });
   $("#btnReboot").disabled = false;
   setState("connected","ok");
@@ -138,13 +137,10 @@ async function reconnect(){
     await chTX.startNotifications();
     setState("connected","ok");
     const ver = await readDevVersion();
-    // 若已指定目標版，重連後立即核對
     if (target.ver && ver === target.ver) setResult("Update success ✓ ("+ver+")", "ok");
     $("#btnUpdate").disabled = !(target && target.bin);
     $("#btnReboot").disabled = false;
-  }catch(e){
-    log("reconnect failed: " + e);
-  }
+  }catch(e){ log("reconnect failed: " + e); }
 }
 
 function onDisconnected(){
@@ -157,7 +153,6 @@ function sliceBuffer(buf, chunk){
 }
 
 function parseVersionFromSource(text){
-  // 嘗試讀取 main.py 內的 FW_VERSION = "...."
   const m = text.match(/FW_VERSION\s*=\s*["']([^"']+)["']/);
   return m ? m[1] : null;
 }
@@ -167,7 +162,6 @@ async function fetchManifest(){
     const res = await fetch("manifest.json", {cache:"no-store"});
     if (!res.ok) throw new Error("manifest fetch "+res.status);
     const arr = await res.json();
-    // 找 target 為 main.py 的項目；找不到就用第 1 筆
     let item = arr.find(x=>/main\.py$/i.test(x.target || x.url)) || arr[0];
     if (!item) throw new Error("manifest empty");
     return { ver: item.version || null, url: item.url || "main.py", sha: item.sha256 || null };
@@ -189,7 +183,7 @@ async function fetchFirmware(){
 
   const res = await fetch(target.url, {cache:"no-store"});
   if (!res.ok) throw new Error("fw fetch "+res.status);
-  const text = await res.text();                 // 用 text 為了先抽版本
+  const text = await res.text();
   const verInFile = parseVersionFromSource(text);
   const enc = new TextEncoder();
   const bin = enc.encode(text).buffer;
@@ -197,27 +191,30 @@ async function fetchFirmware(){
 
   target.bin  = bin;
   target.size = bin.byteLength;
+  target.ver  = target.ver || verInFile || "(unknown)";
+  // 若 manifest 有 sha，顯示並提示不一致（但不阻擋）
   target.sha  = target.sha || sha;
-  target.ver  = target.ver || verInFile || ("(unknown) "+new Date().toISOString());
+  const mismatch = (mf && mf.sha && mf.sha !== sha);
 
   $("#targetVer").textContent = target.ver;
   $("#targetFile").textContent= target.url;
-  $("#targetSha").textContent = target.sha;
+  $("#targetSha").textContent = target.sha + (mismatch ? " (mismatch!)" : "");
   $("#targetSize").textContent= String(target.size);
-  $("#btnUpdate").disabled    = !chRX; // 已連線才可更新
-  log("firmware ready: ver="+target.ver+" size="+target.size+" sha="+target.sha);
+  $("#btnUpdate").disabled    = !chRX;
+  if (mismatch) setResult("Warning: manifest SHA mismatch with downloaded main.py", "warn");
+  log("firmware ready: ver="+target.ver+" size="+target.size+" sha="+sha);
 }
 
 async function doUpdate(){
-  if (!chRX || !target.bin) throw new Error("BLE or firmware not ready");
+  if (!chRX) throw new Error("BLE not connected");
+  if (!target.bin) await fetchFirmware();
+
   $("#prog").value = 0; $("#ptext").textContent = "0%";
   setResult("", "");
 
-  // begin
   const meta = {op:"begin", name: (target.url || "main.py"), size:target.bin.byteLength, sha256:target.sha};
   await chRX.writeValue(new TextEncoder().encode(JSON.stringify(meta)));
 
-  // chunks
   const chunks = sliceBuffer(target.bin, 128);
   const useWNR = typeof chRX.writeValueWithoutResponse === "function";
   let sent=0;
@@ -231,64 +228,34 @@ async function doUpdate(){
   }
 
   await chRX.writeValue(new TextEncoder().encode(JSON.stringify({op:"end"})));
-
-  // commit + reboot（容忍斷線/堆疊拒絕的良性錯誤）
   await chRX.writeValue(new TextEncoder().encode(JSON.stringify({op:"commit"})))
     .catch(e => { if (!isBenignGattError(e)) throw e; });
-
   setResult("Commit sent. Rebooting…", "warn");
-
   await chRX.writeValue(new TextEncoder().encode(JSON.stringify({op:"reboot"})))
     .catch(e => { if (!isBenignGattError(e)) throw e; });
 
-  // 讓裝置重啟；iOS 可能不會自動重連
   await new Promise(r=>setTimeout(r, 600));
   setState("rebooting…", "warn");
 }
 
-$("#btnConn").addEventListener("click", async ()=>{
-  try{ await connect(); }catch(e){ log("connect error: "+e); }
-});
-$("#btnReconnect").addEventListener("click", async ()=>{
-  $("#btnReconnect").disabled=true;
-  await reconnect();
-});
-$("#btnReboot").addEventListener("click", async ()=>{
-  if (!chRX) return;
-  await chRX.writeValue(new TextEncoder().encode(JSON.stringify({op:"reboot"})))
-    .catch(e => { if (!isBenignGattError(e)) throw e; });
-  setState("rebooting…","warn");
-});
-
-// 檢查/抓取最新韌體（manifest→main.py）
 $("#btnFetch").addEventListener("click", async ()=>{
-  try{
-    await fetchFirmware();
-    setResult("Firmware ready.", "ok");
-  }catch(e){
-    setResult("Fetch failed: "+e, "err");
-  }
+  try{ await fetchFirmware(); setResult("Firmware ready.", "ok"); }
+  catch(e){ setResult("Fetch failed: "+e, "err"); }
 });
-
-// 一鍵更新
 $("#btnUpdate").addEventListener("click", async ()=>{
-  try{
-    await doUpdate();
-  }catch(e){
-    // 若只是斷線導致的 GATT 假錯，改為提示用戶重連做版本驗證
-    if (isBenignGattError(e)) setResult("Reconnecting to verify…", "warn");
-    else return setResult("Update failed: "+e, "err");
-  }
+  try{ await doUpdate(); }
+  catch(e){ if (isBenignGattError(e)) setResult("Reconnecting to verify…", "warn"); else setResult("Update failed: "+e, "err"); }
 });
+$("#btnConn").addEventListener("click", async ()=>{ try{ await connect(); }catch(e){ log("connect error: "+e); } });
+$("#btnReconnect").addEventListener("click", async ()=>{ $("#btnReconnect").disabled=true; await reconnect(); });
+$("#btnReboot").addEventListener("click", async ()=>{ if (!chRX) return; await chRX.writeValue(new TextEncoder().encode(JSON.stringify({op:"reboot"})))
+  .catch(e => { if (!isBenignGattError(e)) throw e; }); setState("rebooting…","warn"); });
 
-// 頁面回到前景時，若已有裝置但未連線，嘗試重連並核對版本
+// Page focus regain: try reconnect and verify
 window.addEventListener("focus", async ()=>{
   if (dev && (!server || !server.connected)) {
-    try{
-      await reconnect();
-      const ver = await readDevVersion();
-      if (target.ver && ver === target.ver) setResult("Update success ✓ ("+ver+")", "ok");
-    }catch(_) {}
+    try{ await reconnect(); const ver = await readDevVersion(); if (target.ver && ver === target.ver) setResult("Update success ✓ ("+ver+")", "ok"); }
+    catch(_){}
   }
 });
 </script>
