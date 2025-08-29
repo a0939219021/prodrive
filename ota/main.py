@@ -1,6 +1,9 @@
-# main.py  (v2025.08.27-r4-iosfix2a)
-# ESP32-C6-Pico + Pico-CAN-B  — BLE + OBD2 over MCP2515 + OTA
-# 修正：去除 dict 展開（**payload）與所有 type hints；保持 iOS/Bluefy 兼容（FILE UUID …def4）
+# main.py  (v2025.08.27-r4-iosfix5-quiet)
+# ESP32-C6-Pico + Pico-CAN-B — BLE + OBD2 over MCP2515 + OTA
+# 變更：
+# - FW:BEGIN 先強制靜默：MODE:LISTEN / PID:OFF / DUMP:OFF（避免 RAW 塞爆通知導致 verify/end 丟失）
+# - OTA 進行中 (ota.active=True) 時，停止送出 RAW/OBD 與 PID 輪詢，釋放 BLE 頻寬
+# - 保留 iOS/Bluefy 兼容（FILE UUID …def4）
 
 import time, ujson, os
 import uhashlib as hashlib
@@ -15,13 +18,13 @@ CAN_STB_PIN = None
 
 # ========= WS2812 =========
 np = neopixel.NeoPixel(Pin(WS_PIN), WS_NUM)
-def pix(c): np[0]=c; np.write()
+def pix(c): np[0] = c; np.write()
 OFF=(0,0,0); BLUE=(0,0,60); GREEN=(0,60,0); RED=(60,0,0)
 
 # ========= 版本字串 =========
-FW_VERSION = "v2025.08.27-r4-iosfix2a"
+FW_VERSION = "v2025.08.27-r4-iosfix5-quiet"
 
-# ========= BLE UUIDs（128-bit）=========
+# ========= BLE UUIDs（128-bit） =========
 SVC = "12345678-1234-5678-1234-56789abcdef0"
 TX  = "12345678-1234-5678-1234-56789abcdef1"  # notify/read
 RX  = "12345678-1234-5678-1234-56789abcdef2"  # write (控制指令)
@@ -100,7 +103,7 @@ class MCP2515:
             return (canid, data)
         return None
 
-# ========= OTA（檔案接收 + 驗證 + 置換）=========
+# ========= OTA（檔案接收 + 驗證 + 置換） =========
 class OTA:
     def __init__(self, ble_notify):
         self.active=False; self.target=None; self.tmp=None
@@ -108,10 +111,10 @@ class OTA:
         self._notify=ble_notify; self._tick=time.ticks_ms()
     def _n(self, payload):
         try:
-            d={"t":"fw"}; 
+            d={"t":"fw"}
             if isinstance(payload, dict): d.update(payload)
             self._notify(d)
-        except: 
+        except:
             pass
     def begin(self, target, size, sha_hex):
         self.abort("new begin")
@@ -291,6 +294,14 @@ def main():
     mcp.cfg(state["bit"], state["clk"]); mcp.start_listen()
     print("[CAN] LISTEN @%dk, clk %dMHz" % (state["bit"], state["clk"]))
 
+    # 小工具：降噪（停 RAW 與輪詢，切 LISTEN）
+    def quiet():
+        state["poll"]=False
+        state["dump"]=False
+        state["mode"]="LISTEN"
+        try: mcp.start_listen()
+        except: pass
+
     # 指令處理
     def on_cmd(s):
         up=s.strip().upper()
@@ -322,11 +333,14 @@ def main():
             state["poll"]=True; print("[OBD] poll ON")
         elif up=="PID:OFF":
             state["poll"]=False; print("[OBD] poll OFF")
+
         # ===== OTA 指令 =====
         elif up.startswith("FW:BEGIN"):
             try:
                 parts=s.split()
                 tgt=parts[1]; size=int(parts[2]); sha=parts[3]
+                # 先強制靜默，避免 RAW/OBD 佔滿 BLE 通知
+                quiet()
                 ota.begin(tgt, size, sha)
             except Exception as e:
                 ble.notify_json({"t":"fw","ev":"begin","ok":False,"err":str(e)})
@@ -353,22 +367,30 @@ def main():
     i=0; tQ=0
 
     while True:
-        rx=mcp.recv()
-        if rx:
+        # 接收 CAN → 僅在非 OTA 時回報 RAW/OBD，避免塞車
+        rx = mcp.recv()
+        if rx and (not ota.active):
             canid,data=rx
             if state["dump"]:
-                ble.notify_json({"t":"raw","id":canid,"d":data.hex()})
+                try: ble.notify_json({"t":"raw","id":canid,"d":data.hex()})
+                except: pass
             for pid in PIDS:
                 pr=parse(pid,data)
                 if pr:
                     k,v=pr; vals[k]=v
                     msg={"t":"obd"}; msg.update(vals)
-                    ble.notify_json(msg)
-        if state["mode"]=="NORMAL" and state["poll"] and time.ticks_ms()-tQ>=120:
+                    try: ble.notify_json(msg)
+                    except: pass
+
+        # 主動輪詢 OBD PID（僅在 NORMAL 且非 OTA 時）
+        if (not ota.active) and state["mode"]=="NORMAL" and state["poll"] and time.ticks_ms()-tQ>=120:
             pid=PIDS[i]; i=(i+1)%len(PIDS)
             ok=mcp.send(REQ, mk_req(pid), timeout_ms=60)
-            if not ok: ble.notify_json({"t":"err","tx":"timeout","pid":pid})
+            if not ok:
+                try: ble.notify_json({"t":"err","tx":"timeout","pid":pid})
+                except: pass
             tQ=time.ticks_ms()
+
         time.sleep_ms(2)
 
 if __name__=="__main__":
