@@ -4,8 +4,8 @@
     "version": "v2025.08.27-r4-iosfix5-quiet",
     "target": "main.py",
     "url": "main.py",
-    "size": 9006,
-    "sha256": "7e551518f0b6ef0f1f5cde2db2cfe9d02f999e2e40eb7e2c3f2af844b23a1c8d"
+    "size": 9760,
+    "sha256": "e7bf2f2d42bce31d54f32e4eefb0a05f0608e2d20d135eb7528985f0ee85bb95"
   },
   {
     "channel": "internal",
