@@ -12,8 +12,8 @@ except:
 
 # ====== 版本資訊（由 manifest_gen_portable.py 可選擇覆寫） ======
 FW_VER  = "v2025.08.30-ota-final"
-FW_SIZE = 0
-FW_SHA  = ""
+FW_SIZE = 7566
+FW_SHA  = "dd3efd217dc93489b408b40385024d63b562155f65c373b8073ece22587a51e4"
 
 TARGET_PATH = "/main.py"          # OTA 最終目的檔名（可改）
 TMP_PATH    = "/ota.tmp"          # 中繼檔
