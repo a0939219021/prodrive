@@ -1,10 +1,18 @@
-[
-  {
-    "channel": "internal",
-    "version": "v2025.08.27-r4-iosfix5-quiet",
-    "target": "main.py",
-    "url": "main.py",
-    "size": 10023,
-    "sha256": "2f98b4c6f1061b3e417b44c67e845dd685ecf4687d9ee8d50e2e37c27528fb38"
-  }
-]
+{
+  "channel": "internal",
+  "version": "v2025.08.30-ota-final",
+  "files": [
+    {
+      "target": "main.py",
+      "url": "main.py",
+      "size": 0,
+      "sha256": ""
+    },
+    {
+      "target": "index.html",
+      "url": "index.html",
+      "size": 0,
+      "sha256": ""
+    }
+  ]
+}
