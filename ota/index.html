@@ -209,13 +209,20 @@ async function send(obj){
 
 /* ===== OTA：本地選檔 → 傳送 ===== */
 $("#btnChoose").onclick = ()=> $("#fileInput").click();
-$("#fileInput").onchange = e => { chosenFile = e.target.files?.[0] || null; if (chosenFile) log("chosen:", chosenFile.name, chosenFile.size+"B"); };
+$("#fileInput").onchange = async e => {
+  chosenFile = e.target.files?.[0] || null;
+  if (chosenFile) {
+    const ab = await chosenFile.arrayBuffer();
+    window._lastBuf = new Uint8Array(ab);  // 方便在 Console 測
+    log("chosen:", chosenFile.name, chosenFile.size + "B");
+  }
+};
 
 $("#btnSend").onclick = async ()=>{
   if (!ctx){ log({err:"noctx"}); return; }
   if (!chosenFile){ log({err:"nofile"}); return; }
 
-  const buf = new Uint8Array(await chosenFile.arrayBuffer());
+  const buf = window._lastBuf || new Uint8Array(await chosenFile.arrayBuffer());
   const size = buf.length;
   const sha  = await computeSHA256Hex(buf);    // ← 與 devComputeSHA 同義
   $("#totalBytes").textContent = size; $("#sentBytes").textContent = 0; setProgress(0);
@@ -243,12 +250,24 @@ $("#btnSend").onclick = async ()=>{
 /* 進度條 */
 function setProgress(p){ $("#bar").value = p; $("#ptext").textContent = p + "%"; }
 
-/* SHA256 計算；並掛到 window.devComputeSHA 以保相容 */
-async function computeSHA256Hex(uint8){
-  const d = await crypto.subtle.digest("SHA-256", uint8.buffer);
-  return [...new Uint8Array(d)].map(b=>b.toString(16).padStart(2,"0")).join("");
+/* === 強化版 SHA256：多型別輸入，未帶參數會丟 TypeError === */
+async function computeSHA256Hex(input){
+  let bytes;
+  if (input instanceof Uint8Array) {
+    bytes = input;
+  } else if (input instanceof ArrayBuffer) {
+    bytes = new Uint8Array(input);
+  } else if (input instanceof Blob) {            // File 也屬於 Blob
+    bytes = new Uint8Array(await input.arrayBuffer());
+  } else if (typeof input === "string") {
+    bytes = new TextEncoder().encode(input);
+  } else {
+    throw new TypeError("devComputeSHA(input) 需要 Uint8Array / ArrayBuffer / File / Blob / string 其中之一");
+  }
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, "0")).join("");
 }
-window.devComputeSHA = computeSHA256Hex;
+window.devComputeSHA = computeSHA256Hex; // 與既有呼叫相容
 
 /* UI 綁定 */
 $("#btnConnect").onclick    = connect;
