@@ -6,13 +6,7 @@
       "target": "main.py",
       "url": "main.py",
       "size": 7633,
-      "sha256": "fe3116350d9a2bd89adb449dbcf79a75ad11424b1ef8540b76a5952a8c4e76be"
-    },
-    {
-      "target": "index.html",
-      "url": "index.html",
-      "size": 0,
-      "sha256": ""
+      "sha256": "65f003bd21ba7fff2c2a2bf1243ffece92423eb6c9fc23b1d2788e0ef4020370"
     }
   ]
 }
