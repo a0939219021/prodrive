@@ -5,8 +5,8 @@
     {
       "target": "main.py",
       "url": "main.py",
-      "size": 0,
-      "sha256": ""
+      "size": 7631,
+      "sha256": "43ac85b6ec87a1a60794431c2ff161e474f86b15d990f8b0885f2da959aca37f"
     },
     {
       "target": "index.html",
