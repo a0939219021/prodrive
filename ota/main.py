@@ -1,304 +1,253 @@
-# main.py — ESP32-C6 BLE + WS2812 + OTA (MicroPython, iOS-friendly, with INFO READ char)
-# Version: v2025.08.27-r4-iosfix5-quiet (INFO char added; handle parsing tolerant; adv interval fixed)
-#
-import sys, time, machine, ujson
-import uos as os
-import bluetooth
-from machine import Pin
+# main.py — ESP32-C6 MicroPython BLE Peripheral (Notify/Write)
+# Service: 0xFFF0,  Char TX: 0xFFF1 (Notify),  Char RX: 0xFFF2 (Write)
+# 功能：hello 握手→回 ctx 與 fw，get fw_info，OTA 三段式，reboot；所有訊息以 '\n' 結尾
+
+import ujson, bluetooth, ubinascii, urandom, time, os
+from micropython import const
+
 try:
-    import neopixel
+    import uhashlib as hashlib
 except:
-    neopixel = None
+    import hashlib
 
-FW_VERSION = "v2025.08.27-r4-iosfix5-quiet"
-FW_BUILD   = "r4-iosfix5-quiet"
+# ====== 版本資訊（由 manifest_gen_portable.py 可選擇覆寫） ======
+FW_VER  = "v2025.08.30-ota-final"
+FW_SIZE = 0
+FW_SHA  = ""
 
-# ===== Project constants =====
-DEV_NAME = "C6-LED"
-WS_PIN = 8
-WS_COUNT = 1
-OTA_DIR = "/ota"
-CFG_FILE = "/cfg.json"
+TARGET_PATH = "/main.py"          # OTA 最終目的檔名（可改）
+TMP_PATH    = "/ota.tmp"          # 中繼檔
 
-def ensure_dir(path: str):
-    if not path or path == "/":
-        return
+_UUID16 = bluetooth.UUID
+_SERVICE_UUID = _UUID16(0xFFF0)
+_TX_UUID      = _UUID16(0xFFF1)  # Notify
+_RX_UUID      = _UUID16(0xFFF2)  # Write
+
+ble = bluetooth.BLE()
+ble.active(True)
+
+tx_char = (_TX_UUID, bluetooth.FLAG_NOTIFY | bluetooth.FLAG_READ,)
+rx_char = (_RX_UUID, bluetooth.FLAG_WRITE | bluetooth.FLAG_WRITE_NO_RESPONSE,)
+svc = (_SERVICE_UUID, (tx_char, rx_char))
+handle_tx = None
+handle_rx = None
+
+conn_handle = None
+SESSION_CTX = None
+_rx_buf = b""
+
+# OTA 狀態
+ota_on = False
+ota_expect_size = 0
+ota_received = 0
+ota_expect_sha = ""
+ota_seq = 0
+ota_sha = None
+ota_fp = None  # file object
+
+def rnd_ctx(n=6):
+    return ubinascii.hexlify(urandom.urandom(n)).decode()
+
+def fw_dict():
+    return {"ver": FW_VER, "size": FW_SIZE, "sha": FW_SHA}
+
+def json_line(obj):
     try:
-        os.stat(path)
-        return
-    except OSError:
-        i = path.rfind("/")
-        if i > 0:
-            ensure_dir(path[:i])
-        try:
-            os.mkdir(path)
-        except OSError:
-            try:
-                os.stat(path)
-            except OSError:
-                raise
-
-def load_cfg():
-    try:
-        with open(CFG_FILE, "r") as f:
-            return ujson.loads(f.read())
-    except:
-        return {"mode": 0, "brightness": 128, "speed": 8}
-
-def save_cfg(cfg):
-    try:
-        with open(CFG_FILE, "w") as f:
-            f.write(ujson.dumps(cfg))
-    except Exception as e:
-        print("CFG save failed:", e)
-
-CFG = load_cfg()
-
-class StatusLED:
-    def __init__(self, pin=WS_PIN, n=WS_COUNT):
-        self.ok = False
-        if neopixel:
-            try:
-                self.np = neopixel.NeoPixel(Pin(pin, Pin.OUT), n)
-                self.ok = True
-            except Exception as e:
-                print("neopixel init fail:", e)
-
-    def set_rgb(self, r, g, b, show=True):
-        if not self.ok: return
-        for i in range(WS_COUNT):
-            self.np[i] = (r, g, b)
-        if show:
-            self.np.write()
-
-    def off(self):
-        self.set_rgb(0,0,0)
-
-LED = StatusLED()
-LED.set_rgb(0, 8, 0)
-
-ensure_dir(OTA_DIR)
-
-UUID_SVC = bluetooth.UUID(0xFFF0)
-UUID_TX  = bluetooth.UUID(0xFFF1)  # Notify
-UUID_RX  = bluetooth.UUID(0xFFF2)  # Write/WriteNR
-UUID_INF = bluetooth.UUID(0xFFF3)  # Read (device info/version)
-
-FLAG_NOTIFY = bluetooth.FLAG_NOTIFY
-FLAG_WRITE  = bluetooth.FLAG_WRITE
-FLAG_WNR    = bluetooth.FLAG_WRITE_NO_RESPONSE
-FLAG_READ   = bluetooth.FLAG_READ
-
-class BLEUartLike:
-    def __init__(self, name=DEV_NAME):
-        self._ble = bluetooth.BLE()
-        self._ble.active(True)
-        self._ble.irq(self._irq)
-
-        TX  = (UUID_TX,  FLAG_NOTIFY)
-        RX  = (UUID_RX,  FLAG_WRITE | FLAG_WNR)
-        INF = (UUID_INF, FLAG_READ)  # safe to read
-
-        SVC = (UUID_SVC, (TX, RX, INF))
-
-        handles = self._ble.gatts_register_services((SVC,))
-        # Tolerate shapes: ((tx, rx, inf),)  or  (tx, rx, inf)
-        self.tx_h = self.rx_h = self.inf_h = None
-        if isinstance(handles, tuple):
-            if len(handles) == 1 and isinstance(handles[0], (tuple, list)):
-                vals = handles[0]
-                if len(vals) >= 3:
-                    self.tx_h, self.rx_h, self.inf_h = vals[0], vals[1], vals[2]
-            elif len(handles) >= 3 and isinstance(handles[0], int):
-                self.tx_h, self.rx_h, self.inf_h = handles[0], handles[1], handles[2]
-        if self.tx_h is None or self.rx_h is None or self.inf_h is None:
-            try:
-                self.tx_h, self.rx_h, self.inf_h = handles[0]
-            except:
-                raise RuntimeError("Unexpected handle shape: %r" % (handles,))
-
-        # Prepare INFO payload
-        info = ujson.dumps({"ver": FW_VERSION, "build": FW_BUILD})
-        try:
-            self._ble.gatts_write(self.inf_h, info)
-        except Exception as e:
-            print("INFO write failed:", e)
-
-        self._connections = set()
-        self._ota = None
-        # Advertise every 100 ms (MicroPython takes microseconds)
-        self._ble.gap_advertise(100000, adv_data=self._payload(name))
-
-    def _payload(self, name):
-        name_bytes = name.encode()
-        return bytearray(b"\x02\x01\x06") + bytes((len(name_bytes)+1, 0x09)) + name_bytes
-
-    def _irq(self, event, data):
-        if event == 1:  # central connect
-            conn_handle, addr_type, addr = data
-            self._connections.add(conn_handle)
-            LED.set_rgb(0, 0, 8)
-        elif event == 2:  # central disconnect
-            conn_handle, addr_type, addr = data
-            self._connections.discard(conn_handle)
-            self._ota = None
-            LED.set_rgb(0, 8, 0)
-            self._ble.gap_advertise(100000, adv_data=self._payload(DEV_NAME))
-        elif event == 3:  # write
-            conn_handle, value_handle = data
-            if value_handle == self.rx_h:
-                try:
-                    raw = self._ble.gatts_read(self.rx_h)
-                    self._handle_rx(raw, conn_handle)
-                except Exception as e:
-                    print("RX error:", e)
-
-    def notify(self, payload: bytes):
-        for ch in list(self._connections):
-            try:
-                self._ble.gatts_notify(ch, self.tx_h, payload)
-            except Exception:
-                pass
-
-    # ===== OTA protocol =====
-    # JSON control frames:
-    #  {"op":"begin", "name":"main.py", "size":1234, "sha256":"...hex..."}
-    #  {"op":"end"} / {"op":"commit"} / {"op":"reboot"}
-    # Binary frames: raw chunk bytes (append to temp file)
-    def _handle_rx(self, buf, ch):
-        if len(buf) and buf[:1] in (b'{',):
-            try:
-                msg = ujson.loads(buf)
-            except:
-                self.notify(b'{"err":"json"}')
-                return
-            op = msg.get("op")
-            if op == "begin":
-                name = msg.get("name") or "incoming.bin"
-                size = int(msg.get("size") or 0)
-                sha  = msg.get("sha256") or ""
-                tmpf = OTA_DIR + "/incoming.tmp"
-                self._ota = {"name": name, "size": size, "sha": sha, "w": 0, "tmp": tmpf}
-                try:
-                    try:
-                        os.remove(tmpf)
-                    except:
-                        pass
-                    with open(tmpf, "wb") as f:
-                        pass
-                    LED.set_rgb(8, 4, 0)
-                    self.notify(b'{"ack":"begin"}')
-                except Exception:
-                    self.notify(b'{"err":"fs"}')
-            elif op == "end":
-                if not self._ota:
-                    self.notify(b'{"err":"noctx"}')
-                    return
-                ok = (self._ota["w"] == self._ota["size"])
-                self.notify(ujson.dumps({"ack":"end","ok":bool(ok),"w":self._ota["w"]}).encode())
-                LED.set_rgb(0, 8, 0 if ok else 8)
-            elif op == "commit":
-                if not self._ota:
-                    self.notify(b'{"err":"noctx"}')
-                    return
-                try:
-                    final = OTA_DIR + "/" + self._ota["name"]
-                    try:
-                        os.remove(final)
-                    except:
-                        pass
-                    os.rename(self._ota["tmp"], final)
-                    with open(OTA_DIR + "/pending.json", "w") as f:
-                        f.write(ujson.dumps({"install": final, "target": self._ota["name"]}))
-                    self.notify(b'{"ack":"commit"}')
-                    LED.set_rgb(0, 0, 8)
-                except Exception:
-                    self.notify(b'{"err":"commit"}')
-            elif op == "reboot":
-                self.notify(b'{"ack":"reboot"}')
-                time.sleep_ms(200)
-                machine.reset()
-            elif op == "set":
-                changed = False
-                for k in ("mode","brightness","speed"):
-                    if k in msg:
-                        try:
-                            CFG[k] = int(msg[k])
-                            changed = True
-                        except:
-                            pass
-                if changed:
-                    save_cfg(CFG)
-                self.notify(ujson.dumps({"ack":"set","cfg":CFG}).encode())
-            else:
-                self.notify(b'{"err":"op"}')
-        else:
-            if not self._ota:
-                self.notify(b'{"err":"noctx"}')
-                return
-            try:
-                with open(self._ota["tmp"], "ab") as f:
-                    f.write(buf)
-                self._ota["w"] += len(buf)
-                if (self._ota["w"] % 4096) < len(buf):
-                    self.notify(ujson.dumps({"pg": self._ota["w"]}).encode())
-            except Exception:
-                self.notify(b'{"err":"write"}')
-
-BLE = BLEUartLike()
-
-def _apply_pending():
-    p = OTA_DIR + "/pending.json"
-    try:
-        with open(p, "r") as f:
-            info = ujson.loads(f.read())
-        src = info.get("install")
-        tgt = info.get("target")
-        if src and tgt:
-            dest = "/" + tgt
-            bak = dest + ".bak"
-            try:
-                os.stat(dest)
-                try:
-                    os.remove(bak)
-                except:
-                    pass
-                os.rename(dest, bak)
-            except OSError:
-                pass
-            try:
-                try:
-                    os.remove(dest)
-                except:
-                    pass
-                os.rename(src, dest)
-                try:
-                    os.remove(p)
-                except:
-                    pass
-                print("OTA installed:", dest)
-                LED.set_rgb(0, 8, 0)
-            except Exception as e:
-                print("OTA install failed:", e)
-                LED.set_rgb(8, 0, 0)
+        s = ujson.dumps(obj) + "\n"
+        if conn_handle is None or handle_tx is None: return
+        data = s.encode(); mtu = 180
+        for i in range(0, len(data), mtu):
+            ble.gatts_notify(conn_handle, handle_tx, data[i:i+mtu])
+            time.sleep_ms(3)
     except Exception:
         pass
 
-_apply_pending()
+def send_err(code, **kw):
+    o = {"err": code}; o.update(kw); json_line(o)
 
-def heartbeat():
-    while True:
+def safe_remove(path):
+    try: os.remove(path)
+    except: pass
+
+def start_ota(name, size, sha):
+    global ota_on, ota_expect_size, ota_received, ota_expect_sha, ota_seq, ota_sha, ota_fp
+    if ota_fp:
+        try: ota_fp.close()
+        except: pass
+        ota_fp = None
+    safe_remove(TMP_PATH)
+
+    ota_on = True
+    ota_expect_size = int(size or 0)
+    ota_received = 0
+    ota_expect_sha = sha or ""
+    ota_seq = 0
+    ota_sha = hashlib.sha256()
+    ota_fp = open(TMP_PATH, "wb")
+
+def ota_append(seq, b64):
+    global ota_received, ota_seq, ota_fp, ota_sha
+    if not ota_on or ota_fp is None:
+        return "notbegin"
+    if seq != ota_seq:
+        return "badseq"
+    try:
+        raw = ubinascii.a2b_base64(b64)
+    except Exception:
+        return "b64"
+    try:
+        ota_fp.write(raw)
+        ota_fp.flush()
+        ota_received += len(raw)
+        ota_seq += 1
+        ota_sha.update(raw)
+        return None
+    except Exception:
+        return "write"
+
+def finish_ota(sha_final):
+    global ota_on, ota_fp, FW_SIZE, FW_SHA
+    if not ota_on or ota_fp is None:
+        return "notbegin"
+    try:
+        ota_fp.close()
+        ota_fp = None
+        calc = ota_sha.digest()
+        calc_hex = ubinascii.hexlify(calc).decode()
+        if calc_hex != (sha_final or ota_expect_sha):
+            safe_remove(TMP_PATH)
+            return "sha"
+        if ota_expect_size and ota_received != ota_expect_size:
+            safe_remove(TMP_PATH)
+            return "size"
+        # 覆蓋目標
+        safe_remove(TARGET_PATH + ".bak")
         try:
-            if LED.ok:
-                b = (CFG.get("brightness",128) & 0xFF) // 8
-                if b < 1: b = 1
-                LED.set_rgb(0, b, 0)
-            time.sleep_ms(500)
-        except Exception:
-            time.sleep_ms(500)
+            os.rename(TARGET_PATH, TARGET_PATH + ".bak")
+        except:
+            pass
+        os.rename(TMP_PATH, TARGET_PATH)
+        # 更新即時回報（下次 hello 會帶最新 size/sha）
+        FW_SIZE = ota_received
+        FW_SHA  = calc_hex
+        ota_on = False
+        return None
+    except Exception:
+        safe_remove(TMP_PATH)
+        return "finalize"
 
-try:
-    heartbeat()
-except KeyboardInterrupt:
-    pass
+def on_write(h):
+    global _rx_buf, SESSION_CTX
+    try:
+        v = ble.gatts_read(h)
+        if not v: return
+        _rx_buf += v
+        while True:
+            idx = _rx_buf.find(b"\n")
+            if idx < 0: break
+            line = _rx_buf[:idx].strip()
+            _rx_buf = _rx_buf[idx+1:]
+            if not line: continue
+            try:
+                j = ujson.loads(line)
+            except Exception:
+                send_err("json"); continue
+
+            op = j.get("op")
+            if op == "hello":
+                SESSION_CTX = rnd_ctx()
+                json_line({"ok":"hello","ctx":SESSION_CTX,"fw":fw_dict()})
+                continue
+
+            if j.get("ctx") != SESSION_CTX:
+                send_err("noctx"); continue
+
+            if op == "get" and j.get("what") == "fw_info":
+                json_line({"ok":"fw_info","fw":fw_dict()})
+                continue
+
+            if op == "reboot":
+                json_line({"ack":"reboot"})
+                try:
+                    import machine
+                    time.sleep_ms(300)
+                    machine.reset()
+                except:
+                    pass
+                continue
+
+            # ===== OTA 三段式 =====
+            if op == "ota_begin":
+                name = j.get("name") or "main.py"
+                size = j.get("size") or 0
+                sha  = j.get("sha")  or ""
+                try:
+                    start_ota(name, size, sha)
+                    json_line({"ack":"ota_begin","name":name,"size":size})
+                except Exception:
+                    send_err("otabegin")
+                continue
+
+            if op == "ota_chunk":
+                seq = int(j.get("seq") or 0)
+                b64 = j.get("data") or ""
+                err = ota_append(seq, b64)
+                if err: send_err("ota", stage="chunk", seq=seq, why=err)
+                else:   json_line({"ack":"ota_chunk","seq":seq})
+                continue
+
+            if op == "ota_end":
+                sha_final = j.get("sha") or ""
+                err = finish_ota(sha_final)
+                if err: send_err("ota", stage="end", why=err)
+                else:
+                    json_line({"ok":"ota_end","sha":sha_final})
+                    json_line({"ack":"reboot"})
+                    try:
+                        import machine
+                        time.sleep_ms(400)
+                        machine.reset()
+                    except:
+                        pass
+                continue
+
+            send_err("badop")
+    except Exception:
+        send_err("rx")
+
+def irq(event, data):
+    global conn_handle
+    if event == bluetooth.IRQ_CENTRAL_CONNECT:
+        conn_handle, _, _ = data
+    elif event == bluetooth.IRQ_CENTRAL_DISCONNECT:
+        conn_handle = None
+        advertise()
+    elif event == bluetooth.IRQ_GATTS_WRITE:
+        _ch, value_handle = data
+        if value_handle == handle_rx:
+            on_write(value_handle)
+
+def advertise():
+    name = "C6-LED"
+    adv = bytearray(b"\x02\x01\x06") + bytes((len(name)+1, 0x09)) + name.encode()
+    adv += bytes((3, 0x03, 0xF0, 0xFF))
+    ble.gap_advertise(None)
+    ble.gap_advertise(100, adv_data=adv)
+
+def setup_gatt():
+    global handle_tx, handle_rx
+    ((h_tx, h_rx),) = ble.gatts_register_services((svc,))
+    handle_tx, handle_rx = h_tx, h_rx
+    ble.gatts_write(handle_tx, b"")
+    ble.gatts_write(handle_rx, b"")
+
+def main():
+    setup_gatt()
+    ble.irq(irq)
+    advertise()
+    while True:
+        time.sleep_ms(200)
+
+if __name__ == "__main__":
+    main()
 
