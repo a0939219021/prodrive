@@ -1,348 +1,561 @@
 <!doctype html>
 <html lang="zh-Hant">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
-<title>C6-LED OTA Console (One-Click + Fixes)</title>
-<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
-<meta http-equiv="Pragma" content="no-cache" />
-<meta http-equiv="Expires" content="0" />
-<style>
-  :root{
-    --bg:#0b1220; --card:#0f172a; --fg:#e5e7eb; --muted:#94a3b8; --acc:#22d3ee;
-    --ok:#22c55e; --warn:#f59e0b; --err:#ef4444; --br:14px; --gap:12px;
-    --safe-top: env(safe-area-inset-top, 0px); --safe-bot: env(safe-area-inset-bottom, 0px);
-  }
-  *{box-sizing:border-box}
-  html,body{height:100%}
-  body{margin:0;background:linear-gradient(160deg,#0b1220,#0a0f1a);color:var(--fg);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans",Ubuntu,"Helvetica Neue",Arial}
-  .wrap{max-width:980px;margin:0 auto;padding:calc(14px + var(--safe-top)) 16px calc(18px + var(--safe-bot))}
-  h1{font-size:22px;margin:0 0 10px}
-  .row{display:flex;gap:var(--gap);flex-wrap:wrap}
-  .card{background:var(--card);border:1px solid rgba(255,255,255,.08);border-radius:var(--br);padding:14px;flex:1}
-  button{background:#111827;color:var(--fg);border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:10px 14px;font-size:14px;cursor:pointer}
-  button:hover{border-color:var(--acc)}
-  #log{white-space:pre-wrap;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:1.35;max-height:46vh;overflow:auto;background:#0b1020;border-radius:10px;padding:10px;border:1px solid rgba(255,255,255,.05)}
-  .kv{display:grid;grid-template-columns:120px 1fr;gap:6px 10px;align-items:center}
-  .muted{color:var(--muted)}
-  .badge{display:inline-block;padding:2px 8px;border-radius:999px;border:1px solid rgba(255,255,255,.15);font-size:12px}
-  .ok{color:var(--ok)} .err{color:var(--err)} .warn{color:var(--warn)}
-  progress{width:100%;height:12px}
-  .hint{font-size:12px;color:var(--muted)}
-  input[type=file]{display:none}
-</style>
-</head>
-<body>
-<div class="wrap">
-  <h1>C6-LED OTA Console <span id="status" class="badge muted">idle</span></h1>
-
-  <div class="row">
-    <div class="card" style="min-width:280px;flex:0 0 300px">
-      <div class="kv">
-        <div>Device</div><div id="devName" class="muted">—</div>
-        <div>FW Version</div><div id="fwVer" class="muted">—</div>
-        <div>FW Size</div><div id="fwSize" class="muted">—</div>
-        <div>FW SHA256</div><div id="fwSha" class="muted" style="word-break:break-all">—</div>
-      </div>
-      <div style="height:10px"></div>
-      <div class="row">
-        <button id="btnConnect">Connect</button>
-        <button id="btnDisconnect">Disconnect</button>
-      </div>
-      <div class="row" style="margin-top:10px">
-        <button id="btnHello">Hello</button>
-        <button id="btnGetFw">Get FW Info</button>
-        <button id="btnReboot" class="warn">Reboot</button>
-      </div>
-    </div>
-
-    <div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-        <div>Firmware Update (OTA over BLE)</div>
-        <div>
-          <button id="btnOneClick">⚡ One-click Update</button>
-          <button id="btnClear">Clear</button>
-        </div>
-      </div>
-
-      <div class="row" style="align-items:center">
-        <input id="fileInput" type="file" accept=".py,.mpy,.bin,.txt,application/octet-stream" />
-        <button id="btnChoose">📂 Choose local file</button>
-        <button id="btnSend">Send</button>
-      </div>
-      <div class="hint">流程：選檔或一鍵更新 → 計算 SHA256 → <code>ota_begin</code> → 多段 <code>ota_chunk</code> → <code>ota_end</code> → 驗證通過自動 reboot。</div>
-
-      <div style="margin-top:10px">
-        <progress id="bar" value="0" max="100"></progress>
-        <div class="hint"><span id="ptext">0%</span> (<span id="sentBytes">0</span>/<span id="totalBytes">0</span> bytes)</div>
-      </div>
-
-      <div id="log" style="margin-top:10px"></div>
-    </div>
-  </div>
-</div>
-
-<script>
-/** ====== 一鍵更新來源（可改成你的實際位置） ====== */
-const MANIFEST_URL = "https://a0939219021.github.io/prodrive/ota/manifest.json"; // 你的 manifest.json
-const MAIN_FILENAME = "main.py";
-const STRICT_SHA = false; // 若想 SHA 不符就中止，改成 true
-
-/** ===== 基本參數（與韌體一致） ===== */
-const UUID_SERVICE        = "0000fff0-0000-1000-8000-00805f9b34fb";
-const UUID_CHAR_TX_NOTIFY = "0000fff1-0000-1000-8000-00805f9b34fb"; // Peripheral→App (Notify)
-const UUID_CHAR_RX_WRITE  = "0000fff2-0000-1000-8000-00805f9b34fb"; // App→Peripheral (Write/WWR)
-const NAME_PREFIX = "C6-LED";
-
-let device, server, service, chTx, chRx;
-let ctx = null;
-let rxBuf = "";
-let chosenFile = null;
-let pendingReboot = false;
-
-const $ = s => document.querySelector(s);
-function setStatus(s){ $("#status").textContent = s; }
-function log(...args){ const s = args.map(x => (typeof x==="string"? x : JSON.stringify(x))).join(" "); const el = $("#log"); el.textContent += s + "\n"; el.scrollTop = el.scrollHeight; }
-
-/* ====== 工具：等握手拿到 ctx ====== */
-async function waitForCtx(timeoutMs = 6000){
-  const t0 = Date.now();
-  while (!ctx) {
-    if (Date.now() - t0 > timeoutMs) throw new Error("ctx_timeout");
-    await new Promise(r=>setTimeout(r, 60));
-  }
-}
-
-/* 斷線 */
-async function disconnect(){
-  try{ device && device.gatt && device.gatt.connected && device.gatt.disconnect(); }catch(_){}
-  device = server = service = chTx = chRx = null;
-  ctx = null; setStatus("disconnected");
-}
-
-/* 連線（一定等到 ctx 才返回） */
-async function connectIfNeeded(){
-  if (chRx && chTx && ctx) return;
-  try{
-    setStatus("requesting…");
-    const options = { filters:[{namePrefix:NAME_PREFIX},{services:[UUID_SERVICE]}], optionalServices:[UUID_SERVICE] };
-    try{ device = await navigator.bluetooth.requestDevice(options); }
-    catch{ device = await navigator.bluetooth.requestDevice({acceptAllDevices:true, optionalServices:[UUID_SERVICE]}); }
-
-    $("#devName").textContent = device.name || "(unnamed)";
-    device.addEventListener("gattserverdisconnected", ()=>{ log("** disconnected"); disconnect(); });
-
-    setStatus("connecting…");
-    server  = await device.gatt.connect();
-    service = await server.getPrimaryService(UUID_SERVICE);
-    chTx    = await service.getCharacteristic(UUID_CHAR_TX_NOTIFY);
-    chRx    = await service.getCharacteristic(UUID_CHAR_RX_WRITE);
-
-    await chTx.startNotifications();
-    chTx.addEventListener("characteristicvaluechanged", onNotify);
-
-    setStatus("connected");
-    log("connected to", device.name || "device");
-
-    await safeSend({op:"hello", want:"status"}); // 送 hello
-    await waitForCtx();                           // ★ 等到握手成功
-  }catch(e){
-    log({err:"connect", msg:e.message||String(e)});
-    await disconnect();
-    throw e;
-  }
-}
-
-/* Notify 黏包解析（\n 分隔） */
-function onNotify(ev){
-  const v = ev.target.value;
-  const chunk = new TextDecoder().decode(v.buffer ? v : v);
-  rxBuf += chunk;
-  let idx;
-  while ((idx = rxBuf.indexOf("\n")) >= 0){
-    const line = rxBuf.slice(0, idx).trim();
-    rxBuf = rxBuf.slice(idx+1);
-    if (!line) continue;
-    try{
-      const j = JSON.parse(line);
-      handleMsg(j);
-    }catch(_){ log({err:"json", line}); }
-  }
-}
-
-/* 訊息處理 */
-function handleMsg(j){
-  if (j.ok === "hello" && j.ctx){
-    ctx = j.ctx; log("hello ok, ctx=", ctx);
-    if (j.fw){
-      $("#fwVer").textContent  = j.fw.ver || "—";
-      $("#fwSize").textContent = j.fw.size ?? "—";
-      $("#fwSha").textContent  = j.fw.sha  || "—";
-      log(`firmware ready: ver=${j.fw.ver} size=${j.fw.size} sha=${j.fw.sha}`);
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="robots" content="noindex,nofollow" />
+  <meta name="color-scheme" content="light dark" />
+  <meta name="theme-color" content="#0ea5e9" />
+  <title>ESP32 控制面板</title>
+  <style>
+    :root{
+      --bg: #0b1220;
+      --panel: #111827;
+      --text: #e5e7eb;
+      --muted:#9ca3af;
+      --brand:#0ea5e9;
+      --ok:#10b981;
+      --warn:#f59e0b;
+      --err:#ef4444;
+      --border: #1f2937;
+      --code:#111827;
+      --input-bg:#0b1220;
+      --shadow: 0 10px 25px rgba(2,6,23,.35);
     }
-    return;
-  }
-  if (j.ok === "fw_info" && j.fw){
-    $("#fwVer").textContent  = j.fw.ver || "—";
-    $("#fwSize").textContent = j.fw.size ?? "—";
-    $("#fwSha").textContent  = j.fw.sha  || "—";
-    log("fw_info:", j.fw); return;
-  }
-  if (j.ack === "ota_begin" || j.ack === "ota_chunk" || j.ok === "ota_end"){
-    log(j); return;
-  }
-  if (j.ack === "reboot"){
-    log({ack:"reboot"}); pendingReboot = true; return;
-  }
-  if (j.err){ log(j); return; }
-  log(j);
-}
-
-/* BLE 寫入（<=180 bytes 分片） */
-async function writeBle(data){
-  if (!chRx) throw new Error("no RX characteristic");
-  const bytes = (data instanceof Uint8Array) ? data : new TextEncoder().encode(data);
-  const MTU = 180;
-  for (let i=0; i<bytes.length; i+=MTU){
-    const chunk = bytes.slice(i, i+MTU);
-    await chRx.writeValueWithoutResponse(chunk);
-    await new Promise(r=>setTimeout(r,3));
-  }
-}
-
-/* 有回傳布林值的送法：無 ctx 直接回 false，不假成功 */
-async function safeSend(obj){
-  if (obj.op !== "hello" && !ctx){ log({err:"noctx"}); return false; }
-  try{
-    const line = JSON.stringify(obj) + "\n";
-    await writeBle(line);
-    return true;
-  }catch(e){
-    log({err:"send", msg:e.message||String(e)});
-    return false;
-  }
-}
-
-/* 進度條 */
-function setProgress(p){ $("#bar").value = p; $("#ptext").textContent = p + "%"; }
-
-/* 強化版 SHA256（多型別輸入） */
-async function computeSHA256Hex(input){
-  let bytes;
-  if (input instanceof Uint8Array) bytes = input;
-  else if (input instanceof ArrayBuffer) bytes = new Uint8Array(input);
-  else if (input instanceof Blob) bytes = new Uint8Array(await input.arrayBuffer());
-  else if (typeof input === "string") bytes = new TextEncoder().encode(input);
-  else throw new TypeError("devComputeSHA(input) 需要 Uint8Array / ArrayBuffer / File / Blob / string 其中之一");
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2,"0")).join("");
-}
-window.devComputeSHA = computeSHA256Hex;
-
-/* ====== 手動：本地選檔 OTA ====== */
-$("#btnChoose").onclick = ()=> $("#fileInput").click();
-$("#fileInput").onchange = async e => {
-  chosenFile = e.target.files?.[0] || null;
-  if (chosenFile) {
-    const ab = await chosenFile.arrayBuffer();
-    window._lastBuf = new Uint8Array(ab);
-    log("chosen:", chosenFile.name, chosenFile.size + "B");
-  }
-};
-$("#btnSend").onclick = async ()=>{
-  await connectIfNeeded();
-  if (!ctx) { log({err:"noctx"}); return; }
-  if (!chosenFile){ log({err:"nofile"}); return; }
-  const buf = window._lastBuf || new Uint8Array(await chosenFile.arrayBuffer());
-  await runOtaFlow(buf, chosenFile.name);
-};
-
-/* ====== 一鍵更新：抓 manifest → 下載 main.py → （可選：比對 SHA）→ OTA ====== */
-$("#btnOneClick").onclick = async ()=>{
-  try{
-    await connectIfNeeded();
-
-    const maniUrl = `${MANIFEST_URL}?ts=${Date.now()}`;
-    log("fetch manifest:", maniUrl);
-    const mani = await (await fetch(maniUrl, {cache:"no-store"})).json();
-
-    const entry = (mani.files||[]).find(f => f.target === MAIN_FILENAME || f.url === MAIN_FILENAME);
-    if (!entry){ log({err:"manifest", msg:`no ${MAIN_FILENAME} entry`}); return; }
-
-    const fileUrl = new URL(entry.url, MANIFEST_URL).toString();
-    log("download:", fileUrl);
-    const resp = await fetch(fileUrl, {cache:"no-store"});
-    const ab = await resp.arrayBuffer();
-    const buf = new Uint8Array(ab);
-    const sha = await computeSHA256Hex(buf);
-    log(`downloaded ${buf.length}B, sha=${sha}`);
-
-    if (entry.sha256 && entry.sha256.toLowerCase() !== sha.toLowerCase()){
-      if (STRICT_SHA){
-        log({err:"sha_mismatch_abort", expected:entry.sha256, got:sha});
-        return;
-      }else{
-        log({warn:"sha_mismatch", expected:entry.sha256, got:sha});
+    @media (prefers-color-scheme: light){
+      :root{
+        --bg:#f7fafc;
+        --panel:#ffffff;
+        --text:#0f172a;
+        --muted:#475569;
+        --brand:#0284c7;
+        --ok:#059669;
+        --warn:#d97706;
+        --err:#dc2626;
+        --border:#e5e7eb;
+        --code:#0f172a;
+        --input-bg:#ffffff;
+        --shadow: 0 10px 25px rgba(2,6,23,.08);
       }
     }
-    await runOtaFlow(buf, MAIN_FILENAME);
-  }catch(e){
-    log({err:"oneclick", msg: e.message||String(e)});
-  }
-};
-
-/* 共同 OTA 流程（手動與一鍵更新皆用） */
-async function runOtaFlow(buf, name){
-  await waitForCtx(); // ★ 雙保險：握手完成
-  if (!ctx) { log({err:"noctx_start"}); return; }
-
-  const size = buf.length;
-  const sha  = await computeSHA256Hex(buf);
-  $("#totalBytes").textContent = size; $("#sentBytes").textContent = 0; setProgress(0);
-
-  // 1) begin
-  if (!await safeSend({op:"ota_begin", name, size, sha})) {
-    log({err:"send_begin"}); return;
-  }
-
-  // 2) chunks
-  const CHUNK = 512;
-  let sent = 0, seq = 0;
-  while (sent < size){
-    if (!ctx) { log({err:"lost_ctx_during_ota"}); return; }
-    const end = Math.min(sent + CHUNK, size);
-    const slice = buf.slice(sent, end);
-    const b64 = btoa(String.fromCharCode(...slice));
-    if (!await safeSend({op:"ota_chunk", seq, data:b64})) {
-      log({err:"send_chunk", seq}); return;
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;
+      font: 16px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial,"Noto Sans","Helvetica Neue","Apple Color Emoji","Segoe UI Emoji";
+      color: var(--text);
+      background: radial-gradient(1200px 800px at 80% -200px, rgba(14,165,233,.08), transparent 70%) ,
+                  radial-gradient(800px 600px at -10% -100px, rgba(16,185,129,.06), transparent 60%),
+                  var(--bg);
     }
-    sent = end; seq++;
-    $("#sentBytes").textContent = sent; setProgress(Math.round(sent*100/size));
-  }
+    header{
+      position:sticky; top:0; z-index:10;
+      backdrop-filter:saturate(180%) blur(8px);
+      background: color-mix(in oklab, var(--bg) 90%, transparent);
+      border-bottom:1px solid var(--border);
+    }
+    .wrap{max-width:1100px;margin:auto;padding:16px}
+    .row{display:flex;align-items:center;gap:12px;justify-content:space-between}
+    .brand{display:flex;align-items:center;gap:10px;font-weight:700}
+    .badge{font-size:12px;padding:2px 8px;border-radius:999px;border:1px solid var(--border);color:var(--muted)}
+    .btn{
+      appearance:none;border:1px solid var(--border); background:linear-gradient(180deg, color-mix(in oklab, var(--panel) 92%, transparent), var(--panel));
+      color:var(--text); padding:10px 14px; border-radius:12px; cursor:pointer; transition:.15s transform,.15s box-shadow,.15s border-color;
+      box-shadow: var(--shadow);
+    }
+    .btn:disabled{opacity:.6;cursor:not-allowed; box-shadow:none}
+    .btn:hover{transform: translateY(-1px)}
+    .btn.primary{border-color: color-mix(in oklab, var(--brand), black 20%); background: linear-gradient(180deg, color-mix(in oklab, var(--brand) 90%, white 10%), var(--brand)); color:white}
+    .btn.ghost{background:transparent; box-shadow:none}
+    .btn.warn{border-color: color-mix(in oklab, var(--warn), black 20%); background: linear-gradient(180deg, color-mix(in oklab, var(--warn) 90%, white 10%), var(--warn)); color:white}
+    .btn.danger{border-color: color-mix(in oklab, var(--err), black 20%); background: linear-gradient(180deg, color-mix(in oklab, var(--err) 90%, white 10%), var(--err)); color:white}
 
-  // 3) end
-  if (!await safeSend({op:"ota_end", sha})) {
-    log({err:"send_end"}); return;
-  }
-  log("ota_end sent; waiting for device verify…");
+    main{max-width:1100px;margin:auto;padding:24px;display:grid;gap:24px;grid-template-columns: 1.2fr .8fr}
+    @media (max-width: 980px){ main{grid-template-columns:1fr} }
+    .card{
+      background: linear-gradient(180deg, color-mix(in oklab, var(--panel) 97%, transparent), var(--panel));
+      border:1px solid var(--border); border-radius:16px; overflow:hidden; box-shadow: var(--shadow);
+    }
+    .card h2{margin:0;padding:16px;border-bottom:1px solid var(--border);font-size:18px}
+    .card .content{padding:16px}
+    .grid{display:grid;gap:12px}
+    .grid.cols-2{grid-template-columns:1fr 1fr}
+    @media (max-width:640px){ .grid.cols-2{grid-template-columns:1fr} }
 
-  // 等待 reboot ack（最多 8 秒）
-  pendingReboot = false;
-  const t0 = Date.now();
-  while (!pendingReboot && Date.now() - t0 < 8000){
-    await new Promise(r=>setTimeout(r,150));
-  }
-  if (pendingReboot) log("device acknowledged reboot; reconnect after it re-advertises.");
-  else log({warn:"no_reboot_ack"});
-}
+    label{display:block;font-weight:600;margin-bottom:6px}
+    .help{font-size:12px;color:var(--muted)}
+    input,select,textarea{
+      width:100%; padding:10px 12px; border-radius:12px; border:1px solid var(--border); background:var(--input-bg); color:var(--text); outline:none;
+    }
+    input::placeholder{color:color-mix(in oklab, var(--muted) 80%, transparent)}
+    .row-form{display:flex;gap:10px;flex-wrap:wrap}
+    .row-form > *{flex:1}
 
-/* 其他 UI 綁定 */
-$("#btnConnect").onclick    = connectIfNeeded;
-$("#btnDisconnect").onclick = disconnect;
-$("#btnClear").onclick      = ()=>{ $("#log").textContent=""; };
-$("#btnHello").onclick      = async ()=>{ await connectIfNeeded(); await safeSend({op:"hello", want:"status"}); };
-$("#btnGetFw").onclick      = async ()=>{ await connectIfNeeded(); await safeSend({op:"get", what:"fw_info"}); };
-$("#btnReboot").onclick     = async ()=>{ await connectIfNeeded(); await safeSend({op:"reboot"}); };
-</script>
+    .pill{
+      display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:999px; border:1px solid var(--border); background: color-mix(in oklab, var(--panel) 96%, transparent);
+      font-size:12px; color:var(--muted)
+    }
+    .pill.dot::before{content:""; width:8px;height:8px;border-radius:999px; background:var(--muted)}
+    .pill.ok::before{background:var(--ok)}
+    .pill.err::before{background:var(--err)}
+    .pill.warn::before{background:var(--warn)}
+
+    .console{height:320px; background: linear-gradient(180deg, color-mix(in oklab, var(--code) 94%, transparent), var(--panel));
+      border-radius:12px; border:1px solid var(--border); padding:12px; overflow:auto; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace}
+    .log-line{white-space:pre-wrap;word-break:break-word}
+    .log-line time{color:var(--muted);margin-right:8px}
+    .log-line .lev{display:inline-block;min-width:52px;font-weight:600}
+    .lev.info{color:var(--brand)}
+    .lev.ok{color:var(--ok)}
+    .lev.warn{color:var(--warn)}
+    .lev.err{color:var(--err)}
+    footer{opacity:.8;padding:6px 16px 30px;text-align:center;color:var(--muted);font-size:12px}
+    .hidden{display:none !important}
+    .right{margin-left:auto}
+    .switch{
+      --w: 44px; --h:24px; --knob: 18px;
+      position:relative; width:var(--w); height:var(--h); border-radius:999px; background:color-mix(in oklab, var(--muted) 25%, transparent); cursor:pointer; border:1px solid var(--border)
+    }
+    .switch input{appearance:none; position:absolute; inset:0; width:100%; height:100%; margin:0; opacity:0}
+    .switch .knob{position:absolute; top:50%; left:3px; width:var(--knob); height:var(--knob); border-radius:999px; transform:translateY(-50%); background:white; box-shadow:0 2px 6px rgba(0,0,0,.25)}
+    .switch input:checked + .knob{left: calc(var(--w) - var(--knob) - 3px); background: #fff}
+    .switch input:checked ~ .bar{background: var(--brand)}
+    .switch .bar{position:absolute; inset:0; border-radius:999px; transition:.15s background}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <div class="row">
+        <div class="brand">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M12 2c5.523 0 10 4.477 10 10 0 2.24-.737 4.305-1.98 5.963l-1.83-1.277A7.978 7.978 0 0 0 20 12a8 8 0 1 0-8 8c1.87 0 3.586-.64 4.963-1.71l1.278 1.83A9.958 9.958 0 0 1 12 22C6.477 22 2 17.523 2 12S6.477 2 12 2Z" fill="currentColor"/>
+            <path d="M7 12a5 5 0 0 1 9.584-2h-2.166A3 3 0 0 0 9.17 12H7Z" fill="currentColor"/>
+          </svg>
+          <span>ESP32 控制面板</span>
+          <span class="badge">WebSocket</span>
+          <span id="wsStatus" class="pill dot">尚未連線</span>
+        </div>
+        <div class="row" style="gap:10px">
+          <span class="help">外觀</span>
+          <label class="switch" title="深色 / 淺色">
+            <input id="themeToggle" type="checkbox" />
+            <span class="knob"></span><span class="bar"></span>
+          </label>
+          <button id="connectBtn" class="btn primary">連線</button>
+          <button id="disconnectBtn" class="btn ghost" disabled>中斷</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="card">
+      <h2>連線與網路</h2>
+      <div class="content grid cols-2">
+        <div class="grid">
+          <div>
+            <label for="wsUrl">裝置位址 (WebSocket URL)</label>
+            <input id="wsUrl" type="url" inputmode="url" placeholder="例如：ws://esp32.local/ws 或 ws://192.168.4.1/ws">
+            <p class="help">預設會使用目前頁面的主機 <code>/ws</code>。</p>
+          </div>
+          <div class="row-form">
+            <button id="pingBtn" class="btn">Ping</button>
+            <button id="clearBtn" class="btn">清除日誌</button>
+            <button id="saveLogBtn" class="btn">匯出日誌</button>
+          </div>
+          <div>
+            <label for="ssid">Wi-Fi SSID</label>
+            <input id="ssid" type="text" placeholder="輸入 Wi-Fi 網路名稱">
+          </div>
+          <div>
+            <label for="pwd">Wi-Fi 密碼</label>
+            <input id="pwd" type="password" placeholder="輸入密碼 (不會保存)">
+          </div>
+          <div class="row-form">
+            <button id="wifiSetBtn" class="btn">送出 Wi-Fi 設定</button>
+            <button id="wifiScanBtn" class="btn">掃描 AP</button>
+          </div>
+          <div id="scanResult" class="help"></div>
+        </div>
+
+        <div class="grid">
+          <div>
+            <label for="proto">無線協定</label>
+            <select id="proto">
+              <option value="wifi">Wi-Fi</option>
+              <option value="ble">Bluetooth LE</option>
+              <option value="802154">802.15.4 (Zigbee/Thread)</option>
+            </select>
+          </div>
+          <div>
+            <label for="hostname">裝置名稱</label>
+            <input id="hostname" type="text" placeholder="例如：esp32-c6-node">
+          </div>
+          <div class="row-form">
+            <button id="applySysBtn" class="btn">套用系統設定</button>
+            <button id="rebootBtn" class="btn warn">重新啟動</button>
+          </div>
+          <div class="help">* 送出設定需裝置韌體支援對應 API。</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>TWAI® (CAN) 匯流排</h2>
+      <div class="content grid">
+        <div class="grid cols-2">
+          <div>
+            <label for="bitrate">位元率</label>
+            <select id="bitrate">
+              <option value="125000">125 kbit/s</option>
+              <option value="250000">250 kbit/s</option>
+              <option value="500000" selected>500 kbit/s</option>
+              <option value="800000">800 kbit/s</option>
+              <option value="1000000">1 Mbit/s</option>
+            </select>
+          </div>
+          <div>
+            <label for="mode">模式</label>
+            <select id="mode">
+              <option value="normal" selected>Normal</option>
+              <option value="listen_only">Listen Only</option>
+              <option value="loopback">Loopback</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="row-form">
+          <button id="canStartBtn" class="btn primary">啟動 CAN</button>
+          <button id="canStopBtn" class="btn ghost" disabled>停止 CAN</button>
+          <span id="canState" class="pill dot">未啟動</span>
+          <span class="right"></span>
+        </div>
+
+        <div class="grid cols-2">
+          <div>
+            <label for="msgId">訊框 ID (十六進位)</label>
+            <input id="msgId" type="text" placeholder="例如：18FF50E5 或 7DF">
+          </div>
+          <div>
+            <label for="msgData">資料 (十六進位，最多 8 位元組)</label>
+            <input id="msgData" type="text" placeholder="例如：02 01 0C">
+          </div>
+        </div>
+        <div class="row-form">
+          <label style="display:flex;align-items:center;gap:8px">
+            <input id="extId" type="checkbox"> 使用 29-bit 擴展 ID
+          </label>
+          <button id="sendBtn" class="btn">送出訊框</button>
+        </div>
+
+        <div class="console" id="console" aria-live="polite" aria-atomic="false"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer>© <span id="year"></span> ESP32 控制面板 · 以原生 Web 實作 · 支援韌體自訂 API</footer>
+
+  <script>
+  (() => {
+    const $ = sel => document.querySelector(sel);
+    const $$ = sel => Array.from(document.querySelectorAll(sel));
+    const qs = id => document.getElementById(id);
+
+    const wsStatus = qs('wsStatus');
+    const connectBtn = qs('connectBtn');
+    const disconnectBtn = qs('disconnectBtn');
+    const wsUrlInput = qs('wsUrl');
+    const themeToggle = qs('themeToggle');
+
+    const consoleEl = qs('console');
+    const canStateEl = qs('canState');
+
+    const wifiSetBtn = qs('wifiSetBtn');
+    const wifiScanBtn = qs('wifiScanBtn');
+    const scanResult = qs('scanResult');
+    const ssid = qs('ssid');
+    const pwd = qs('pwd');
+    const proto = qs('proto');
+    const hostname = qs('hostname');
+    const applySysBtn = qs('applySysBtn');
+    const rebootBtn = qs('rebootBtn');
+
+    const bitrate = qs('bitrate');
+    const mode = qs('mode');
+    const canStartBtn = qs('canStartBtn');
+    const canStopBtn = qs('canStopBtn');
+    const msgId = qs('msgId');
+    const msgData = qs('msgData');
+    const extId = qs('extId');
+    const sendBtn = qs('sendBtn');
+
+    const pingBtn = qs('pingBtn');
+    const clearBtn = qs('clearBtn');
+    const saveLogBtn = qs('saveLogBtn');
+
+    let ws = null;
+    let manualClosed = false;
+
+    // ----- Theme -----
+    const THEME_KEY = 'ux.theme';
+    try {
+      const saved = localStorage.getItem(THEME_KEY);
+      const isDark = saved ? saved === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+      document.documentElement.classList.toggle('dark', isDark);
+      themeToggle.checked = isDark;
+    } catch {}
+    const applyTheme = () => {
+      const dark = themeToggle.checked;
+      document.documentElement.classList.toggle('dark', dark);
+      try { localStorage.setItem(THEME_KEY, dark ? 'dark' : 'light'); } catch {}
+    };
+    themeToggle.addEventListener('change', applyTheme);
+
+    // ----- Helpers -----
+    const nowStr = () => new Date().toLocaleTimeString();
+    const sanitizeHex = (s) => (s || '').replace(/0x/gi, '').replace(/[^a-f0-9 ]/gi, ' ').trim().replace(/\s+/g, ' ');
+    const toBytes = (hexStr) => {
+      if (!hexStr) return [];
+      const clean = sanitizeHex(hexStr).replace(/\s+/g, '');
+      if (clean.length % 2 !== 0) throw new Error('資料長度需為偶數');
+      return clean.match(/.{1,2}/g).map(x => parseInt(x, 16));
+    };
+    const toHex = (bytes) => bytes.map(b => b.toString(16).padStart(2, '0')).join(' ');
+    const isExtId = (id) => id > 0x7FF;
+    const clampId = (id, ext) => {
+      const max = ext ? 0x1FFFFFFF : 0x7FF;
+      return Math.min(Math.max(0, id), max);
+    };
+    const guessWsUrl = () => {
+      try {
+        const u = new URL(location.href);
+        u.protocol = u.protocol.replace('http', 'ws');
+        u.pathname = '/ws';
+        return u.href;
+      } catch { return ''; }
+    };
+
+    const log = (level, msg, payload) => {
+      const line = document.createElement('div');
+      line.className = 'log-line';
+      const levCls = {info:'info', ok:'ok', warn:'warn', error:'err'}[level] || 'info';
+      const pre = document.createElement('span');
+      pre.innerHTML = `<time>${nowStr()}</time><span class="lev ${levCls}">${level.toUpperCase()}</span> `;
+      line.appendChild(pre);
+      line.append(document.createTextNode(String(msg)));
+      if (payload !== undefined) {
+        line.appendChild(document.createTextNode(' '));
+        const code = document.createElement('code');
+        code.textContent = (typeof payload === 'string') ? payload : JSON.stringify(payload);
+        line.appendChild(code);
+      }
+      consoleEl.appendChild(line);
+      consoleEl.scrollTop = consoleEl.scrollHeight;
+    };
+
+    const setWsBadge = (state, label) => {
+      wsStatus.textContent = label || state;
+      wsStatus.classList.remove('ok','warn','err','dot');
+      if (state === 'connected') wsStatus.classList.add('ok');
+      else if (state === 'connecting') wsStatus.classList.add('warn');
+      else if (state === 'error') wsStatus.classList.add('err');
+      else wsStatus.classList.add('dot');
+    };
+
+    const setCanBadge = (on) => {
+      canStateEl.textContent = on ? '已啟動' : '未啟動';
+      canStateEl.classList.remove('ok','dot');
+      canStateEl.classList.add(on ? 'ok' : 'dot');
+    };
+
+    const send = (obj) => {
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        log('warn', '尚未連線，無法送出');
+        return false;
+      }
+      ws.send(JSON.stringify(obj));
+      return true;
+    };
+
+    // ----- WebSocket -----
+    const connect = () => {
+      if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
+      manualClosed = false;
+      let url = wsUrlInput.value.trim();
+      if (!url) url = guessWsUrl();
+      try { new URL(url); } catch { log('error','WebSocket URL 無效', url); return; }
+      ws = new WebSocket(url);
+      setWsBadge('connecting','連線中…');
+      connectBtn.disabled = true;
+      disconnectBtn.disabled = false;
+
+      ws.addEventListener('open', () => {
+        setWsBadge('connected','已連線');
+        log('ok', 'WebSocket 連線成功', url);
+      });
+
+      ws.addEventListener('message', (ev) => {
+        try {
+          const data = JSON.parse(ev.data);
+          handleMessage(data);
+        } catch {
+          log('info', '收到文字訊息：', ev.data);
+        }
+      });
+
+      ws.addEventListener('close', (ev) => {
+        setWsBadge('dot','已中斷');
+        connectBtn.disabled = false;
+        disconnectBtn.disabled = true;
+        log('warn', `WebSocket 關閉 (code=${ev.code})`);
+        if (!manualClosed) {
+          setTimeout(() => connectBtn.disabled || connect(), 1200);
+        }
+      });
+
+      ws.addEventListener('error', () => {
+        setWsBadge('error','錯誤');
+        log('error', 'WebSocket 發生錯誤');
+      });
+    };
+
+    const disconnect = () => {
+      manualClosed = true;
+      if (ws) {
+        try { ws.close(1000); } catch {}
+      }
+    };
+
+    // ----- Incoming message handler -----
+    function handleMessage(data){
+      // 標準化事件
+      const type = data.type || data.event || 'message';
+      switch (type) {
+        case 'pong':
+          log('ok','收到 Pong');
+          break;
+        case 'scan':
+          if (Array.isArray(data.ap)) {
+            const items = data.ap.map(x => `${x.ssid} (${x.rssi} dBm, ch${x.ch})`).join('、 ');
+            scanResult.textContent = items || '找不到 AP';
+            log('ok','掃描完成', items);
+          } else {
+            log('info','掃描結果', data);
+          }
+          break;
+        case 'wifi':
+          log('info','Wi-Fi 狀態', data.status || data);
+          break;
+        case 'can':
+          if (data.action === 'started') {
+            setCanBadge(true); canStartBtn.disabled = true; canStopBtn.disabled = false;
+            log('ok','CAN 已啟動', {bitrate: data.bitrate, mode: data.mode});
+          } else if (data.action === 'stopped') {
+            setCanBadge(false); canStartBtn.disabled = false; canStopBtn.disabled = true;
+            log('warn','CAN 已停止');
+          } else if (data.frame) {
+            const f = data.frame;
+            const idHex = Number(f.id).toString(16).toUpperCase();
+            const dlc = f.data ? f.data.length : 0;
+            log('info', `RX id=${idHex} dlc=${dlc}${f.ext?' ext':''}${f.rtr?' rtr':''} data: ${toHex(f.data||[])}`);
+          } else {
+            log('info','CAN 事件', data);
+          }
+          break;
+        default:
+          log('info','訊息', data);
+      }
+    }
+
+    // ----- UI Actions -----
+    connectBtn.addEventListener('click', connect);
+    disconnectBtn.addEventListener('click', disconnect);
+
+    pingBtn.addEventListener('click', () => {
+      if (send({type:'ping'})) log('info','送出 Ping');
+    });
+
+    clearBtn.addEventListener('click', () => {
+      consoleEl.innerHTML = '';
+    });
+
+    saveLogBtn.addEventListener('click', () => {
+      const text = $$('.log-line').map(n => n.textContent).join('\n');
+      const blob = new Blob([text], {type:'text/plain;charset=utf-8'});
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `esp32-log-${new Date().toISOString().replace(/[:.]/g,'-')}.txt`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
+    });
+
+    wifiSetBtn.addEventListener('click', () => {
+      const name = ssid.value.trim();
+      const pass = pwd.value;
+      if (!name) return log('error','請輸入 SSID');
+      if (send({type:'wifi_config', ssid:name, password:pass})) {
+        log('info','已送出 Wi-Fi 設定 (密碼不會記錄)');
+      }
+      pwd.value = '';
+    });
+
+    wifiScanBtn.addEventListener('click', () => {
+      scanResult.textContent = '掃描中…';
+      if (!send({type:'wifi_scan'})) scanResult.textContent = '尚未連線';
+    });
+
+    applySysBtn.addEventListener('click', () => {
+      const name = hostname.value.trim();
+      if (name && !/^[a-z0-9-]{1,32}$/i.test(name)) {
+        return log('error','裝置名稱僅可使用英數與連字號，長度 1–32');
+      }
+      if (send({type:'system', proto: proto.value, hostname: name || undefined})) {
+        log('info','已送出系統設定');
+      }
+    });
+
+    rebootBtn.addEventListener('click', () => {
+      if (confirm('確定要讓裝置重新啟動？')) {
+        if (send({type:'reboot'})) log('warn','已要求裝置重新啟動');
+      }
+    });
+
+    canStartBtn.addEventListener('click', () => {
+      const br = parseInt(bitrate.value, 10);
+      const md = mode.value;
+      if (send({type:'twai_start', bitrate: br, mode: md})) {
+        log('info','啟動 CAN 要求已送出', {bitrate: br, mode: md});
+      }
+    });
+
+    canStopBtn.addEventListener('click', () => {
+      if (send({type:'twai_stop'})) log('warn','停止 CAN 要求已送出');
+    });
+
+    sendBtn.addEventListener('click', () => {
+      const idStr = sanitizeHex(msgId.value).replace(/\s+/g,'');
+      if (!idStr) return log('error','請輸入訊框 ID');
+      let id = parseInt(idStr, 16);
+      const ext = extId.checked || isExtId(id);
+      id = clampId(id, ext);
+      let bytes;
+      try { bytes = toBytes(msgData.value); }
+      catch (e){ return log('error', '資料格式錯誤：' + e.message); }
+      if (bytes.length > 8) return log('error','資料最多 8 位元組');
+      const frame = { id, ext, rtr:false, data: bytes };
+      if (send({type:'twai_send', frame})) {
+        log('ok', `TX id=${id.toString(16).toUpperCase()} dlc=${bytes.length}${ext?' ext':''} data: ${toHex(bytes)}`);
+      }
+    });
+
+    // defaults
+    wsUrlInput.placeholder = guessWsUrl();
+    qs('year').textContent = new Date().getFullYear();
+
+    // auto-connect after load (optional)
+    // connect();
+  })();
+  </script>
 </body>
 </html>
