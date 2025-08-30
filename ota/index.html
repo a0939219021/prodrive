@@ -3,18 +3,13 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
-<title>C6-LED OTA Console (Final)</title>
+<title>C6-LED OTA Console (One-Click Update)</title>
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
 <meta http-equiv="Pragma" content="no-cache" />
 <meta http-equiv="Expires" content="0" />
 <style>
-  :root{
-    --bg:#0b1220; --card:#0f172a; --fg:#e5e7eb; --muted:#94a3b8; --acc:#22d3ee;
-    --ok:#22c55e; --warn:#f59e0b; --err:#ef4444; --br:14px; --gap:12px;
-    --safe-top: env(safe-area-inset-top, 0px); --safe-bot: env(safe-area-inset-bottom, 0px);
-  }
-  *{box-sizing:border-box}
-  html,body{height:100%}
+  :root{--bg:#0b1220;--card:#0f172a;--fg:#e5e7eb;--muted:#94a3b8;--acc:#22d3ee;--ok:#22c55e;--warn:#f59e0b;--err:#ef4444;--br:14px;--gap:12px;--safe-top:env(safe-area-inset-top,0px);--safe-bot:env(safe-area-inset-bottom,0px)}
+  *{box-sizing:border-box} html,body{height:100%}
   body{margin:0;background:linear-gradient(160deg,#0b1220,#0a0f1a);color:var(--fg);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans",Ubuntu,"Helvetica Neue",Arial}
   .wrap{max-width:980px;margin:0 auto;padding:calc(14px + var(--safe-top)) 16px calc(18px + var(--safe-bot))}
   h1{font-size:22px;margin:0 0 10px}
@@ -24,11 +19,9 @@
   button:hover{border-color:var(--acc)}
   #log{white-space:pre-wrap;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:1.35;max-height:46vh;overflow:auto;background:#0b1020;border-radius:10px;padding:10px;border:1px solid rgba(255,255,255,.05)}
   .kv{display:grid;grid-template-columns:120px 1fr;gap:6px 10px;align-items:center}
-  .muted{color:var(--muted)}
-  .badge{display:inline-block;padding:2px 8px;border-radius:999px;border:1px solid rgba(255,255,255,.15);font-size:12px}
+  .muted{color:var(--muted)} .badge{display:inline-block;padding:2px 8px;border-radius:999px;border:1px solid rgba(255,255,255,.15);font-size:12px}
   .ok{color:var(--ok)} .err{color:var(--err)} .warn{color:var(--warn)}
-  progress{width:100%;height:12px}
-  .hint{font-size:12px;color:var(--muted)}
+  progress{width:100%;height:12px} .hint{font-size:12px;color:var(--muted)}
   input[type=file]{display:none}
 </style>
 </head>
@@ -59,7 +52,10 @@
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
         <div>Firmware Update (OTA over BLE)</div>
-        <button id="btnClear">Clear</button>
+        <div>
+          <button id="btnOneClick">⚡ One-click Update</button>
+          <button id="btnClear">Clear</button>
+        </div>
       </div>
 
       <div class="row" style="align-items:center">
@@ -67,7 +63,7 @@
         <button id="btnChoose">📂 Choose local file</button>
         <button id="btnSend">Send</button>
       </div>
-      <div class="hint">流程：選檔 → 計算 SHA256 → <code>ota_begin</code> → 多段 <code>ota_chunk</code> → <code>ota_end</code> → 裝置驗證通過後自動 reboot。</div>
+      <div class="hint">流程：選檔或一鍵更新 → 計算 SHA256 → <code>ota_begin</code> → 多段 <code>ota_chunk</code> → <code>ota_end</code> → 裝置驗證通過後自動 reboot。</div>
 
       <div style="margin-top:10px">
         <progress id="bar" value="0" max="100"></progress>
@@ -80,34 +76,36 @@
 </div>
 
 <script>
+/** ====== 配置（改成你的實際路徑） ====== */
+const MANIFEST_URL = "https://a0939219021.github.io/prodrive/ota/manifest.json"; // ← 換成你的 manifest.json
+const MAIN_FILENAME = "main.py";
+
 /** ===== 基本參數（與韌體一致） ===== */
 const UUID_SERVICE        = "0000fff0-0000-1000-8000-00805f9b34fb";
-const UUID_CHAR_TX_NOTIFY = "0000fff1-0000-1000-8000-00805f9b34fb"; // Peripheral→App (Notify)
-const UUID_CHAR_RX_WRITE  = "0000fff2-0000-1000-8000-00805f9b34fb"; // App→Peripheral (Write/WWR)
+const UUID_CHAR_TX_NOTIFY = "0000fff1-0000-1000-8000-00805f9b34fb";
+const UUID_CHAR_RX_WRITE  = "0000fff2-0000-1000-8000-00805f9b34fb";
 const NAME_PREFIX = "C6-LED";
 
 let device, server, service, chTx, chRx;
 let ctx = null;
 let rxBuf = "";
 let chosenFile = null;
+let pendingReboot = false;
 
 const $ = s => document.querySelector(s);
 function setStatus(s){ $("#status").textContent = s; }
-function log(...args){
-  const s = args.map(x => (typeof x==="string"? x : JSON.stringify(x))).join(" ");
-  const el = $("#log"); el.textContent += s + "\n"; el.scrollTop = el.scrollHeight;
-}
+function log(...args){ const s = args.map(x => (typeof x==="string"? x : JSON.stringify(x))).join(" "); const el = $("#log"); el.textContent += s + "\n"; el.scrollTop = el.scrollHeight; }
 
 /* 斷線 */
 async function disconnect(){
   try{ device && device.gatt && device.gatt.connected && device.gatt.disconnect(); }catch(_){}
   device = server = service = chTx = chRx = null;
-  ctx = null;
-  setStatus("disconnected");
+  ctx = null; setStatus("disconnected");
 }
 
 /* 連線 */
-async function connect(){
+async function connectIfNeeded(){
+  if (chRx && chTx && ctx) return;
   try{
     setStatus("requesting…");
     const options = { filters:[{namePrefix:NAME_PREFIX},{services:[UUID_SERVICE]}], optionalServices:[UUID_SERVICE] };
@@ -121,21 +119,18 @@ async function connect(){
     service = await server.getPrimaryService(UUID_SERVICE);
     chTx = await service.getCharacteristic(UUID_CHAR_TX_NOTIFY);
     chRx = await service.getCharacteristic(UUID_CHAR_RX_WRITE);
-
     await chTx.startNotifications();
     chTx.addEventListener("characteristicvaluechanged", onNotify);
 
-    setStatus("connected");
-    log("connected to", device.name || "device");
-
-    await send({op:"hello", want:"status"}); // 握手拿 ctx & fw
+    setStatus("connected"); log("connected to", device.name || "device");
+    await send({op:"hello", want:"status"});
   }catch(e){
     log({err:"connect", msg:e.message||String(e)});
-    await disconnect();
+    await disconnect(); throw e;
   }
 }
 
-/* Notify 黏包解析（\n 分隔） */
+/* Notify 黏包解析 */
 function onNotify(ev){
   const v = ev.target.value;
   const chunk = new TextDecoder().decode(v.buffer ? v : v);
@@ -148,24 +143,20 @@ function onNotify(ev){
     try{
       const j = JSON.parse(line);
       handleMsg(j);
-    }catch(_){
-      log({err:"json", line});
-    }
+    }catch(_){ log({err:"json", line}); }
   }
 }
 
 /* 訊息處理 */
 function handleMsg(j){
   if (j.ok === "hello" && j.ctx){
-    ctx = j.ctx;
-    log("hello ok, ctx=", ctx);
+    ctx = j.ctx; log("hello ok, ctx=", ctx);
     if (j.fw){
       $("#fwVer").textContent  = j.fw.ver || "—";
       $("#fwSize").textContent = j.fw.size ?? "—";
       $("#fwSha").textContent  = j.fw.sha  || "—";
       log(`firmware ready: ver=${j.fw.ver} size=${j.fw.size} sha=${j.fw.sha}`);
-    }
-    return;
+    } return;
   }
   if (j.ok === "fw_info" && j.fw){
     $("#fwVer").textContent  = j.fw.ver || "—";
@@ -173,8 +164,13 @@ function handleMsg(j){
     $("#fwSha").textContent  = j.fw.sha  || "—";
     log("fw_info:", j.fw); return;
   }
-  if (j.ack === "ota_begin" || j.ack === "ota_chunk" || j.ok === "ota_end" || j.ack === "reboot"){
+  if (j.ack === "ota_begin" || j.ack === "ota_chunk" || j.ok === "ota_end"){
     log(j); return;
+  }
+  if (j.ack === "reboot"){
+    log({ack:"reboot"});
+    pendingReboot = true;
+    return;
   }
   if (j.err){ log(j); return; }
   log(j);
@@ -199,39 +195,82 @@ async function send(obj){
     if (!ctx){ log({err:"noctx"}); return; }
     obj.ctx = ctx;
   }
-  try{
-    const line = JSON.stringify(obj) + "\n";
-    await writeBle(line);
-  }catch(e){
-    log({err:"send", msg:e.message||String(e)});
-  }
+  const line = JSON.stringify(obj) + "\n";
+  await writeBle(line);
 }
 
-/* ===== OTA：本地選檔 → 傳送 ===== */
+/* 進度條 */
+function setProgress(p){ $("#bar").value = p; $("#ptext").textContent = p + "%"; }
+
+/* 強化版 SHA256（多型別輸入） */
+async function computeSHA256Hex(input){
+  let bytes;
+  if (input instanceof Uint8Array) bytes = input;
+  else if (input instanceof ArrayBuffer) bytes = new Uint8Array(input);
+  else if (input instanceof Blob) bytes = new Uint8Array(await input.arrayBuffer());
+  else if (typeof input === "string") bytes = new TextEncoder().encode(input);
+  else throw new TypeError("devComputeSHA(input) 需要 Uint8Array / ArrayBuffer / File / Blob / string 其中之一");
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2,"0")).join("");
+}
+window.devComputeSHA = computeSHA256Hex;
+
+/* ====== 手動：本地選檔 OTA ====== */
 $("#btnChoose").onclick = ()=> $("#fileInput").click();
 $("#fileInput").onchange = async e => {
   chosenFile = e.target.files?.[0] || null;
   if (chosenFile) {
     const ab = await chosenFile.arrayBuffer();
-    window._lastBuf = new Uint8Array(ab);  // 方便在 Console 測
+    window._lastBuf = new Uint8Array(ab);
     log("chosen:", chosenFile.name, chosenFile.size + "B");
   }
 };
-
 $("#btnSend").onclick = async ()=>{
-  if (!ctx){ log({err:"noctx"}); return; }
+  await connectIfNeeded();
+  if (!ctx) { log({err:"noctx"}); return; }
   if (!chosenFile){ log({err:"nofile"}); return; }
-
   const buf = window._lastBuf || new Uint8Array(await chosenFile.arrayBuffer());
+  await runOtaFlow(buf, chosenFile.name);
+};
+
+/* ====== 一鍵更新：抓 manifest → 下載 main.py → OTA ====== */
+$("#btnOneClick").onclick = async ()=>{
+  try{
+    await connectIfNeeded();
+    const maniUrl = `${MANIFEST_URL}?ts=${Date.now()}`;
+    log("fetch manifest:", maniUrl);
+    const mani = await (await fetch(maniUrl, {cache:"no-store"})).json();
+
+    const entry = (mani.files||[]).find(f => f.target === MAIN_FILENAME || f.url === MAIN_FILENAME);
+    if (!entry){ log({err:"manifest", msg:`no ${MAIN_FILENAME} entry`}); return; }
+
+    const fileUrl = new URL(entry.url, MANIFEST_URL).toString();
+    log("download:", fileUrl);
+    const resp = await fetch(fileUrl, {cache:"no-store"});
+    const ab = await resp.arrayBuffer();
+    const buf = new Uint8Array(ab);
+    const sha = await computeSHA256Hex(buf);
+    log(`downloaded ${buf.length}B, sha=${sha}`);
+
+    if (entry.sha256 && entry.sha256.toLowerCase() !== sha.toLowerCase()){
+      log({warn:"sha_mismatch", expected:entry.sha256, got:sha});
+      // 視需求可在此中止；目前我們仍允許繼續（避免 CDN 轉碼導致 CRLF 差異）
+    }
+    await runOtaFlow(buf, MAIN_FILENAME);
+  }catch(e){
+    log({err:"oneclick", msg: e.message||String(e)});
+  }
+};
+
+/* 共同 OTA 流程（給手動與一鍵更新共用） */
+async function runOtaFlow(buf, name){
   const size = buf.length;
-  const sha  = await computeSHA256Hex(buf);    // ← 與 devComputeSHA 同義
+  const sha  = await computeSHA256Hex(buf);
   $("#totalBytes").textContent = size; $("#sentBytes").textContent = 0; setProgress(0);
 
-  // 1) begin
-  await send({op:"ota_begin", name:chosenFile.name, size, sha});
+  await send({op:"ota_begin", name, size, sha});
 
-  // 2) chunks：原始資料→base64，再包 JSON（避免二進位與換行衝突）
-  const CHUNK = 512; // 依需要可 256~1024
+  const CHUNK = 512;
   let sent = 0, seq = 0;
   while (sent < size){
     const end = Math.min(sent + CHUNK, size);
@@ -242,40 +281,26 @@ $("#btnSend").onclick = async ()=>{
     $("#sentBytes").textContent = sent; setProgress(Math.round(sent*100/size));
   }
 
-  // 3) end
+  pendingReboot = false;
   await send({op:"ota_end", sha});
   log("ota_end sent; waiting for device verify…");
-};
 
-/* 進度條 */
-function setProgress(p){ $("#bar").value = p; $("#ptext").textContent = p + "%"; }
-
-/* === 強化版 SHA256：多型別輸入，未帶參數會丟 TypeError === */
-async function computeSHA256Hex(input){
-  let bytes;
-  if (input instanceof Uint8Array) {
-    bytes = input;
-  } else if (input instanceof ArrayBuffer) {
-    bytes = new Uint8Array(input);
-  } else if (input instanceof Blob) {            // File 也屬於 Blob
-    bytes = new Uint8Array(await input.arrayBuffer());
-  } else if (typeof input === "string") {
-    bytes = new TextEncoder().encode(input);
-  } else {
-    throw new TypeError("devComputeSHA(input) 需要 Uint8Array / ArrayBuffer / File / Blob / string 其中之一");
+  // 簡單等待裝置回覆 reboot，再讓使用者手動重連
+  const t0 = Date.now();
+  while (!pendingReboot && Date.now() - t0 < 8000){
+    await new Promise(r=>setTimeout(r,150));
   }
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, "0")).join("");
+  if (pendingReboot) log("device acknowledged reboot; please reconnect after it re-advertises.");
+  else log({warn:"no_reboot_ack"});
 }
-window.devComputeSHA = computeSHA256Hex; // 與既有呼叫相容
 
-/* UI 綁定 */
-$("#btnConnect").onclick    = connect;
+/* 其他 UI 綁定 */
+$("#btnConnect").onclick    = connectIfNeeded;
 $("#btnDisconnect").onclick = disconnect;
 $("#btnClear").onclick      = ()=>{ $("#log").textContent=""; };
-$("#btnHello").onclick      = async ()=>{ await send({op:"hello", want:"status"}); };
-$("#btnGetFw").onclick      = async ()=>{ await send({op:"get", what:"fw_info"}); };
-$("#btnReboot").onclick     = async ()=>{ await send({op:"reboot"}); };
+$("#btnHello").onclick      = async ()=>{ await connectIfNeeded(); await send({op:"hello", want:"status"}); };
+$("#btnGetFw").onclick      = async ()=>{ await connectIfNeeded(); await send({op:"get", what:"fw_info"}); };
+$("#btnReboot").onclick     = async ()=>{ await connectIfNeeded(); await send({op:"reboot"}); };
 </script>
 </body>
 </html>
