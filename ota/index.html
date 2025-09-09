@@ -1,58 +1,4 @@
 <!doctype html>
-<html lang="zh-Hant">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>C3‑OBD Live JSON</title>
-<style>
-body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 20px; }
-.row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
-button { padding:10px 14px; border-radius:10px; border:1px solid #ccc; cursor:pointer; }
-.card { border:1px solid #e3e3e3; border-radius:14px; padding:16px; margin-top:14px; }
-.val { font-size: 28px; font-weight:700; }
-.lbl { color:#666; font-size:12px; }
-pre { background:#111; color:#0f0; padding:12px; border-radius:10px; overflow:auto; }
-</style>
-</head>
-<body>
-<h2>ESP32‑C3 OBD → BLE(JSON)</h2>
-<div class="row">
-<button id="btnConnect">Connect</button>
-<button id="btnDisconnect" disabled>Disconnect</button>
-<span id="status" class="lbl">idle</span>
-</div>
-
-
-<div class="card">
-<div class="row">
-<div>
-<div class="lbl">RPM</div>
-<div id="rpm" class="val">—</div>
-</div>
-<div>
-<div class="lbl">Throttle %</div>
-<div id="th" class="val">—</div>
-</div>
-<div>
-<div class="lbl">MAP (kPa)</div>
-<div id="map" class="val">—</div>
-</div>
-<div>
-<div class="lbl">CAN bitrate</div>
-<div id="br" class="val">—</div>
-</div>
-</div>
-</div>
-
-
-<div class="card">
-<div class="row"><span class="lbl">Raw JSON</span><button id="btnPing">Ping</button></div>
-<pre id="raw">{}</pre>
-</div>
-
-
-<script>
-let device, server, service, chNotify, chWrite;
 const SVC = 0xFFF0, CH_NOTIFY = 0xFFF1, CH_WRITE = 0xFFF2;
 
 
@@ -87,4 +33,40 @@ if('throttle' in j) document.getElementById('th').textContent = j.throttle;
 if('map' in j) document.getElementById('map').textContent = j.map;
 if('bitrate' in j) document.getElementById('br').textContent = j.bitrate;
 }catch(e){ /* ignore parse error */ }
+});
+
+
+document.getElementById('btnDisconnect').disabled = false;
+document.getElementById('btnConnect').disabled = true;
+log('connected');
+}catch(err){
+console.error(err); log('connect error');
+}
+}
+
+
+function onDisconnected(){
+log('disconnected');
+document.getElementById('btnDisconnect').disabled = true;
+document.getElementById('btnConnect').disabled = false;
+}
+
+
+async function disconnect(){
+try{ if(device && device.gatt.connected) device.gatt.disconnect(); }catch(e){}
+}
+
+
+async function ping(){
+if(!chWrite) return;
+const s = JSON.stringify({ ping: true });
+await chWrite.writeValue(new TextEncoder().encode(s));
+}
+
+
+btnConnect.onclick = connect;
+btnDisconnect.onclick = disconnect;
+btnPing.onclick = ping;
+</script>
+</body>
 </html>
