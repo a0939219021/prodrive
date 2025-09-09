@@ -2,74 +2,105 @@
 <html lang="zh-Hant">
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>ESP32C3 OBD Throttle Viewer</title>
+<title>ESP32C3 OBD (CAN → BLE → JSON)</title>
 <style>
-  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;max-width:560px;margin:24px auto;padding:0 16px}
+  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;max-width:640px;margin:24px auto;padding:0 16px}
   h1{font-size:20px;margin:8px 0 16px}
   button{padding:10px 14px;border-radius:12px;border:1px solid #ccc;background:#fff;cursor:pointer}
   #status{margin:8px 0 16px;color:#555}
+  .grid{display:grid;grid-template-columns:120px 1fr;gap:8px 12px;align-items:center}
+  .val{font-variant-numeric:tabular-nums}
   .bar{height:18px;border-radius:9px;background:#eee;overflow:hidden}
   .fill{height:100%;width:0%}
-  .row{display:flex;align-items:center;gap:12px;margin:10px 0}
-  .num{min-width:48px;font-variant-numeric:tabular-nums}
+  .mono{font-family:ui-monospace,Menlo,Monaco,Consolas,monospace}
 </style>
 <body>
-  <h1>ESP32C3 OBD Throttle</h1>
-  <div class="row">
+  <h1>ESP32C3 OBD</h1>
+  <div>
     <button id="btn">Connect & Subscribe</button>
-    <div id="status">idle</div>
+    <span id="status">idle</span>
   </div>
-  <div class="row">
-    <div class="num" id="value">0%</div>
-    <div class="bar" style="flex:1"><div class="fill" id="fill"></div></div>
+
+  <div class="grid" style="margin-top:12px">
+    <div>Throttle</div>
+    <div class="val"><span id="throttle">0</span>%</div>
+    <div></div>
+    <div class="bar"><div class="fill" id="fill"></div></div>
+
+    <div>RPM</div>
+    <div class="val" id="rpm">0</div>
+
+    <div>MAP</div>
+    <div class="val"><span id="map">0</span> kPa</div>
+
+    <div>Timestamp</div>
+    <div class="val" id="ts">0 ms</div>
   </div>
+
+  <p style="margin-top:12px">
+    Last JSON: <span class="mono" id="json"></span>
+  </p>
 
 <script>
 const SVC = '12345678-1234-5678-90ab-cdef00010001';
 const CHR = '12345678-1234-5678-90ab-cdef00010002';
-let device, chr;
 
-function log(s){ document.getElementById('status').textContent = s; }
-function setPct(p){
-  p = Math.max(0, Math.min(100, p|0));
-  document.getElementById('value').textContent = p + '%';
-  document.getElementById('fill').style.width = p + '%';
-  document.getElementById('fill').style.background = `linear-gradient(90deg, #9cf, #69f)`;
+let device, chr;
+const $ = sel => document.querySelector(sel);
+function log(s){ $('#status').textContent = s; }
+function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
+
+function render(obj){
+  if (typeof obj.throttle === 'number') {
+    const p = clamp(obj.throttle|0, 0, 100);
+    $('#throttle').textContent = p;
+    $('#fill').style.width = p + '%';
+    $('#fill').style.background = 'linear-gradient(90deg,#9cf,#69f)';
+  }
+  if (typeof obj.rpm === 'number') $('#rpm').textContent = obj.rpm|0;
+  if (typeof obj.map === 'number') $('#map').textContent = obj.map|0;
+  if (typeof obj.ts === 'number') $('#ts').textContent = (obj.ts|0) + ' ms';
+  $('#json').textContent = JSON.stringify(obj);
 }
 
 async function connect() {
   try{
-    log('requesting device...');
+    if (!navigator.bluetooth) { log('Web Bluetooth not supported'); return; }
+
+    log('requesting device…');
     device = await navigator.bluetooth.requestDevice({
       filters: [
-        { namePrefix: 'ESP32C3-OBD' },
-        { services: [SVC] }
+        { services: [SVC] },
+        { namePrefix: 'ESP32C3-OBD' } // 可選，提高穩定性
       ],
       optionalServices: [SVC]
     });
-    device.addEventListener('gattserverdisconnected', ()=>log('disconnected'));
-    log('connecting GATT...');
+
+    device.addEventListener('gattserverdisconnected', () => log('disconnected'));
+
+    log('connecting GATT…');
     const server = await device.gatt.connect();
     const svc = await server.getPrimaryService(SVC);
     chr = await svc.getCharacteristic(CHR);
 
-    // 讀一次
-    try{
+    // 先讀一次
+    try {
       const v = await chr.readValue();
-      const s = new TextDecoder().decode(v.buffer);
-      const obj = JSON.parse(s);
-      if ('throttle' in obj) setPct(obj.throttle);
-    }catch(e){/* ignore */ }
+      const txt = new TextDecoder().decode(v.buffer);
+      const obj = JSON.parse(txt);
+      render(obj);
+    } catch(e){ /* ignore first read errors */ }
 
-    // 訂閱
+    // 訂閱通知
     await chr.startNotifications();
-    chr.addEventListener('characteristicvaluechanged', ev=>{
-      const s = new TextDecoder().decode(ev.target.value.buffer);
+    chr.addEventListener('characteristicvaluechanged', ev => {
       try{
-        const obj = JSON.parse(s);
-        if ('throttle' in obj) setPct(obj.throttle);
-      }catch(e){ /* ignore */ }
+        const txt = new TextDecoder().decode(ev.target.value.buffer);
+        const obj = JSON.parse(txt);
+        render(obj);
+      }catch(e){ console.warn('parse JSON failed', e); }
     });
+
     log('connected & subscribed');
   }catch(err){
     console.error(err);
@@ -77,10 +108,7 @@ async function connect() {
   }
 }
 
-document.getElementById('btn').addEventListener('click', ()=>{
-  if (!navigator.bluetooth) { log('Web Bluetooth not supported'); return; }
-  connect();
-});
+$('#btn').addEventListener('click', connect);
 </script>
 </body>
 </html>
