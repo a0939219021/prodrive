@@ -1,114 +1,90 @@
 <!doctype html>
 <html lang="zh-Hant">
+<head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>ESP32C3 OBD (CAN → BLE → JSON)</title>
+<title>C3‑OBD Live JSON</title>
 <style>
-  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;max-width:640px;margin:24px auto;padding:0 16px}
-  h1{font-size:20px;margin:8px 0 16px}
-  button{padding:10px 14px;border-radius:12px;border:1px solid #ccc;background:#fff;cursor:pointer}
-  #status{margin:8px 0 16px;color:#555}
-  .grid{display:grid;grid-template-columns:120px 1fr;gap:8px 12px;align-items:center}
-  .val{font-variant-numeric:tabular-nums}
-  .bar{height:18px;border-radius:9px;background:#eee;overflow:hidden}
-  .fill{height:100%;width:0%}
-  .mono{font-family:ui-monospace,Menlo,Monaco,Consolas,monospace}
+body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 20px; }
+.row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+button { padding:10px 14px; border-radius:10px; border:1px solid #ccc; cursor:pointer; }
+.card { border:1px solid #e3e3e3; border-radius:14px; padding:16px; margin-top:14px; }
+.val { font-size: 28px; font-weight:700; }
+.lbl { color:#666; font-size:12px; }
+pre { background:#111; color:#0f0; padding:12px; border-radius:10px; overflow:auto; }
 </style>
+</head>
 <body>
-  <h1>ESP32C3 OBD</h1>
-  <div>
-    <button id="btn">Connect & Subscribe</button>
-    <span id="status">idle</span>
-  </div>
+<h2>ESP32‑C3 OBD → BLE(JSON)</h2>
+<div class="row">
+<button id="btnConnect">Connect</button>
+<button id="btnDisconnect" disabled>Disconnect</button>
+<span id="status" class="lbl">idle</span>
+</div>
 
-  <div class="grid" style="margin-top:12px">
-    <div>Throttle</div>
-    <div class="val"><span id="throttle">0</span>%</div>
-    <div></div>
-    <div class="bar"><div class="fill" id="fill"></div></div>
 
-    <div>RPM</div>
-    <div class="val" id="rpm">0</div>
+<div class="card">
+<div class="row">
+<div>
+<div class="lbl">RPM</div>
+<div id="rpm" class="val">—</div>
+</div>
+<div>
+<div class="lbl">Throttle %</div>
+<div id="th" class="val">—</div>
+</div>
+<div>
+<div class="lbl">MAP (kPa)</div>
+<div id="map" class="val">—</div>
+</div>
+<div>
+<div class="lbl">CAN bitrate</div>
+<div id="br" class="val">—</div>
+</div>
+</div>
+</div>
 
-    <div>MAP</div>
-    <div class="val"><span id="map">0</span> kPa</div>
 
-    <div>Timestamp</div>
-    <div class="val" id="ts">0 ms</div>
-  </div>
+<div class="card">
+<div class="row"><span class="lbl">Raw JSON</span><button id="btnPing">Ping</button></div>
+<pre id="raw">{}</pre>
+</div>
 
-  <p style="margin-top:12px">
-    Last JSON: <span class="mono" id="json"></span>
-  </p>
 
 <script>
-const SVC = '12345678-1234-5678-90ab-cdef00010001';
-const CHR = '12345678-1234-5678-90ab-cdef00010002';
+let device, server, service, chNotify, chWrite;
+const SVC = 0xFFF0, CH_NOTIFY = 0xFFF1, CH_WRITE = 0xFFF2;
 
-let device, chr;
-const $ = sel => document.querySelector(sel);
-function log(s){ $('#status').textContent = s; }
-function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
 
-function render(obj){
-  if (typeof obj.throttle === 'number') {
-    const p = clamp(obj.throttle|0, 0, 100);
-    $('#throttle').textContent = p;
-    $('#fill').style.width = p + '%';
-    $('#fill').style.background = 'linear-gradient(90deg,#9cf,#69f)';
-  }
-  if (typeof obj.rpm === 'number') $('#rpm').textContent = obj.rpm|0;
-  if (typeof obj.map === 'number') $('#map').textContent = obj.map|0;
-  if (typeof obj.ts === 'number') $('#ts').textContent = (obj.ts|0) + ' ms';
-  $('#json').textContent = JSON.stringify(obj);
-}
+function log(s){ document.getElementById('status').textContent = s; }
 
-async function connect() {
-  try{
-    if (!navigator.bluetooth) { log('Web Bluetooth not supported'); return; }
 
-    log('requesting device…');
-    device = await navigator.bluetooth.requestDevice({
-      filters: [
-        { services: [SVC] },
-        { namePrefix: 'ESP32C3-OBD' } // 可選，提高穩定性
-      ],
-      optionalServices: [SVC]
-    });
+async function connect(){
+try{
+log('requesting...');
+device = await navigator.bluetooth.requestDevice({
+acceptAllDevices: true,
+optionalServices: [SVC],
+});
+device.addEventListener('gattserverdisconnected', onDisconnected);
+log('connecting...');
+server = await device.gatt.connect();
+service = await server.getPrimaryService(SVC);
+chNotify = await service.getCharacteristic(CH_NOTIFY);
+chWrite = await service.getCharacteristic(CH_WRITE);
 
-    device.addEventListener('gattserverdisconnected', () => log('disconnected'));
 
-    log('connecting GATT…');
-    const server = await device.gatt.connect();
-    const svc = await server.getPrimaryService(SVC);
-    chr = await svc.getCharacteristic(CHR);
-
-    // 先讀一次
-    try {
-      const v = await chr.readValue();
-      const txt = new TextDecoder().decode(v.buffer);
-      const obj = JSON.parse(txt);
-      render(obj);
-    } catch(e){ /* ignore first read errors */ }
-
-    // 訂閱通知
-    await chr.startNotifications();
-    chr.addEventListener('characteristicvaluechanged', ev => {
-      try{
-        const txt = new TextDecoder().decode(ev.target.value.buffer);
-        const obj = JSON.parse(txt);
-        render(obj);
-      }catch(e){ console.warn('parse JSON failed', e); }
-    });
-
-    log('connected & subscribed');
-  }catch(err){
-    console.error(err);
-    log('error: ' + err.message);
-  }
-}
-
-$('#btn').addEventListener('click', connect);
-</script>
-</body>
+await chNotify.startNotifications();
+chNotify.addEventListener('characteristicvaluechanged', ev => {
+const v = ev.target.value;
+const decoder = new TextDecoder();
+const s = decoder.decode(v.buffer);
+document.getElementById('raw').textContent = s;
+try{
+const j = JSON.parse(s);
+if('rpm' in j) document.getElementById('rpm').textContent = j.rpm;
+if('throttle' in j) document.getElementById('th').textContent = j.throttle;
+if('map' in j) document.getElementById('map').textContent = j.map;
+if('bitrate' in j) document.getElementById('br').textContent = j.bitrate;
+}catch(e){ /* ignore parse error */ }
 </html>
