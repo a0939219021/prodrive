@@ -1,72 +1,427 @@
 <!doctype html>
-const SVC = 0xFFF0, CH_NOTIFY = 0xFFF1, CH_WRITE = 0xFFF2;
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>ESP32C3 OBD CAN Viewer</title>
+  <style>
+    :root{
+      --bg: #0b0f14;
+      --panel:#11161c;
+      --panel-2:#0f141a;
+      --text:#e9eef4;
+      --muted:#93a1b3;
+      --accent:#3ea6ff;
+      --accent-2:#7ef0c5;
+      --danger:#ff5d5d;
+      --ok:#39d98a;
+      --chip:#1a2230;
+      --ring:#28435f;
+      --shadow: 0 10px 30px rgba(0,0,0,.35), 0 3px 10px rgba(0,0,0,.2);
+      --radius: 18px;
+    }
+    @media (prefers-color-scheme: light){
+      :root{
+        --bg:#f5f7fb; --panel:#ffffff; --panel-2:#f4f8ff; --text:#0d1117; --muted:#6b7280;
+        --accent:#1e80ff; --accent-2:#14b8a6; --chip:#eef3ff; --ring:#cfe2ff;
+        --shadow: 0 8px 24px rgba(21, 29, 40, .1), 0 2px 8px rgba(21,29,40,.06);
+      }
+    }
+    html,body{height:100%}
+    body{
+      margin:0; background:
+        radial-gradient(1200px 600px at 100% -10%, #18314f 0%, transparent 60%),
+        radial-gradient(900px 500px at -10% 10%, #153a2f 0%, transparent 60%),
+        var(--bg);
+      color:var(--text); -webkit-font-smoothing:antialiased; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "PingFang TC", "Noto Sans TC", "Heiti TC", "Microsoft JhengHei", Arial, sans-serif;
+    }
+    .wrap{max-width:980px; margin:0 auto; padding:24px 18px 40px;}
+    header{
+      position:sticky; top:0; z-index:20;
+      backdrop-filter: saturate(160%) blur(10px);
+      background: color-mix(in oklab, var(--bg) 86%, transparent);
+      border-bottom:1px solid color-mix(in oklab, var(--ring) 24%, transparent);
+    }
+    .head{
+      display:flex; gap:14px; align-items:center; justify-content:space-between;
+      padding:14px 18px;
+    }
+    .brand{
+      display:flex; align-items:center; gap:12px; font-weight:700; letter-spacing:.2px;
+    }
+    .logo{
+      width:34px; height:34px; border-radius:10px;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      box-shadow: 0 6px 14px rgba(0,0,0,.25), inset 0 0 18px rgba(255,255,255,.35);
+      display:grid; place-items:center; color:#001926; font-size:16px;
+    }
+    .status{
+      display:flex; align-items:center; gap:8px; padding:6px 10px; border-radius:999px;
+      background:var(--chip); color:var(--muted); border:1px solid color-mix(in oklab, var(--ring) 35%, transparent);
+      font-size:13px;
+    }
+    .dot{width:10px; height:10px; border-radius:50%; background:var(--muted); box-shadow:0 0 0 3px color-mix(in oklab, var(--ring) 35%, transparent);}
+    .dot.ok{ background:var(--ok); box-shadow:0 0 0 5px rgba(57,217,138,.18);}
+    .dot.bad{ background:var(--danger); box-shadow:0 0 0 5px rgba(255,93,93,.18);}
+    .btn{
+      appearance:none; border:none; outline:0; cursor:pointer;
+      padding:12px 16px; border-radius:14px;
+      background:linear-gradient(180deg, color-mix(in oklab, var(--accent) 90%, white 10%), color-mix(in oklab, var(--accent) 70%, black 10%));
+      color:white; font-weight:700; letter-spacing:.3px; box-shadow:var(--shadow); transition:transform .08s ease;
+    }
+    .btn:active{ transform: translateY(1px) scale(.99); }
+    .btn.secondary{ background:linear-gradient(180deg, #3b4452, #2a313c); }
+    .grid{display:grid; gap:16px; grid-template-columns: 1fr;}
+    @media (min-width:860px){ .grid{ grid-template-columns: 1.2fr .8fr; } }
+    .card{ background:linear-gradient(180deg, color-mix(in oklab, var(--panel) 92%, transparent), var(--panel));
+      border:1px solid color-mix(in oklab, var(--ring) 28%, transparent);
+      border-radius: var(--radius); box-shadow: var(--shadow); overflow:hidden;}
+    .card .hd{ display:flex; align-items:center; justify-content:space-between; padding:16px 18px; background:linear-gradient(180deg, color-mix(in oklab, var(--panel-2) 80%, transparent), transparent); border-bottom:1px solid color-mix(in oklab, var(--ring) 28%, transparent); }
+    .card .hd h3{ margin:0; font-size:15px; letter-spacing:.4px; color:var(--muted); text-transform:uppercase; }
+    .row{ display:flex; gap:10px; flex-wrap:wrap; }
+    .pill{ padding:8px 12px; border-radius:999px; background:var(--chip); color:var(--muted); font-size:13px; border:1px solid color-mix(in oklab, var(--ring) 35%, transparent); }
+    .body{ padding:16px 18px; }
+    .controls{ display:flex; gap:10px; flex-wrap:wrap; }
+    .controls .btn{ padding:10px 14px; border-radius:12px; font-weight:600; }
+    .field{ display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:12px; background:var(--chip); color:var(--muted); border:1px solid color-mix(in oklab, var(--ring) 35%, transparent); }
+    .field input{ background:transparent; border:none; outline:none; color:var(--text); font-size:14px; min-width:120px; }
+    table{ width:100%; border-collapse:separate; border-spacing:0; font-size:14px; }
+    thead th{ position:sticky; top:0; z-index:1; background:var(--panel); border-bottom:1px solid color-mix(in oklab, var(--ring) 28%, transparent); padding:10px 10px; text-align:left; color:var(--muted); font-weight:700; }
+    tbody td{ padding:10px 10px; border-bottom:1px dashed color-mix(in oklab, var(--ring) 22%, transparent); }
+    tbody tr:hover{ background: color-mix(in oklab, var(--panel-2) 70%, transparent); }
+    .mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; letter-spacing:.3px; }
+    .right{ text-align:right; }
+    footer{ text-align:center; color:var(--muted); font-size:12px; margin-top:22px; }
+    .toast{
+      position:fixed; left:50%; transform:translateX(-50%);
+      bottom:18px; padding:12px 16px; background:#141a22; color:#fff; border-radius:12px; box-shadow:var(--shadow);
+      opacity:0; pointer-events:none; transition: opacity .25s ease, transform .25s ease;
+    }
+    .toast.show{ opacity:1; transform: translateX(-50%) translateY(0);}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="head wrap">
+      <div class="brand">
+        <div class="logo">OBD</div>
+        <div>
+          <div style="font-size:16px;">ESP32C3 OBD CAN</div>
+          <div style="font-size:12px;color:var(--muted);">BLE Demo Viewer</div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="status"><span id="statusDot" class="dot"></span><span id="statusText">尚未連線</span></div>
+        <button id="connectBtn" class="btn">連線</button>
+        <button id="disconnectBtn" class="btn secondary" disabled>中斷</button>
+      </div>
+    </div>
+  </header>
 
+  <div class="wrap grid">
+    <section class="card">
+      <div class="hd">
+        <h3>Live CAN Frames</h3>
+        <div class="controls">
+          <div class="field">
+            🔍
+            <input id="filterInput" placeholder="Filter by ID / Data..." />
+          </div>
+          <button id="clearBtn" class="btn secondary">清空</button>
+          <button id="exportBtn" class="btn">匯出 CSV</button>
+        </div>
+      </div>
+      <div class="body" style="padding:0; max-height:60vh; overflow:auto;">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:90px;">時間</th>
+              <th style="width:110px;">ID</th>
+              <th class="right" style="width:60px;">DLC</th>
+              <th style="width:80px;">EXT/RTR</th>
+              <th>DATA</th>
+            </tr>
+          </thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      </div>
+    </section>
 
-function log(s){ document.getElementById('status').textContent = s; }
+    <aside class="card">
+      <div class="hd">
+        <h3>Connection</h3>
+        <div class="pill mono" id="devName">N/A</div>
+      </div>
+      <div class="body">
+        <div class="row" style="margin-bottom:12px;">
+          <div class="pill">Service UUID</div>
+          <div class="pill mono" style="user-select:all">12345678-1234-5678-1234-56789abcdef0</div>
+        </div>
+        <div class="row" style="margin-bottom:18px;">
+          <div class="pill">Char UUID</div>
+          <div class="pill mono" style="user-select:all">12345678-1234-5678-1234-56789abcdef1</div>
+        </div>
+        <div class="controls">
+          <button id="startBtn" class="btn" disabled>開始通知</button>
+          <button id="stopBtn" class="btn secondary" disabled>停止通知</button>
+        </div>
+        <div style="margin-top:16px; color:var(--muted); font-size:13px; line-height:1.6;">
+          連線後會訂閱特徵值通知，裝置每收到一筆 CAN 訊息就推送一段 JSON：
+          <div class="mono" style="margin-top:8px;background:var(--chip);border:1px solid color-mix(in oklab, var(--ring) 35%, transparent); padding:10px 12px; border-radius:12px;">
+            {"id": 291, "ext": 0, "rtr": 0, "dlc": 8, "data": "1122334455667788"}
+          </div>
+        </div>
+      </div>
+    </aside>
+  </div>
 
+  <footer class="wrap">Web Bluetooth · 建議使用 Bluefy 或 Android Chrome(https)</footer>
+  <div id="toast" class="toast">訊息</div>
 
-async function connect(){
-try{
-log('requesting...');
-device = await navigator.bluetooth.requestDevice({
-acceptAllDevices: true,
-optionalServices: [SVC],
-});
-device.addEventListener('gattserverdisconnected', onDisconnected);
-log('connecting...');
-server = await device.gatt.connect();
-service = await server.getPrimaryService(SVC);
-chNotify = await service.getCharacteristic(CH_NOTIFY);
-chWrite = await service.getCharacteristic(CH_WRITE);
+  <script>
+  // ====== 常數（與韌體一致） ======
+  const SERVICE_UUID = '12345678-1234-5678-1234-56789abcdef0';
+  const CHAR_UUID    = '12345678-1234-5678-1234-56789abcdef1';
+  const NAME_PREFIX  = 'ESP32C3-OBD';
 
+  // ====== 狀態 ======
+  let device = null, server = null, service = null, chr = null;
+  let notifying = false;
+  let frames = [];   // 收到的所有 frame（for filter / export）
 
-await chNotify.startNotifications();
-chNotify.addEventListener('characteristicvaluechanged', ev => {
-const v = ev.target.value;
-const decoder = new TextDecoder();
-const s = decoder.decode(v.buffer);
-document.getElementById('raw').textContent = s;
-try{
-const j = JSON.parse(s);
-if('rpm' in j) document.getElementById('rpm').textContent = j.rpm;
-if('throttle' in j) document.getElementById('th').textContent = j.throttle;
-if('map' in j) document.getElementById('map').textContent = j.map;
-if('bitrate' in j) document.getElementById('br').textContent = j.bitrate;
-}catch(e){ /* ignore parse error */ }
-});
+  // ====== UI 參照 ======
+  const dot = document.getElementById('statusDot');
+  const statusText = document.getElementById('statusText');
+  const devNameEl = document.getElementById('devName');
+  const tableBody = document.getElementById('tableBody');
 
+  const connectBtn = document.getElementById('connectBtn');
+  const disconnectBtn = document.getElementById('disconnectBtn');
+  const startBtn = document.getElementById('startBtn');
+  const stopBtn = document.getElementById('stopBtn');
+  const clearBtn = document.getElementById('clearBtn');
+  const exportBtn = document.getElementById('exportBtn');
+  const filterInput = document.getElementById('filterInput');
+  const toastEl = document.getElementById('toast');
 
-document.getElementById('btnDisconnect').disabled = false;
-document.getElementById('btnConnect').disabled = true;
-log('connected');
-}catch(err){
-console.error(err); log('connect error');
-}
-}
+  // ====== 小工具 ======
+  function setStatus(state, text){
+    dot.classList.remove('ok','bad');
+    if(state === 'ok') dot.classList.add('ok');
+    else if(state === 'bad') dot.classList.add('bad');
+    statusText.textContent = text;
+  }
+  function showToast(msg, ms=2000){
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    setTimeout(() => toastEl.classList.remove('show'), ms);
+  }
+  function bytesToString(v){
+    try { return new TextDecoder().decode(v); }
+    catch(e){
+      // fallback
+      let s = ''; for(let i=0;i<v.byteLength;i++) s += String.fromCharCode(v.getUint8(i));
+      return s;
+    }
+  }
+  function fmtTime(d){
+    return d.toLocaleTimeString([], {hour12:false, hour:'2-digit', minute:'2-digit', second:'2-digit'}) +
+           '.' + String(d.getMilliseconds()).padStart(3,'0');
+  }
+  function fmtId(id, ext){
+    const hex = '0x' + id.toString(16).toUpperCase();
+    return `${hex}${ext? ' (EXT)':''}`;
+  }
+  function fmtData(hex){
+    if(!hex) return '';
+    return hex.replace(/(..)/g,'$1 ').trim();
+  }
+  function applyFilter(rows){
+    const q = filterInput.value.trim().toLowerCase();
+    if(!q) return rows;
+    return rows.filter(r =>
+      String(r.id).includes(q) ||
+      r.idHex.toLowerCase().includes(q) ||
+      r.data.toLowerCase().includes(q)
+    );
+  }
+  function render(){
+    const rows = applyFilter(frames);
+    tableBody.innerHTML = '';
+    for(const r of rows.slice(-800).reverse()){ // 只渲染最新 800 筆，避免 DOM 過大
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class="mono">${r.time}</td>
+        <td class="mono">${r.idHex}</td>
+        <td class="right mono">${r.dlc}</td>
+        <td class="mono">${r.ext}/${r.rtr}</td>
+        <td class="mono">${fmtData(r.data)}</td>
+      `;
+      tableBody.appendChild(tr);
+    }
+  }
 
+  // ====== BLE 邏輯 ======
+  async function connect(){
+    try{
+      setStatus('', '尋找裝置...');
+      // Bluefy 往往需要 filter，有時 acceptAllDevices 亦可；雙策略：
+      let dev;
+      try{
+        dev = await navigator.bluetooth.requestDevice({
+          filters: [{ namePrefix: NAME_PREFIX, services: [SERVICE_UUID] }],
+          optionalServices: [SERVICE_UUID]
+        });
+      }catch(e){
+        // 後備：允許任意裝置，但限制需要我們的 Service
+        dev = await navigator.bluetooth.requestDevice({
+          acceptAllDevices: true,
+          optionalServices: [SERVICE_UUID]
+        });
+      }
+      device = dev;
+      device.addEventListener('gattserverdisconnected', onDisconnected);
 
-function onDisconnected(){
-log('disconnected');
-document.getElementById('btnDisconnect').disabled = true;
-document.getElementById('btnConnect').disabled = false;
-}
+      setStatus('', '連線中...');
+      server = await device.gatt.connect();
+      service = await server.getPrimaryService(SERVICE_UUID);
+      chr = await service.getCharacteristic(CHAR_UUID);
 
+      devNameEl.textContent = device.name || '(未命名裝置)';
+      connectBtn.disabled = true;
+      disconnectBtn.disabled = false;
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
 
-async function disconnect(){
-try{ if(device && device.gatt.connected) device.gatt.disconnect(); }catch(e){}
-}
+      setStatus('ok', '已連線');
+      showToast('連線成功');
+      // 自動開始通知
+      await startNotify();
+    }catch(err){
+      console.error(err);
+      setStatus('bad', '連線失敗');
+      showToast('連線失敗：' + (err.message || err));
+    }
+  }
 
+  async function startNotify(){
+    if(!chr) return;
+    try{
+      await chr.startNotifications();
+      chr.addEventListener('characteristicvaluechanged', onNotify);
+      notifying = true;
+      startBtn.disabled = true;
+      stopBtn.disabled = false;
+      showToast('已開始通知');
+    }catch(err){
+      console.error(err);
+      showToast('開始通知失敗：' + (err.message || err));
+    }
+  }
 
-async function ping(){
-if(!chWrite) return;
-const s = JSON.stringify({ ping: true });
-await chWrite.writeValue(new TextEncoder().encode(s));
-}
+  async function stopNotify(){
+    if(!chr) return;
+    try{
+      await chr.stopNotifications();
+      chr.removeEventListener('characteristicvaluechanged', onNotify);
+      notifying = false;
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+      showToast('已停止通知');
+    }catch(err){
+      console.error(err);
+      showToast('停止通知失敗：' + (err.message || err));
+    }
+  }
 
+  function onDisconnected(){
+    connectBtn.disabled = false;
+    disconnectBtn.disabled = true;
+    startBtn.disabled = true;
+    stopBtn.disabled = true;
+    setStatus('', '已斷線');
+    showToast('裝置已中斷連線');
+  }
 
-btnConnect.onclick = connect;
-btnDisconnect.onclick = disconnect;
-btnPing.onclick = ping;
-</script>
+  async function disconnect(){
+    try{
+      if(device?.gatt?.connected){
+        await stopNotify().catch(()=>{});
+        device.gatt.disconnect();
+      }
+    }finally{
+      onDisconnected();
+    }
+  }
+
+  function onNotify(e){
+    const dv = e.target.value;
+    const s = bytesToString(dv).trim();
+    if(!s) return;
+    // 可能一次送多筆（以換行分隔），逐筆 parse
+    for(const line of s.split(/\r?\n/)){
+      if(!line) continue;
+      try{
+        const obj = JSON.parse(line);
+        const ts = new Date();
+        const row = {
+          time: fmtTime(ts),
+          id: Number(obj.id >>> 0),
+          idHex: '0x' + Number(obj.id >>> 0).toString(16).toUpperCase(),
+          ext: obj.ext ? 1 : 0,
+          rtr: obj.rtr ? 1 : 0,
+          dlc: Number(obj.dlc)|0,
+          data: String(obj.data || '')
+        };
+        frames.push(row);
+      }catch(err){
+        // 若不是 JSON，就直接顯示在 data 欄
+        const ts = new Date();
+        frames.push({
+          time: fmtTime(ts),
+          id: NaN, idHex: '—', ext: 0, rtr: 0, dlc: 0, data: s
+        });
+      }
+    }
+    render();
+  }
+
+  // ====== 互動控制 ======
+  connectBtn.addEventListener('click', connect);
+  disconnectBtn.addEventListener('click', disconnect);
+  startBtn.addEventListener('click', startNotify);
+  stopBtn.addEventListener('click', stopNotify);
+  clearBtn.addEventListener('click', () => { frames = []; render(); showToast('已清空'); });
+  filterInput.addEventListener('input', render);
+  exportBtn.addEventListener('click', () => {
+    if(frames.length === 0){ showToast('沒有資料可匯出'); return; }
+    const header = ['time','id','id_hex','ext','rtr','dlc','data'];
+    const lines = [header.join(',')];
+    for(const r of frames){
+      const row = [
+        r.time,
+        isNaN(r.id) ? '' : r.id,
+        r.idHex,
+        r.ext,r.rtr,r.dlc,
+        '"' + (r.data||'').replace(/"/g,'""') + '"'
+      ];
+      lines.push(row.join(','));
+    }
+    const blob = new Blob([lines.join('\n')], {type:'text/csv;charset=utf-8;'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'can_log.csv'; a.click();
+    URL.revokeObjectURL(url);
+    showToast('已匯出 CSV');
+  });
+
+  // 初始狀態
+  (async () => {
+    if(!('bluetooth' in navigator)){
+      setStatus('bad', '瀏覽器不支援 Web Bluetooth');
+      showToast('請改用 Bluefy 或 Android Chrome(https)');
+    }
+  })();
+  </script>
 </body>
 </html>
