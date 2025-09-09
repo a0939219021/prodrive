@@ -3,424 +3,321 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <title>ESP32C3 OBD CAN Viewer</title>
+  <title>ESP32-C3 OBD-II BLE Console</title>
   <style>
-    :root{
+    :root {
       --bg: #0b0f14;
-      --panel:#11161c;
-      --panel-2:#0f141a;
-      --text:#e9eef4;
-      --muted:#93a1b3;
-      --accent:#3ea6ff;
-      --accent-2:#7ef0c5;
-      --danger:#ff5d5d;
-      --ok:#39d98a;
-      --chip:#1a2230;
-      --ring:#28435f;
-      --shadow: 0 10px 30px rgba(0,0,0,.35), 0 3px 10px rgba(0,0,0,.2);
-      --radius: 18px;
+      --panel: #121823;
+      --card: #161e2a;
+      --accent: #4cc9f0;
+      --accent2: #a0e7ff;
+      --ok: #20c997;
+      --warn: #ffd166;
+      --err: #ef476f;
+      --text: #e9eef6;
+      --muted: #9db0c3;
+      --ring: #2b394b;
     }
-    @media (prefers-color-scheme: light){
-      :root{
-        --bg:#f5f7fb; --panel:#ffffff; --panel-2:#f4f8ff; --text:#0d1117; --muted:#6b7280;
-        --accent:#1e80ff; --accent-2:#14b8a6; --chip:#eef3ff; --ring:#cfe2ff;
-        --shadow: 0 8px 24px rgba(21, 29, 40, .1), 0 2px 8px rgba(21,29,40,.06);
-      }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; background: radial-gradient(1200px 800px at 80% -10%, #142033 0%, #0b0f14 55%); color: var(--text); font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans TC", "Helvetica Neue", Arial, "Apple Color Emoji", "Segoe UI Emoji"; }
+    header { padding: 18px 16px 8px; display: flex; align-items: center; justify-content: space-between; }
+    .brand { display: flex; align-items: center; gap: 10px; }
+    .logo { width: 30px; height: 30px; border-radius: 10px; background: linear-gradient(135deg, var(--accent), var(--accent2)); box-shadow: 0 0 0 6px rgba(76,201,240,0.12), 0 6px 18px rgba(0,0,0,0.35); }
+    .title { font-weight: 700; letter-spacing: 0.2px; font-size: 16px; }
+    .subtitle { color: var(--muted); font-size: 12px; margin-top: 2px; }
+
+    .actions { display: flex; gap: 10px; }
+    button {
+      border: 0; background: var(--card); color: var(--text);
+      padding: 10px 14px; border-radius: 12px; font-weight: 600; cursor: pointer;
+      box-shadow: inset 0 0 0 1px var(--ring), 0 6px 20px rgba(0,0,0,0.25);
+      transition: transform .06s ease, filter .2s ease, box-shadow .2s ease;
     }
-    html,body{height:100%}
-    body{
-      margin:0; background:
-        radial-gradient(1200px 600px at 100% -10%, #18314f 0%, transparent 60%),
-        radial-gradient(900px 500px at -10% 10%, #153a2f 0%, transparent 60%),
-        var(--bg);
-      color:var(--text); -webkit-font-smoothing:antialiased; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "PingFang TC", "Noto Sans TC", "Heiti TC", "Microsoft JhengHei", Arial, sans-serif;
+    button:active { transform: translateY(1px) scale(0.99); }
+    .btn-primary { background: linear-gradient(180deg, #2b96c0, #1f6baf); box-shadow: inset 0 0 0 1px rgba(255,255,255,0.15), 0 10px 24px rgba(76,201,240,0.25); }
+    .btn-danger { background: linear-gradient(180deg, #973447, #7c2435); }
+    .btn-ghost { background: transparent; box-shadow: inset 0 0 0 1px var(--ring); color: var(--muted); }
+
+    main { padding: 10px 16px 24px; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 12px;
     }
-    .wrap{max-width:980px; margin:0 auto; padding:24px 18px 40px;}
-    header{
-      position:sticky; top:0; z-index:20;
-      backdrop-filter: saturate(160%) blur(10px);
-      background: color-mix(in oklab, var(--bg) 86%, transparent);
-      border-bottom:1px solid color-mix(in oklab, var(--ring) 24%, transparent);
+    .card {
+      grid-column: span 12;
+      background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.0)), var(--card);
+      border-radius: 16px; padding: 14px;
+      box-shadow: inset 0 0 0 1px var(--ring), 0 10px 30px rgba(0,0,0,0.35);
     }
-    .head{
-      display:flex; gap:14px; align-items:center; justify-content:space-between;
-      padding:14px 18px;
+    @media (min-width: 760px) {
+      .span-4 { grid-column: span 4; }
+      .span-8 { grid-column: span 8; }
     }
-    .brand{
-      display:flex; align-items:center; gap:12px; font-weight:700; letter-spacing:.2px;
+    .label { font-size: 12px; color: var(--muted); letter-spacing: .3px; }
+    .value { font-size: 32px; font-weight: 800; letter-spacing: .5px; margin-top: 4px; }
+    .unit { font-size: 14px; color: var(--muted); margin-left: 6px; font-weight: 600; }
+    .small { font-size: 12px; color: var(--muted); }
+
+    .bar {
+      width: 100%; height: 12px; background: #0e1420; border-radius: 999px; overflow: hidden;
+      box-shadow: inset 0 0 0 1px var(--ring);
+      margin-top: 8px;
     }
-    .logo{
-      width:34px; height:34px; border-radius:10px;
-      background: linear-gradient(135deg, var(--accent), var(--accent-2));
-      box-shadow: 0 6px 14px rgba(0,0,0,.25), inset 0 0 18px rgba(255,255,255,.35);
-      display:grid; place-items:center; color:#001926; font-size:16px;
+    .bar > div {
+      height: 100%; width: 0%;
+      background: linear-gradient(90deg, #21d4fd, #b721ff);
+      transition: width .25s ease;
+      box-shadow: 0 0 18px rgba(164, 93, 255, .35);
     }
-    .status{
-      display:flex; align-items:center; gap:8px; padding:6px 10px; border-radius:999px;
-      background:var(--chip); color:var(--muted); border:1px solid color-mix(in oklab, var(--ring) 35%, transparent);
-      font-size:13px;
+
+    .status {
+      display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px;
+      margin-top: 6px;
     }
-    .dot{width:10px; height:10px; border-radius:50%; background:var(--muted); box-shadow:0 0 0 3px color-mix(in oklab, var(--ring) 35%, transparent);}
-    .dot.ok{ background:var(--ok); box-shadow:0 0 0 5px rgba(57,217,138,.18);}
-    .dot.bad{ background:var(--danger); box-shadow:0 0 0 5px rgba(255,93,93,.18);}
-    .btn{
-      appearance:none; border:none; outline:0; cursor:pointer;
-      padding:12px 16px; border-radius:14px;
-      background:linear-gradient(180deg, color-mix(in oklab, var(--accent) 90%, white 10%), color-mix(in oklab, var(--accent) 70%, black 10%));
-      color:white; font-weight:700; letter-spacing:.3px; box-shadow:var(--shadow); transition:transform .08s ease;
+    .dot {
+      width: 8px; height: 8px; border-radius: 999px; background: var(--err);
+      box-shadow: 0 0 0 6px rgba(239,71,111,0.08);
     }
-    .btn:active{ transform: translateY(1px) scale(.99); }
-    .btn.secondary{ background:linear-gradient(180deg, #3b4452, #2a313c); }
-    .grid{display:grid; gap:16px; grid-template-columns: 1fr;}
-    @media (min-width:860px){ .grid{ grid-template-columns: 1.2fr .8fr; } }
-    .card{ background:linear-gradient(180deg, color-mix(in oklab, var(--panel) 92%, transparent), var(--panel));
-      border:1px solid color-mix(in oklab, var(--ring) 28%, transparent);
-      border-radius: var(--radius); box-shadow: var(--shadow); overflow:hidden;}
-    .card .hd{ display:flex; align-items:center; justify-content:space-between; padding:16px 18px; background:linear-gradient(180deg, color-mix(in oklab, var(--panel-2) 80%, transparent), transparent); border-bottom:1px solid color-mix(in oklab, var(--ring) 28%, transparent); }
-    .card .hd h3{ margin:0; font-size:15px; letter-spacing:.4px; color:var(--muted); text-transform:uppercase; }
-    .row{ display:flex; gap:10px; flex-wrap:wrap; }
-    .pill{ padding:8px 12px; border-radius:999px; background:var(--chip); color:var(--muted); font-size:13px; border:1px solid color-mix(in oklab, var(--ring) 35%, transparent); }
-    .body{ padding:16px 18px; }
-    .controls{ display:flex; gap:10px; flex-wrap:wrap; }
-    .controls .btn{ padding:10px 14px; border-radius:12px; font-weight:600; }
-    .field{ display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:12px; background:var(--chip); color:var(--muted); border:1px solid color-mix(in oklab, var(--ring) 35%, transparent); }
-    .field input{ background:transparent; border:none; outline:none; color:var(--text); font-size:14px; min-width:120px; }
-    table{ width:100%; border-collapse:separate; border-spacing:0; font-size:14px; }
-    thead th{ position:sticky; top:0; z-index:1; background:var(--panel); border-bottom:1px solid color-mix(in oklab, var(--ring) 28%, transparent); padding:10px 10px; text-align:left; color:var(--muted); font-weight:700; }
-    tbody td{ padding:10px 10px; border-bottom:1px dashed color-mix(in oklab, var(--ring) 22%, transparent); }
-    tbody tr:hover{ background: color-mix(in oklab, var(--panel-2) 70%, transparent); }
-    .mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; letter-spacing:.3px; }
-    .right{ text-align:right; }
-    footer{ text-align:center; color:var(--muted); font-size:12px; margin-top:22px; }
-    .toast{
-      position:fixed; left:50%; transform:translateX(-50%);
-      bottom:18px; padding:12px 16px; background:#141a22; color:#fff; border-radius:12px; box-shadow:var(--shadow);
-      opacity:0; pointer-events:none; transition: opacity .25s ease, transform .25s ease;
+    .dot.ok { background: var(--ok); box-shadow: 0 0 0 6px rgba(32,201,151,0.10); }
+    .dot.warn { background: var(--warn); box-shadow: 0 0 0 6px rgba(255,209,102,0.10); }
+
+    .log {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      font-size: 12px; color: #d2def0; background: #0c121b;
+      border-radius: 12px; padding: 10px; min-height: 120px; max-height: 220px; overflow: auto;
+      box-shadow: inset 0 0 0 1px var(--ring);
+      white-space: pre-wrap; word-break: break-word;
     }
-    .toast.show{ opacity:1; transform: translateX(-50%) translateY(0);}
+    .kbd { font-family: inherit; padding: 2px 6px; border-radius: 6px; background: #0f1723; box-shadow: inset 0 0 0 1px var(--ring); }
+    .footer { padding: 4px 16px 18px; color: var(--muted); font-size: 12px; text-align: center; }
+    a { color: var(--accent); text-decoration: none; }
   </style>
 </head>
 <body>
   <header>
-    <div class="head wrap">
-      <div class="brand">
-        <div class="logo">OBD</div>
-        <div>
-          <div style="font-size:16px;">ESP32C3 OBD CAN</div>
-          <div style="font-size:12px;color:var(--muted);">BLE Demo Viewer</div>
-        </div>
+    <div class="brand">
+      <div class="logo"></div>
+      <div>
+        <div class="title">THRUSTER • OBD-II Panel</div>
+        <div class="subtitle">ESP32-C3 + TWAI + NimBLE</div>
       </div>
-      <div class="row">
-        <div class="status"><span id="statusDot" class="dot"></span><span id="statusText">尚未連線</span></div>
-        <button id="connectBtn" class="btn">連線</button>
-        <button id="disconnectBtn" class="btn secondary" disabled>中斷</button>
-      </div>
+    </div>
+    <div class="actions">
+      <button id="btnConnect" class="btn-primary">連線</button>
+      <button id="btnDisconnect" class="btn-danger">斷線</button>
+      <button id="btnClear" class="btn-ghost">清除日誌</button>
     </div>
   </header>
 
-  <div class="wrap grid">
-    <section class="card">
-      <div class="hd">
-        <h3>Live CAN Frames</h3>
-        <div class="controls">
-          <div class="field">
-            🔍
-            <input id="filterInput" placeholder="Filter by ID / Data..." />
-          </div>
-          <button id="clearBtn" class="btn secondary">清空</button>
-          <button id="exportBtn" class="btn">匯出 CSV</button>
-        </div>
-      </div>
-      <div class="body" style="padding:0; max-height:60vh; overflow:auto;">
-        <table>
-          <thead>
-            <tr>
-              <th style="width:90px;">時間</th>
-              <th style="width:110px;">ID</th>
-              <th class="right" style="width:60px;">DLC</th>
-              <th style="width:80px;">EXT/RTR</th>
-              <th>DATA</th>
-            </tr>
-          </thead>
-          <tbody id="tableBody"></tbody>
-        </table>
-      </div>
-    </section>
+  <main>
+    <div class="grid">
+      <section class="card span-4">
+        <div class="label">Engine RPM</div>
+        <div class="value"><span id="rpm">—</span><span class="unit">rpm</span></div>
+        <div class="status"><div id="stRpm" class="dot"></div><span id="rpmHint">等待資料…</span></div>
+      </section>
 
-    <aside class="card">
-      <div class="hd">
-        <h3>Connection</h3>
-        <div class="pill mono" id="devName">N/A</div>
-      </div>
-      <div class="body">
-        <div class="row" style="margin-bottom:12px;">
-          <div class="pill">Service UUID</div>
-          <div class="pill mono" style="user-select:all">12345678-1234-5678-1234-56789abcdef0</div>
-        </div>
-        <div class="row" style="margin-bottom:18px;">
-          <div class="pill">Char UUID</div>
-          <div class="pill mono" style="user-select:all">12345678-1234-5678-1234-56789abcdef1</div>
-        </div>
-        <div class="controls">
-          <button id="startBtn" class="btn" disabled>開始通知</button>
-          <button id="stopBtn" class="btn secondary" disabled>停止通知</button>
-        </div>
-        <div style="margin-top:16px; color:var(--muted); font-size:13px; line-height:1.6;">
-          連線後會訂閱特徵值通知，裝置每收到一筆 CAN 訊息就推送一段 JSON：
-          <div class="mono" style="margin-top:8px;background:var(--chip);border:1px solid color-mix(in oklab, var(--ring) 35%, transparent); padding:10px 12px; border-radius:12px;">
-            {"id": 291, "ext": 0, "rtr": 0, "dlc": 8, "data": "1122334455667788"}
-          </div>
-        </div>
-      </div>
-    </aside>
-  </div>
+      <section class="card span-4">
+        <div class="label">Throttle Position</div>
+        <div class="value"><span id="throttle">—</span><span class="unit">%</span></div>
+        <div class="bar"><div id="thrBar"></div></div>
+        <div class="status"><div id="stThr" class="dot"></div><span id="thrHint">等待資料…</span></div>
+      </section>
 
-  <footer class="wrap">Web Bluetooth · 建議使用 Bluefy 或 Android Chrome(https)</footer>
-  <div id="toast" class="toast">訊息</div>
+      <section class="card span-4">
+        <div class="label">MAP (Manifold Abs. Pressure)</div>
+        <div class="value"><span id="map">—</span><span class="unit">kPa</span></div>
+        <div class="status"><div id="stMap" class="dot"></div><span id="mapHint">等待資料…</span></div>
+      </section>
+
+      <section class="card span-8">
+        <div class="label">狀態 / 日誌</div>
+        <div class="log" id="log"></div>
+        <div class="small" style="margin-top:8px;">
+          提示：若掃不到裝置，請確認藍牙已開啟、App 具備位置權限、且裝置已在廣播。
+          iOS/Bluefy 需使用按鈕手勢觸發掃描。<span class="kbd">連線</span> 後會自動訂閱通知。
+        </div>
+      </section>
+
+      <section class="card span-4">
+        <div class="label">連線狀態</div>
+        <div class="value" style="font-size:22px;"><span id="status">未連線</span></div>
+        <div class="small">Service: <code id="svcId">12345678-1234-5678-1234-56789abcdef0</code></div>
+        <div class="small">Char: <code id="chrId">12345678-1234-5678-1234-56789abcdef1</code></div>
+        <div class="small">Device: <span id="devName">—</span></div>
+        <div class="small">Last: <span id="lastTs">—</span></div>
+      </section>
+    </div>
+  </main>
+
+  <div class="footer">© 2025 THRUSTER • Bluefy/Chrome Web Bluetooth • JSON: <code>{"rpm":2048,"throttle":18,"map":33}</code></div>
 
   <script>
-  // ====== 常數（與韌體一致） ======
-  const SERVICE_UUID = '12345678-1234-5678-1234-56789abcdef0';
-  const CHAR_UUID    = '12345678-1234-5678-1234-56789abcdef1';
-  const NAME_PREFIX  = 'ESP32C3-OBD';
+  (() => {
+    // === UUID 與參數（必須與韌體一致） ===
+    const SVC_UUID  = "12345678-1234-5678-1234-56789abcdef0";
+    const CHAR_UUID = "12345678-1234-5678-1234-56789abcdef1";
+    const NAME_PREFIX = "ESP32C3-OBD";
 
-  // ====== 狀態 ======
-  let device = null, server = null, service = null, chr = null;
-  let notifying = false;
-  let frames = [];   // 收到的所有 frame（for filter / export）
+    // === DOM 快取 ===
+    const $ = (s) => document.querySelector(s);
+    const logEl = $("#log");
+    const rpmEl = $("#rpm"), rpmDot = $("#stRpm"), rpmHint = $("#rpmHint");
+    const thrEl = $("#throttle"), thrDot = $("#stThr"), thrHint = $("#thrHint"), thrBar = $("#thrBar");
+    const mapEl = $("#map"), mapDot = $("#stMap"), mapHint = $("#mapHint");
+    const statusEl = $("#status"), devNameEl = $("#devName"), lastTsEl = $("#lastTs");
 
-  // ====== UI 參照 ======
-  const dot = document.getElementById('statusDot');
-  const statusText = document.getElementById('statusText');
-  const devNameEl = document.getElementById('devName');
-  const tableBody = document.getElementById('tableBody');
+    // === BLE 物件 ===
+    let device = null, server = null, characteristic = null;
+    const decoder = new TextDecoder("utf-8");
 
-  const connectBtn = document.getElementById('connectBtn');
-  const disconnectBtn = document.getElementById('disconnectBtn');
-  const startBtn = document.getElementById('startBtn');
-  const stopBtn = document.getElementById('stopBtn');
-  const clearBtn = document.getElementById('clearBtn');
-  const exportBtn = document.getElementById('exportBtn');
-  const filterInput = document.getElementById('filterInput');
-  const toastEl = document.getElementById('toast');
-
-  // ====== 小工具 ======
-  function setStatus(state, text){
-    dot.classList.remove('ok','bad');
-    if(state === 'ok') dot.classList.add('ok');
-    else if(state === 'bad') dot.classList.add('bad');
-    statusText.textContent = text;
-  }
-  function showToast(msg, ms=2000){
-    toastEl.textContent = msg;
-    toastEl.classList.add('show');
-    setTimeout(() => toastEl.classList.remove('show'), ms);
-  }
-  function bytesToString(v){
-    try { return new TextDecoder().decode(v); }
-    catch(e){
-      // fallback
-      let s = ''; for(let i=0;i<v.byteLength;i++) s += String.fromCharCode(v.getUint8(i));
-      return s;
+    // === UI & Log ===
+    function log(msg, level="info") {
+      const t = new Date();
+      const hh = String(t.getHours()).padStart(2,"0");
+      const mm = String(t.getMinutes()).padStart(2,"0");
+      const ss = String(t.getSeconds()).padStart(2,"0");
+      const tag = level === "err" ? "❌" : level === "ok" ? "✅" : "•";
+      logEl.textContent += `[${hh}:${mm}:${ss}] ${tag} ${msg}\n`;
+      logEl.scrollTop = logEl.scrollHeight;
     }
-  }
-  function fmtTime(d){
-    return d.toLocaleTimeString([], {hour12:false, hour:'2-digit', minute:'2-digit', second:'2-digit'}) +
-           '.' + String(d.getMilliseconds()).padStart(3,'0');
-  }
-  function fmtId(id, ext){
-    const hex = '0x' + id.toString(16).toUpperCase();
-    return `${hex}${ext? ' (EXT)':''}`;
-  }
-  function fmtData(hex){
-    if(!hex) return '';
-    return hex.replace(/(..)/g,'$1 ').trim();
-  }
-  function applyFilter(rows){
-    const q = filterInput.value.trim().toLowerCase();
-    if(!q) return rows;
-    return rows.filter(r =>
-      String(r.id).includes(q) ||
-      r.idHex.toLowerCase().includes(q) ||
-      r.data.toLowerCase().includes(q)
-    );
-  }
-  function render(){
-    const rows = applyFilter(frames);
-    tableBody.innerHTML = '';
-    for(const r of rows.slice(-800).reverse()){ // 只渲染最新 800 筆，避免 DOM 過大
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td class="mono">${r.time}</td>
-        <td class="mono">${r.idHex}</td>
-        <td class="right mono">${r.dlc}</td>
-        <td class="mono">${r.ext}/${r.rtr}</td>
-        <td class="mono">${fmtData(r.data)}</td>
-      `;
-      tableBody.appendChild(tr);
+    function setConnStatus(ok, name="—") {
+      statusEl.textContent = ok ? "已連線" : "未連線";
+      statusEl.style.color = ok ? "var(--ok)" : "var(--text)";
+      devNameEl.textContent = ok ? name : "—";
     }
-  }
+    function setDot(el, state) {
+      el.classList.remove("ok","warn");
+      if (state === "ok") el.classList.add("ok");
+      else if (state === "warn") el.classList.add("warn");
+    }
+    function updateValues(obj) {
+      // obj = { rpm: int|-1, throttle: 0..100|-1, map: int|-1 }
+      const now = new Date().toLocaleTimeString();
+      lastTsEl.textContent = now;
 
-  // ====== BLE 邏輯 ======
-  async function connect(){
-    try{
-      setStatus('', '尋找裝置...');
-      // Bluefy 往往需要 filter，有時 acceptAllDevices 亦可；雙策略：
-      let dev;
-      try{
-        dev = await navigator.bluetooth.requestDevice({
-          filters: [{ namePrefix: NAME_PREFIX, services: [SERVICE_UUID] }],
-          optionalServices: [SERVICE_UUID]
-        });
-      }catch(e){
-        // 後備：允許任意裝置，但限制需要我們的 Service
-        dev = await navigator.bluetooth.requestDevice({
-          acceptAllDevices: true,
-          optionalServices: [SERVICE_UUID]
-        });
+      if (Number.isInteger(obj.rpm) && obj.rpm >= 0) {
+        rpmEl.textContent = obj.rpm;
+        setDot(rpmDot, "ok"); rpmHint.textContent = "OK";
       }
-      device = dev;
-      device.addEventListener('gattserverdisconnected', onDisconnected);
-
-      setStatus('', '連線中...');
-      server = await device.gatt.connect();
-      service = await server.getPrimaryService(SERVICE_UUID);
-      chr = await service.getCharacteristic(CHAR_UUID);
-
-      devNameEl.textContent = device.name || '(未命名裝置)';
-      connectBtn.disabled = true;
-      disconnectBtn.disabled = false;
-      startBtn.disabled = false;
-      stopBtn.disabled = true;
-
-      setStatus('ok', '已連線');
-      showToast('連線成功');
-      // 自動開始通知
-      await startNotify();
-    }catch(err){
-      console.error(err);
-      setStatus('bad', '連線失敗');
-      showToast('連線失敗：' + (err.message || err));
-    }
-  }
-
-  async function startNotify(){
-    if(!chr) return;
-    try{
-      await chr.startNotifications();
-      chr.addEventListener('characteristicvaluechanged', onNotify);
-      notifying = true;
-      startBtn.disabled = true;
-      stopBtn.disabled = false;
-      showToast('已開始通知');
-    }catch(err){
-      console.error(err);
-      showToast('開始通知失敗：' + (err.message || err));
-    }
-  }
-
-  async function stopNotify(){
-    if(!chr) return;
-    try{
-      await chr.stopNotifications();
-      chr.removeEventListener('characteristicvaluechanged', onNotify);
-      notifying = false;
-      startBtn.disabled = false;
-      stopBtn.disabled = true;
-      showToast('已停止通知');
-    }catch(err){
-      console.error(err);
-      showToast('停止通知失敗：' + (err.message || err));
-    }
-  }
-
-  function onDisconnected(){
-    connectBtn.disabled = false;
-    disconnectBtn.disabled = true;
-    startBtn.disabled = true;
-    stopBtn.disabled = true;
-    setStatus('', '已斷線');
-    showToast('裝置已中斷連線');
-  }
-
-  async function disconnect(){
-    try{
-      if(device?.gatt?.connected){
-        await stopNotify().catch(()=>{});
-        device.gatt.disconnect();
+      if (Number.isInteger(obj.throttle) && obj.throttle >= 0) {
+        thrEl.textContent = obj.throttle;
+        setDot(thrDot, "ok"); thrHint.textContent = "OK";
+        thrBar.style.width = Math.max(0, Math.min(100, obj.throttle)) + "%";
       }
-    }finally{
-      onDisconnected();
-    }
-  }
-
-  function onNotify(e){
-    const dv = e.target.value;
-    const s = bytesToString(dv).trim();
-    if(!s) return;
-    // 可能一次送多筆（以換行分隔），逐筆 parse
-    for(const line of s.split(/\r?\n/)){
-      if(!line) continue;
-      try{
-        const obj = JSON.parse(line);
-        const ts = new Date();
-        const row = {
-          time: fmtTime(ts),
-          id: Number(obj.id >>> 0),
-          idHex: '0x' + Number(obj.id >>> 0).toString(16).toUpperCase(),
-          ext: obj.ext ? 1 : 0,
-          rtr: obj.rtr ? 1 : 0,
-          dlc: Number(obj.dlc)|0,
-          data: String(obj.data || '')
-        };
-        frames.push(row);
-      }catch(err){
-        // 若不是 JSON，就直接顯示在 data 欄
-        const ts = new Date();
-        frames.push({
-          time: fmtTime(ts),
-          id: NaN, idHex: '—', ext: 0, rtr: 0, dlc: 0, data: s
-        });
+      if (Number.isInteger(obj.map) && obj.map >= 0) {
+        mapEl.textContent = obj.map;
+        setDot(mapDot, "ok"); mapHint.textContent = "OK";
       }
     }
-    render();
-  }
 
-  // ====== 互動控制 ======
-  connectBtn.addEventListener('click', connect);
-  disconnectBtn.addEventListener('click', disconnect);
-  startBtn.addEventListener('click', startNotify);
-  stopBtn.addEventListener('click', stopNotify);
-  clearBtn.addEventListener('click', () => { frames = []; render(); showToast('已清空'); });
-  filterInput.addEventListener('input', render);
-  exportBtn.addEventListener('click', () => {
-    if(frames.length === 0){ showToast('沒有資料可匯出'); return; }
-    const header = ['time','id','id_hex','ext','rtr','dlc','data'];
-    const lines = [header.join(',')];
-    for(const r of frames){
-      const row = [
-        r.time,
-        isNaN(r.id) ? '' : r.id,
-        r.idHex,
-        r.ext,r.rtr,r.dlc,
-        '"' + (r.data||'').replace(/"/g,'""') + '"'
-      ];
-      lines.push(row.join(','));
+    // === 解析通知 ===
+    function handleNotify(ev) {
+      try {
+        const v = decoder.decode(ev.target.value);
+        log(`RX: ${v}`);
+        try {
+          const obj = JSON.parse(v);
+          updateValues(obj);
+        } catch (e) {
+          // 若不是 JSON，顯示原字串
+          if (v && v.length) {
+            // 例如初次 READ 可能回 "ESP32C3 OBD CAN"
+            setDot(rpmDot, "warn"); setDot(thrDot, "warn"); setDot(mapDot, "warn");
+            rpmHint.textContent = "等待 JSON…";
+            thrHint.textContent = "等待 JSON…";
+            mapHint.textContent = "等待 JSON…";
+          }
+        }
+      } catch (e) {
+        log(`decode error: ${e}`, "err");
+      }
     }
-    const blob = new Blob([lines.join('\n')], {type:'text/csv;charset=utf-8;'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = 'can_log.csv'; a.click();
-    URL.revokeObjectURL(url);
-    showToast('已匯出 CSV');
-  });
 
-  // 初始狀態
-  (async () => {
-    if(!('bluetooth' in navigator)){
-      setStatus('bad', '瀏覽器不支援 Web Bluetooth');
-      showToast('請改用 Bluefy 或 Android Chrome(https)');
+    // === 連線流程 ===
+    async function connect() {
+      try {
+        if (!navigator.bluetooth) {
+          alert("此瀏覽器不支援 Web Bluetooth。請改用 Chrome 或 Bluefy。");
+          return;
+        }
+        log("Requesting device…");
+        let dev;
+        try {
+          dev = await navigator.bluetooth.requestDevice({
+            filters: [
+              { namePrefix: NAME_PREFIX },
+              { services: [SVC_UUID] },      // 128-bit 服務過濾（同韌體）
+            ],
+            optionalServices: [SVC_UUID],
+          });
+        } catch (e) {
+          // 部分環境可嘗試廣掃
+          log("Filters 掃描失敗，嘗試 acceptAllDevices…");
+          dev = await navigator.bluetooth.requestDevice({
+            acceptAllDevices: true,
+            optionalServices: [SVC_UUID],
+          });
+        }
+
+        device = dev;
+        device.addEventListener("gattserverdisconnected", onDisconnected);
+        log(`Selected: ${device.name || "(no name)"} (${device.id})`);
+
+        server = await device.gatt.connect();
+        setConnStatus(true, device.name || "ESP32C3");
+        log("GATT connected ✅", "ok");
+
+        const svc = await server.getPrimaryService(SVC_UUID);
+        const chr = await svc.getCharacteristic(CHAR_UUID);
+        characteristic = chr;
+
+        // 讀取一次目前值
+        try {
+          const val = await characteristic.readValue();
+          handleNotify({ target: { value: val }});
+        } catch {}
+
+        // 啟用通知
+        await characteristic.startNotifications();
+        characteristic.addEventListener("characteristicvaluechanged", handleNotify);
+        log("Notifications started ✅", "ok");
+      } catch (e) {
+        log(String(e), "err");
+        alert("連線失敗：\n" + e);
+        await disconnect(); // 清理
+      }
     }
+
+    async function disconnect() {
+      try {
+        if (characteristic) {
+          try { await characteristic.stopNotifications(); } catch {}
+          characteristic.removeEventListener("characteristicvaluechanged", handleNotify);
+        }
+        characteristic = null;
+
+        if (device && device.gatt && device.gatt.connected) {
+          device.gatt.disconnect();
+        }
+      } catch {}
+      setConnStatus(false);
+      log("Disconnected.");
+    }
+
+    function onDisconnected() {
+      setConnStatus(false);
+      log("GATT disconnected.");
+    }
+
+    // === 綁定事件 ===
+    $("#btnConnect").addEventListener("click", () => connect());
+    $("#btnDisconnect").addEventListener("click", () => disconnect());
+    $("#btnClear").addEventListener("click", () => (logEl.textContent = ""));
+
+    // 預設點狀態
+    setDot(rpmDot); setDot(thrDot); setDot(mapDot);
   })();
   </script>
 </body>
