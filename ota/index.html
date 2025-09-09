@@ -1,20 +1,86 @@
-<button onclick="connect()">Connect</button>
-<pre id="out"></pre>
+<!doctype html>
+<html lang="zh-Hant">
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ESP32C3 OBD Throttle Viewer</title>
+<style>
+  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;max-width:560px;margin:24px auto;padding:0 16px}
+  h1{font-size:20px;margin:8px 0 16px}
+  button{padding:10px 14px;border-radius:12px;border:1px solid #ccc;background:#fff;cursor:pointer}
+  #status{margin:8px 0 16px;color:#555}
+  .bar{height:18px;border-radius:9px;background:#eee;overflow:hidden}
+  .fill{height:100%;width:0%}
+  .row{display:flex;align-items:center;gap:12px;margin:10px 0}
+  .num{min-width:48px;font-variant-numeric:tabular-nums}
+</style>
+<body>
+  <h1>ESP32C3 OBD Throttle</h1>
+  <div class="row">
+    <button id="btn">Connect & Subscribe</button>
+    <div id="status">idle</div>
+  </div>
+  <div class="row">
+    <div class="num" id="value">0%</div>
+    <div class="bar" style="flex:1"><div class="fill" id="fill"></div></div>
+  </div>
+
 <script>
-const SVC = 'efcdab90-7856-3412-f0de-bc9a78563412';
-const CHR = 'efcdab90-7856-3412-f0de-bc9a78560001';
-async function connect(){
-  const dev = await navigator.bluetooth.requestDevice({filters:[{services:[SVC]}]});
-  const gatt = await dev.gatt.connect();
-  const svc  = await gatt.getPrimaryService(SVC);
-  const chr  = await svc.getCharacteristic(CHR);
-  await chr.startNotifications();
-  chr.addEventListener('characteristicvaluechanged', e=>{
-    const v = new TextDecoder().decode(e.target.value.buffer);
-    document.getElementById('out').textContent = v;
-  });
-  // 讀一次（可選）
-  const v = await chr.readValue();
-  document.getElementById('out').textContent = new TextDecoder().decode(v.buffer);
+const SVC = '12345678-1234-5678-90ab-cdef00010001';
+const CHR = '12345678-1234-5678-90ab-cdef00010002';
+let device, chr;
+
+function log(s){ document.getElementById('status').textContent = s; }
+function setPct(p){
+  p = Math.max(0, Math.min(100, p|0));
+  document.getElementById('value').textContent = p + '%';
+  document.getElementById('fill').style.width = p + '%';
+  document.getElementById('fill').style.background = `linear-gradient(90deg, #9cf, #69f)`;
 }
+
+async function connect() {
+  try{
+    log('requesting device...');
+    device = await navigator.bluetooth.requestDevice({
+      filters: [
+        { namePrefix: 'ESP32C3-OBD' },
+        { services: [SVC] }
+      ],
+      optionalServices: [SVC]
+    });
+    device.addEventListener('gattserverdisconnected', ()=>log('disconnected'));
+    log('connecting GATT...');
+    const server = await device.gatt.connect();
+    const svc = await server.getPrimaryService(SVC);
+    chr = await svc.getCharacteristic(CHR);
+
+    // 讀一次
+    try{
+      const v = await chr.readValue();
+      const s = new TextDecoder().decode(v.buffer);
+      const obj = JSON.parse(s);
+      if ('throttle' in obj) setPct(obj.throttle);
+    }catch(e){/* ignore */ }
+
+    // 訂閱
+    await chr.startNotifications();
+    chr.addEventListener('characteristicvaluechanged', ev=>{
+      const s = new TextDecoder().decode(ev.target.value.buffer);
+      try{
+        const obj = JSON.parse(s);
+        if ('throttle' in obj) setPct(obj.throttle);
+      }catch(e){ /* ignore */ }
+    });
+    log('connected & subscribed');
+  }catch(err){
+    console.error(err);
+    log('error: ' + err.message);
+  }
+}
+
+document.getElementById('btn').addEventListener('click', ()=>{
+  if (!navigator.bluetooth) { log('Web Bluetooth not supported'); return; }
+  connect();
+});
 </script>
+</body>
+</html>
