@@ -22,7 +22,7 @@
     display:grid; place-items:center; padding:24px;
   }
   .card{
-    width:min(960px,96vw); background:linear-gradient(180deg,#151f2c 0%, #101826 100%);
+    width:min(1000px,96vw); background:linear-gradient(180deg,#151f2c 0%, #101826 100%);
     border:1px solid #263041; border-radius:var(--radius); box-shadow:0 10px 30px rgba(0,0,0,.35);
     padding: clamp(14px, 2.5vw, 20px);
   }
@@ -47,6 +47,7 @@
   .btn:active{ transform:translateY(0) }
   .btn[disabled]{ opacity:.5; cursor:not-allowed }
   .btn.primary{ background:linear-gradient(180deg,#2a69ff,#2256d9); border:0 }
+
   .grid{ display:grid; grid-template-columns: 1.1fr 1fr; gap:16px; margin-top:12px; }
   .panel{ background:rgba(13,20,31,.6); border:1px solid #263041; border-radius:16px; padding:14px; }
   .section-title{
@@ -59,6 +60,7 @@
   .metric .label{ font-size:12px; color:#9cb0c9; letter-spacing:.02em }
   .metric .value{ font-weight:800; font-size:clamp(18px, 4.2vw, 24px); margin-top:6px; line-height:1.1 }
   .value .unit{ font-size:12px; color:#8fa3be; margin-left:4px; font-weight:700 }
+
   .row{ display:flex; align-items:center; gap:12px; flex-wrap:wrap }
   .led{
     width:64px; height:64px; border-radius:50%;
@@ -126,7 +128,7 @@
     </div>
 
     <div class="grid">
-      <!-- Left: Realtime Info -->
+      <!-- Left: Realtime Info + Fuel -->
       <div class="panel">
         <div class="section-title">Realtime Info</div>
         <div class="kv">
@@ -153,11 +155,26 @@
           </div>
         </div>
 
+        <div style="height:12px"></div>
+
+        <div class="section-title">Fuel & Trip</div>
+        <div class="kv" style="grid-template-columns:repeat(4,minmax(0,1fr));gap:10px">
+          <div class="metric"><div class="label">Source</div><div class="value"><span id="src">NA</span></div></div>
+          <div class="metric"><div class="label">Fuel Rate</div><div class="value"><span id="fr">0.00</span><span class="unit">L/h</span></div></div>
+          <div class="metric"><div class="label">Instant L/100km</div><div class="value"><span id="iL100">—</span></div></div>
+          <div class="metric"><div class="label">Instant km/L</div><div class="value"><span id="iKML">—</span></div></div>
+
+          <div class="metric"><div class="label">Trip Fuel</div><div class="value"><span id="tripL">0.000</span><span class="unit">L</span></div></div>
+          <div class="metric"><div class="label">Trip Dist</div><div class="value"><span id="tripK">0.000</span><span class="unit">km</span></div></div>
+          <div class="metric"><div class="label">Avg L/100km</div><div class="value"><span id="aL100">—</span></div></div>
+          <div class="metric"><div class="label">Avg km/L</div><div class="value"><span id="aKML">—</span></div></div>
+        </div>
+
         <div style="height:10px"></div>
         <div class="mono" id="log" role="log" aria-live="polite"></div>
       </div>
 
-      <!-- Right: Device Info -->
+      <!-- Right: Device Info + Diagnostics -->
       <div class="panel">
         <div class="section-title">Device</div>
         <div style="display:grid;gap:10px">
@@ -177,7 +194,28 @@
             <div class="label">Control Characteristic</div>
             <div class="value" style="font-size:13px;word-break:break-all">6e400002-b5a3-f393-e0a9-e50e24dcca9e</div>
           </div>
-          <div class="hint">Tip: Web Bluetooth works only over HTTPS or <code>localhost</code>.</div>
+        </div>
+
+        <div style="height:12px"></div>
+
+        <div class="section-title">Diagnostics</div>
+        <div class="kv" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:10px">
+          <div class="metric"><div class="label">CAN kbps</div><div class="value"><span id="d_can">—</span></div></div>
+          <div class="metric"><div class="label">PWM Hz</div><div class="value"><span id="d_pwm">—</span></div></div>
+          <div class="metric"><div class="label">Rate Hz</div><div class="value"><span id="d_rate">—</span></div></div>
+          <div class="metric"><div class="label">Loop ms</div><div class="value"><span id="d_loop">—</span></div></div>
+          <div class="metric"><div class="label">RX OK</div><div class="value"><span id="d_rxok">—</span></div></div>
+          <div class="metric"><div class="label">RX TO</div><div class="value"><span id="d_rxto">—</span></div></div>
+        </div>
+
+        <div style="height:12px"></div>
+
+        <div class="section-title">Raw Inputs</div>
+        <div class="kv" style="grid-template-columns:repeat(3,minmax(0,1fr));gap:10px">
+          <div class="metric"><div class="label">MAF</div><div class="value"><span id="maf">—</span><span class="unit">g/s</span></div></div>
+          <div class="metric"><div class="label">IAT</div><div class="value"><span id="iat">—</span><span class="unit">°C</span></div></div>
+          <div class="metric"><div class="label">AbsLoad→VE</div><div class="value"><span id="al">—</span><span class="unit">%</span></div></div>
+          <div class="metric" style="grid-column:1/-1"><div class="label">Lambda</div><div class="value"><span id="lam">—</span></div></div>
         </div>
       </div>
     </div>
@@ -206,20 +244,20 @@ function setBleState(ok){
   $('#btnConnect').disabled = ok;
 }
 
-// Map firmware JSON -> UI
+/* ----- Apply packets from firmware ----- */
 function applyPacketA(j){
   $('#rpm').textContent  = j.rpm ?? 0;
   $('#thr').textContent  = j.tps ?? 0;
   $('#map').textContent  = j.map ?? 0;
-  $('#volt').textContent = (j.vol ?? 0).toFixed ? j.vol.toFixed(2) : j.vol;
-  // show device threshold from firmware if present
+  const v = j.vol ?? 0;
+  $('#volt').textContent = (typeof v === 'number' && v.toFixed) ? v.toFixed(2) : v;
   if (typeof j.thr === 'number'){
     $('#thSlider').value = String(j.thr);
     $('#thVal').textContent = String(j.thr);
   }
-  // LED behaviour
+  // LED
   const led = $('#led');
-  if (!j.fan){ // off
+  if (!j.fan){
     clearInterval(blinkTimer);
     led.classList.remove('on');
     led.style.background = '#bbb';
@@ -241,18 +279,39 @@ function applyPacketA(j){
   }
 }
 
+function applyPacketF(j){
+  $('#src').textContent   = j.src ?? 'NA';
+  $('#fr').textContent    = (j.fr ?? '—');
+  $('#iL100').textContent = (j.iL100 ?? '—');
+  $('#iKML').textContent  = (j.iKML  ?? '—');
+  $('#aL100').textContent = (j.aL100 ?? '—');
+  $('#aKML').textContent  = (j.aKML  ?? '—');
+  $('#tripL').textContent = (j.tripL ?? 0).toFixed ? j.tripL.toFixed(3) : j.tripL;
+  $('#tripK').textContent = (j.tripK ?? 0).toFixed ? j.tripK.toFixed(3) : j.tripK;
+
+  if (j.maf !== undefined && j.maf !== null) $('#maf').textContent = j.maf;
+  if (j.iat !== undefined && j.iat !== null) $('#iat').textContent = j.iat;
+  if (j.al  !== undefined && j.al  !== null) $('#al').textContent  = j.al;
+  if (j.lam !== undefined && j.lam !== null) $('#lam').textContent = j.lam;
+}
+
+function applyPacketD(j){
+  $('#d_can').textContent  = j.can ?? '—';
+  $('#d_pwm').textContent  = j.pwm ?? '—';
+  $('#d_rate').textContent = j.rate ?? '—';
+  $('#d_loop').textContent = j.loop ?? '—';
+  $('#d_rxok').textContent = j.rxok ?? '—';
+  $('#d_rxto').textContent = j.rxto ?? '—';
+}
+
 function onNotify(ev) {
   try {
     const j = JSON.parse(new TextDecoder().decode(ev.target.value));
-    if (j && j.t === 'a'){         // core packet
-      applyPacketA(j);
-    } else if (j && j.t === 'f'){  // fuel packet (log for now)
-      log(`fuel: src=${j.src}, FR=${j.fr ?? 'NA'} L/h, iL/100=${j.iL100 ?? 'NA'}`);
-    } else if (j && j.t === 'd'){  // diag packet
-      log(`diag: can=${j.can}, pwm=${j.pwm}, rate=${j.rate}, loop=${j.loop}ms rxok=${j.rxok}/to=${j.rxto}`);
-    } else {
-      log('unknown pkt: ' + JSON.stringify(j));
-    }
+    if (!j || !j.t) return;
+    if (j.t === 'a') applyPacketA(j);
+    else if (j.t === 'f') applyPacketF(j);
+    else if (j.t === 'd') applyPacketD(j);
+    else log('unknown pkt: ' + JSON.stringify(j));
   } catch (e) {
     log('JSON parse error: ' + e);
   }
@@ -277,7 +336,7 @@ async function connectBLE(){
     await chData.startNotifications();
     chData.addEventListener('characteristicvaluechanged', onNotify);
 
-    // read control to get current TH from "OK;TH:xx;..."
+    // Read control characteristic (e.g. "OK;TH:40;...")
     const ctrlStr = new TextDecoder().decode(await chCtrl.readValue()).trim();
     const m = ctrlStr.match(/TH:(\d{1,3})/i);
     if (m){
@@ -293,7 +352,6 @@ async function connectBLE(){
     setBleState(false);
   }
 }
-
 function onDisconnected(){
   setBleState(false);
   $('#devName').textContent = '—';
@@ -303,7 +361,6 @@ function onDisconnected(){
   ledState = 'off'; currentInterval = 0;
   log('BLE disconnected');
 }
-
 async function disconnectBLE(){
   try{
     if (device?.gatt?.connected) device.gatt.disconnect();
@@ -314,7 +371,7 @@ async function disconnectBLE(){
   }
 }
 
-// write TH:<value> back to firmware
+// Write threshold via control (TH:<value>)
 async function setThreshold(v){
   if (!chCtrl || !connected) return;
   const vv = Math.max(0, Math.min(255, Math.round(v)));
