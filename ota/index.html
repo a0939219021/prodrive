@@ -88,7 +88,6 @@
   }
   .hint{ color:#98aac4; font-size:12px }
 
-  /* ====== Mobile tweaks ====== */
   @media (max-width: 880px){
     body{ padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); }
     .grid{ grid-template-columns:1fr; gap:12px }
@@ -207,39 +206,53 @@ function setBleState(ok){
   $('#btnConnect').disabled = ok;
 }
 
-function updateLED(j) {
+// Map firmware JSON -> UI
+function applyPacketA(j){
+  $('#rpm').textContent  = j.rpm ?? 0;
+  $('#thr').textContent  = j.tps ?? 0;
+  $('#map').textContent  = j.map ?? 0;
+  $('#volt').textContent = (j.vol ?? 0).toFixed ? j.vol.toFixed(2) : j.vol;
+  // show device threshold from firmware if present
+  if (typeof j.thr === 'number'){
+    $('#thSlider').value = String(j.thr);
+    $('#thVal').textContent = String(j.thr);
+  }
+  // LED behaviour
   const led = $('#led');
-  if (j.MAP <= j.Threshold || (Number(j.Throttle) || 0) < 12) {
+  if (!j.fan){ // off
     clearInterval(blinkTimer);
     led.classList.remove('on');
     led.style.background = '#bbb';
     ledState = 'off';
     currentInterval = 0;
-    return;
-  }
-  let throttle = Math.min(80, Number(j.Throttle) || 0);
-  const newInterval = Math.max(100, 1000 - throttle * 8);
-  if (ledState !== 'blink' || newInterval !== currentInterval) {
-    clearInterval(blinkTimer);
-    let on = false;
-    blinkTimer = setInterval(()=>{
-      on = !on;
-      led.classList.toggle('on', on);
-      led.style.background = on ? 'lime' : '#bbb';
-    }, newInterval);
-    ledState = 'blink';
-    currentInterval = newInterval;
+  }else{
+    const newInterval = Math.max(50, parseInt(j.bl || 500, 10));
+    if (ledState !== 'blink' || newInterval !== currentInterval) {
+      clearInterval(blinkTimer);
+      let on = false;
+      blinkTimer = setInterval(()=>{
+        on = !on;
+        led.classList.toggle('on', on);
+        led.style.background = on ? 'lime' : '#bbb';
+      }, newInterval);
+      ledState = 'blink';
+      currentInterval = newInterval;
+    }
   }
 }
 
 function onNotify(ev) {
   try {
     const j = JSON.parse(new TextDecoder().decode(ev.target.value));
-    $('#rpm').textContent  = j.RPM ?? 0;
-    $('#thr').textContent  = j.Throttle ?? 0;
-    $('#map').textContent  = j.MAP ?? 0;
-    $('#volt').textContent = (j.Voltage ?? 0).toFixed ? Number(j.Voltage).toFixed(2) : j.Voltage;
-    updateLED(j);
+    if (j && j.t === 'a'){         // core packet
+      applyPacketA(j);
+    } else if (j && j.t === 'f'){  // fuel packet (log for now)
+      log(`fuel: src=${j.src}, FR=${j.fr ?? 'NA'} L/h, iL/100=${j.iL100 ?? 'NA'}`);
+    } else if (j && j.t === 'd'){  // diag packet
+      log(`diag: can=${j.can}, pwm=${j.pwm}, rate=${j.rate}, loop=${j.loop}ms rxok=${j.rxok}/to=${j.rxto}`);
+    } else {
+      log('unknown pkt: ' + JSON.stringify(j));
+    }
   } catch (e) {
     log('JSON parse error: ' + e);
   }
@@ -248,7 +261,6 @@ function onNotify(ev) {
 async function connectBLE(){
   try{
     setBleState(false);
-    // Bluefy 支援 Web Bluetooth；使用 namePrefix 快速過濾 THRUSTER 裝置
     const dev = await navigator.bluetooth.requestDevice({
       filters:[{ namePrefix:'THRUSTER' }],
       optionalServices:[SVC_UUID]
@@ -265,10 +277,14 @@ async function connectBLE(){
     await chData.startNotifications();
     chData.addEventListener('characteristicvaluechanged', onNotify);
 
-    const thStr = new TextDecoder().decode(await chCtrl.readValue()).trim();
-    const thNum = clamp(parseInt(thStr,10), 0, 255);
-    $('#thSlider').value = String(thNum);
-    $('#thVal').textContent = String(thNum);
+    // read control to get current TH from "OK;TH:xx;..."
+    const ctrlStr = new TextDecoder().decode(await chCtrl.readValue()).trim();
+    const m = ctrlStr.match(/TH:(\d{1,3})/i);
+    if (m){
+      const th = Math.max(0, Math.min(255, parseInt(m[1],10)));
+      $('#thSlider').value = String(th);
+      $('#thVal').textContent = String(th);
+    }
 
     setBleState(true);
     log('Connected to: ' + (device.name || 'THRUSTER'));
@@ -277,6 +293,7 @@ async function connectBLE(){
     setBleState(false);
   }
 }
+
 function onDisconnected(){
   setBleState(false);
   $('#devName').textContent = '—';
@@ -286,6 +303,7 @@ function onDisconnected(){
   ledState = 'off'; currentInterval = 0;
   log('BLE disconnected');
 }
+
 async function disconnectBLE(){
   try{
     if (device?.gatt?.connected) device.gatt.disconnect();
@@ -296,27 +314,26 @@ async function disconnectBLE(){
   }
 }
 
+// write TH:<value> back to firmware
 async function setThreshold(v){
   if (!chCtrl || !connected) return;
-  const vv = clamp(Math.round(v), 0, 255);
+  const vv = Math.max(0, Math.min(255, Math.round(v)));
   try{
-    await chCtrl.writeValue(new TextEncoder().encode(String(vv)));
+    await chCtrl.writeValue(new TextEncoder().encode(`TH:${vv}`));
     log('Threshold set to ' + vv);
   }catch(e){
     log('Failed to set threshold: ' + e);
   }
 }
 
-const clamp = (n,min,max)=>Math.min(max,Math.max(min,n));
-
 $('#btnConnect').addEventListener('click', connectBLE);
 $('#btnDisconnect').addEventListener('click', disconnectBLE);
 $('#thSlider').addEventListener('input', (e)=>{
-  const v = clamp(parseInt(e.target.value,10) || 0, 0, 255);
+  const v = Math.max(0, Math.min(255, parseInt(e.target.value,10) || 0));
   $('#thVal').textContent = String(v);
 });
 $('#thSlider').addEventListener('change', (e)=>{
-  const v = clamp(parseInt(e.target.value,10) || 0, 0, 255);
+  const v = Math.max(0, Math.min(255, parseInt(e.target.value,10) || 0));
   setThreshold(v);
 });
 </script>
