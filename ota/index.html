@@ -1,324 +1,161 @@
 <!doctype html>
 <html lang="zh-Hant">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <title>ESP32-C3 OBD-II BLE Console</title>
-  <style>
-    :root {
-      --bg: #0b0f14;
-      --panel: #121823;
-      --card: #161e2a;
-      --accent: #4cc9f0;
-      --accent2: #a0e7ff;
-      --ok: #20c997;
-      --warn: #ffd166;
-      --err: #ef476f;
-      --text: #e9eef6;
-      --muted: #9db0c3;
-      --ring: #2b394b;
-    }
-    * { box-sizing: border-box; }
-    html, body { margin: 0; height: 100%; background: radial-gradient(1200px 800px at 80% -10%, #142033 0%, #0b0f14 55%); color: var(--text); font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans TC", "Helvetica Neue", Arial, "Apple Color Emoji", "Segoe UI Emoji"; }
-    header { padding: 18px 16px 8px; display: flex; align-items: center; justify-content: space-between; }
-    .brand { display: flex; align-items: center; gap: 10px; }
-    .logo { width: 30px; height: 30px; border-radius: 10px; background: linear-gradient(135deg, var(--accent), var(--accent2)); box-shadow: 0 0 0 6px rgba(76,201,240,0.12), 0 6px 18px rgba(0,0,0,0.35); }
-    .title { font-weight: 700; letter-spacing: 0.2px; font-size: 16px; }
-    .subtitle { color: var(--muted); font-size: 12px; margin-top: 2px; }
-
-    .actions { display: flex; gap: 10px; }
-    button {
-      border: 0; background: var(--card); color: var(--text);
-      padding: 10px 14px; border-radius: 12px; font-weight: 600; cursor: pointer;
-      box-shadow: inset 0 0 0 1px var(--ring), 0 6px 20px rgba(0,0,0,0.25);
-      transition: transform .06s ease, filter .2s ease, box-shadow .2s ease;
-    }
-    button:active { transform: translateY(1px) scale(0.99); }
-    .btn-primary { background: linear-gradient(180deg, #2b96c0, #1f6baf); box-shadow: inset 0 0 0 1px rgba(255,255,255,0.15), 0 10px 24px rgba(76,201,240,0.25); }
-    .btn-danger { background: linear-gradient(180deg, #973447, #7c2435); }
-    .btn-ghost { background: transparent; box-shadow: inset 0 0 0 1px var(--ring); color: var(--muted); }
-
-    main { padding: 10px 16px 24px; }
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(12, 1fr);
-      gap: 12px;
-    }
-    .card {
-      grid-column: span 12;
-      background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.0)), var(--card);
-      border-radius: 16px; padding: 14px;
-      box-shadow: inset 0 0 0 1px var(--ring), 0 10px 30px rgba(0,0,0,0.35);
-    }
-    @media (min-width: 760px) {
-      .span-4 { grid-column: span 4; }
-      .span-8 { grid-column: span 8; }
-    }
-    .label { font-size: 12px; color: var(--muted); letter-spacing: .3px; }
-    .value { font-size: 32px; font-weight: 800; letter-spacing: .5px; margin-top: 4px; }
-    .unit { font-size: 14px; color: var(--muted); margin-left: 6px; font-weight: 600; }
-    .small { font-size: 12px; color: var(--muted); }
-
-    .bar {
-      width: 100%; height: 12px; background: #0e1420; border-radius: 999px; overflow: hidden;
-      box-shadow: inset 0 0 0 1px var(--ring);
-      margin-top: 8px;
-    }
-    .bar > div {
-      height: 100%; width: 0%;
-      background: linear-gradient(90deg, #21d4fd, #b721ff);
-      transition: width .25s ease;
-      box-shadow: 0 0 18px rgba(164, 93, 255, .35);
-    }
-
-    .status {
-      display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px;
-      margin-top: 6px;
-    }
-    .dot {
-      width: 8px; height: 8px; border-radius: 999px; background: var(--err);
-      box-shadow: 0 0 0 6px rgba(239,71,111,0.08);
-    }
-    .dot.ok { background: var(--ok); box-shadow: 0 0 0 6px rgba(32,201,151,0.10); }
-    .dot.warn { background: var(--warn); box-shadow: 0 0 0 6px rgba(255,209,102,0.10); }
-
-    .log {
-      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-      font-size: 12px; color: #d2def0; background: #0c121b;
-      border-radius: 12px; padding: 10px; min-height: 120px; max-height: 220px; overflow: auto;
-      box-shadow: inset 0 0 0 1px var(--ring);
-      white-space: pre-wrap; word-break: break-word;
-    }
-    .kbd { font-family: inherit; padding: 2px 6px; border-radius: 6px; background: #0f1723; box-shadow: inset 0 0 0 1px var(--ring); }
-    .footer { padding: 4px 16px 18px; color: var(--muted); font-size: 12px; text-align: center; }
-    a { color: var(--accent); text-decoration: none; }
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>ESP32C3 OBD BLE</title>
+<style>
+body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Noto Sans, sans-serif; margin: 16px; }
+button, select, input { padding: 6px 10px; margin: 4px; }
+#log { white-space: pre-wrap; background: #111; color: #0f0; padding: 10px; min-height: 220px; border-radius: 8px; }
+.card { border: 1px solid #ddd; border-radius: 8px; padding: 10px; margin-bottom: 12px; }
+label { display: inline-block; margin: 4px 8px 4px 0; }
+small { color: #555; }
+</style>
 </head>
 <body>
-  <header>
-    <div class="brand">
-      <div class="logo"></div>
-      <div>
-        <div class="title">THRUSTER • OBD-II Panel</div>
-        <div class="subtitle">ESP32-C3 + TWAI + NimBLE</div>
-      </div>
-    </div>
-    <div class="actions">
-      <button id="btnConnect" class="btn-primary">連線</button>
-      <button id="btnDisconnect" class="btn-danger">斷線</button>
-      <button id="btnClear" class="btn-ghost">清除日誌</button>
-    </div>
-  </header>
+<h2>ESP32C3 OBD BLE</h2>
 
-  <main>
-    <div class="grid">
-      <section class="card span-4">
-        <div class="label">Engine RPM</div>
-        <div class="value"><span id="rpm">—</span><span class="unit">rpm</span></div>
-        <div class="status"><div id="stRpm" class="dot"></div><span id="rpmHint">等待資料…</span></div>
-      </section>
+<div class="card">
+  <button id="btnConnect">🔌 連線</button>
+  <button id="btnDisconnect" disabled>❌ 斷線</button>
+  <span id="devName"></span>
+</div>
 
-      <section class="card span-4">
-        <div class="label">Throttle Position</div>
-        <div class="value"><span id="throttle">—</span><span class="unit">%</span></div>
-        <div class="bar"><div id="thrBar"></div></div>
-        <div class="status"><div id="stThr" class="dot"></div><span id="thrHint">等待資料…</span></div>
-      </section>
+<div class="card">
+  <h3>資料 / 診斷 (Notify)</h3>
+  <div id="log"></div>
+</div>
 
-      <section class="card span-4">
-        <div class="label">MAP (Manifold Abs. Pressure)</div>
-        <div class="value"><span id="map">—</span><span class="unit">kPa</span></div>
-        <div class="status"><div id="stMap" class="dot"></div><span id="mapHint">等待資料…</span></div>
-      </section>
+<div class="card">
+  <h3>控制一：協定 / 位元率（ProtoCtrl）</h3>
+  <label>位址模式：
+    <select id="selExt">
+      <option value="0">11-bit</option>
+      <option value="1" selected>29-bit</option>
+    </select>
+  </label>
+  <label>位元率：
+    <select id="selKbps">
+      <option value="500" selected>500 kbps</option>
+      <option value="250">250 kbps</option>
+      <option value="125">125 kbps</option>
+    </select>
+  </label>
+  <button id="btnProtoSet">送出設定</button>
+  <button id="btnProtoGet">讀取狀態</button>
+  <div><small>命令格式：SET ext=0|1 kbps=500|250|125 / GET</small></div>
+</div>
 
-      <section class="card span-8">
-        <div class="label">狀態 / 日誌</div>
-        <div class="log" id="log"></div>
-        <div class="small" style="margin-top:8px;">
-          提示：若掃不到裝置，請確認藍牙已開啟、App 具備位置權限、且裝置已在廣播。
-          iOS/Bluefy 需使用按鈕手勢觸發掃描。<span class="kbd">連線</span> 後會自動訂閱通知。
-        </div>
-      </section>
+<div class="card">
+  <h3>控制二：ECU（EcuCtrl）</h3>
+  <div>
+    <label>11-bit 首選回覆 ID（HEX）：<input id="inPref" value="7E8" size="6" /></label>
+    <button id="btnPref">設定 PREF</button>
+  </div>
+  <div>
+    <label>29-bit 白名單（逗號分隔 HEX）：<input id="inWl" value="10,11,17" size="16" /></label>
+    <button id="btnWl">設定 WHITELIST</button>
+  </div>
+  <button id="btnClear">清除鎖定</button>
+  <button id="btnStatus">STATUS</button>
+  <div><small>命令格式：PREF 7E8 / WHITELIST 10,11,17 / CLEAR / STATUS</small></div>
+</div>
 
-      <section class="card span-4">
-        <div class="label">連線狀態</div>
-        <div class="value" style="font-size:22px;"><span id="status">未連線</span></div>
-        <div class="small">Service: <code id="svcId">12345678-1234-5678-1234-56789abcdef0</code></div>
-        <div class="small">Char: <code id="chrId">12345678-1234-5678-1234-56789abcdef1</code></div>
-        <div class="small">Device: <span id="devName">—</span></div>
-        <div class="small">Last: <span id="lastTs">—</span></div>
-      </section>
-    </div>
-  </main>
+<script>
+const UUID_SVC   = '12345678-1234-5678-1234-56789abcdef0';
+const UUID_DATA  = '12345678-1234-5678-1234-56789abcdef1';
+const UUID_PROTO = '12345678-1234-5678-1234-56789abcdef2';
+const UUID_ECU   = '12345678-1234-5678-1234-56789abcdef3';
 
-  <div class="footer">© 2025 THRUSTER • Bluefy/Chrome Web Bluetooth • JSON: <code>{"rpm":2048,"throttle":18,"map":33}</code></div>
+let device, server, svc, chData, chProto, chEcu;
 
-  <script>
-  (() => {
-    // === UUID 與參數（必須與韌體一致） ===
-    const SVC_UUID  = "12345678-1234-5678-1234-56789abcdef0";
-    const CHAR_UUID = "12345678-1234-5678-1234-56789abcdef1";
-    const NAME_PREFIX = "ESP32C3-OBD";
+const $ = sel => document.querySelector(sel);
+const log = (s) => {
+  const el = $('#log');
+  const t = new Date().toLocaleTimeString();
+  el.textContent += `[${t}] ${s}\n`;
+  el.scrollTop = el.scrollHeight;
+};
 
-    // === DOM 快取 ===
-    const $ = (s) => document.querySelector(s);
-    const logEl = $("#log");
-    const rpmEl = $("#rpm"), rpmDot = $("#stRpm"), rpmHint = $("#rpmHint");
-    const thrEl = $("#throttle"), thrDot = $("#stThr"), thrHint = $("#thrHint"), thrBar = $("#thrBar");
-    const mapEl = $("#map"), mapDot = $("#stMap"), mapHint = $("#mapHint");
-    const statusEl = $("#status"), devNameEl = $("#devName"), lastTsEl = $("#lastTs");
+async function connect() {
+  device = await navigator.bluetooth.requestDevice({
+    filters: [{ namePrefix: 'ESP32C3-OBD' }],
+    optionalServices: [UUID_SVC]
+  });
+  $('#devName').textContent = device.name || '(no name)';
+  device.addEventListener('gattserverdisconnected', onDisconnected);
 
-    // === BLE 物件 ===
-    let device = null, server = null, characteristic = null;
-    const decoder = new TextDecoder("utf-8");
+  server = await device.gatt.connect();
+  svc = await server.getPrimaryService(UUID_SVC);
+  chData  = await svc.getCharacteristic(UUID_DATA);
+  chProto = await svc.getCharacteristic(UUID_PROTO);
+  chEcu   = await svc.getCharacteristic(UUID_ECU);
 
-    // === UI & Log ===
-    function log(msg, level="info") {
-      const t = new Date();
-      const hh = String(t.getHours()).padStart(2,"0");
-      const mm = String(t.getMinutes()).padStart(2,"0");
-      const ss = String(t.getSeconds()).padStart(2,"0");
-      const tag = level === "err" ? "❌" : level === "ok" ? "✅" : "•";
-      logEl.textContent += `[${hh}:${mm}:${ss}] ${tag} ${msg}\n`;
-      logEl.scrollTop = logEl.scrollHeight;
-    }
-    function setConnStatus(ok, name="—") {
-      statusEl.textContent = ok ? "已連線" : "未連線";
-      statusEl.style.color = ok ? "var(--ok)" : "var(--text)";
-      devNameEl.textContent = ok ? name : "—";
-    }
-    function setDot(el, state) {
-      el.classList.remove("ok","warn");
-      if (state === "ok") el.classList.add("ok");
-      else if (state === "warn") el.classList.add("warn");
-    }
-    function updateValues(obj) {
-      // obj = { rpm: int|-1, throttle: 0..100|-1, map: int|-1 }
-      const now = new Date().toLocaleTimeString();
-      lastTsEl.textContent = now;
+  await chData.startNotifications();
+  chData.addEventListener('characteristicvaluechanged', e => {
+    const v = new TextDecoder().decode(e.target.value);
+    log('RX: ' + v);
+  });
+  $('#btnDisconnect').disabled = false;
+  $('#btnConnect').disabled = true;
+  log('✅ GATT connected & notifications started');
+}
 
-      if (Number.isInteger(obj.rpm) && obj.rpm >= 0) {
-        rpmEl.textContent = obj.rpm;
-        setDot(rpmDot, "ok"); rpmHint.textContent = "OK";
-      }
-      if (Number.isInteger(obj.throttle) && obj.throttle >= 0) {
-        thrEl.textContent = obj.throttle;
-        setDot(thrDot, "ok"); thrHint.textContent = "OK";
-        thrBar.style.width = Math.max(0, Math.min(100, obj.throttle)) + "%";
-      }
-      if (Number.isInteger(obj.map) && obj.map >= 0) {
-        mapEl.textContent = obj.map;
-        setDot(mapDot, "ok"); mapHint.textContent = "OK";
-      }
-    }
+function onDisconnected() {
+  log('❌ Disconnected');
+  $('#btnDisconnect').disabled = true;
+  $('#btnConnect').disabled = false;
+}
 
-    // === 解析通知 ===
-    function handleNotify(ev) {
-      try {
-        const v = decoder.decode(ev.target.value);
-        log(`RX: ${v}`);
-        try {
-          const obj = JSON.parse(v);
-          updateValues(obj);
-        } catch (e) {
-          // 若不是 JSON，顯示原字串
-          if (v && v.length) {
-            // 例如初次 READ 可能回 "ESP32C3 OBD CAN"
-            setDot(rpmDot, "warn"); setDot(thrDot, "warn"); setDot(mapDot, "warn");
-            rpmHint.textContent = "等待 JSON…";
-            thrHint.textContent = "等待 JSON…";
-            mapHint.textContent = "等待 JSON…";
-          }
-        }
-      } catch (e) {
-        log(`decode error: ${e}`, "err");
-      }
-    }
+async function disconnect() {
+  if (device && device.gatt.connected) device.gatt.disconnect();
+}
 
-    // === 連線流程 ===
-    async function connect() {
-      try {
-        if (!navigator.bluetooth) {
-          alert("此瀏覽器不支援 Web Bluetooth。請改用 Chrome 或 Bluefy。");
-          return;
-        }
-        log("Requesting device…");
-        let dev;
-        try {
-          dev = await navigator.bluetooth.requestDevice({
-            filters: [
-              { namePrefix: NAME_PREFIX },
-              { services: [SVC_UUID] },      // 128-bit 服務過濾（同韌體）
-            ],
-            optionalServices: [SVC_UUID],
-          });
-        } catch (e) {
-          // 部分環境可嘗試廣掃
-          log("Filters 掃描失敗，嘗試 acceptAllDevices…");
-          dev = await navigator.bluetooth.requestDevice({
-            acceptAllDevices: true,
-            optionalServices: [SVC_UUID],
-          });
-        }
+async function protoSet() {
+  const ext  = $('#selExt').value;
+  const kbps = $('#selKbps').value;
+  const cmd = `SET ext=${ext} kbps=${kbps}`;
+  await chProto.writeValue(new TextEncoder().encode(cmd));
+  log('TX ProtoCtrl: ' + cmd);
+}
+async function protoGet() {
+  const v = await chProto.readValue();
+  const s = new TextDecoder().decode(v);
+  log('ProtoCtrl GET: ' + s);
+}
 
-        device = dev;
-        device.addEventListener("gattserverdisconnected", onDisconnected);
-        log(`Selected: ${device.name || "(no name)"} (${device.id})`);
+async function ecuPref() {
+  const hex = $('#inPref').value.trim();
+  const cmd = `PREF ${hex}`;
+  await chEcu.writeValue(new TextEncoder().encode(cmd));
+  log('TX EcuCtrl: ' + cmd);
+}
+async function ecuWl() {
+  const wl = $('#inWl').value.trim();
+  const cmd = `WHITELIST ${wl}`;
+  await chEcu.writeValue(new TextEncoder().encode(cmd));
+  log('TX EcuCtrl: ' + cmd);
+}
+async function ecuClear() {
+  const cmd = 'CLEAR';
+  await chEcu.writeValue(new TextEncoder().encode(cmd));
+  log('TX EcuCtrl: CLEAR');
+}
+async function ecuStatus() {
+  const v = await chEcu.readValue();
+  const s = new TextDecoder().decode(v);
+  log('EcuCtrl STATUS: ' + s);
+}
 
-        server = await device.gatt.connect();
-        setConnStatus(true, device.name || "ESP32C3");
-        log("GATT connected ✅", "ok");
-
-        const svc = await server.getPrimaryService(SVC_UUID);
-        const chr = await svc.getCharacteristic(CHAR_UUID);
-        characteristic = chr;
-
-        // 讀取一次目前值
-        try {
-          const val = await characteristic.readValue();
-          handleNotify({ target: { value: val }});
-        } catch {}
-
-        // 啟用通知
-        await characteristic.startNotifications();
-        characteristic.addEventListener("characteristicvaluechanged", handleNotify);
-        log("Notifications started ✅", "ok");
-      } catch (e) {
-        log(String(e), "err");
-        alert("連線失敗：\n" + e);
-        await disconnect(); // 清理
-      }
-    }
-
-    async function disconnect() {
-      try {
-        if (characteristic) {
-          try { await characteristic.stopNotifications(); } catch {}
-          characteristic.removeEventListener("characteristicvaluechanged", handleNotify);
-        }
-        characteristic = null;
-
-        if (device && device.gatt && device.gatt.connected) {
-          device.gatt.disconnect();
-        }
-      } catch {}
-      setConnStatus(false);
-      log("Disconnected.");
-    }
-
-    function onDisconnected() {
-      setConnStatus(false);
-      log("GATT disconnected.");
-    }
-
-    // === 綁定事件 ===
-    $("#btnConnect").addEventListener("click", () => connect());
-    $("#btnDisconnect").addEventListener("click", () => disconnect());
-    $("#btnClear").addEventListener("click", () => (logEl.textContent = ""));
-
-    // 預設點狀態
-    setDot(rpmDot); setDot(thrDot); setDot(mapDot);
-  })();
-  </script>
+$('#btnConnect').onclick = connect;
+$('#btnDisconnect').onclick = disconnect;
+$('#btnProtoSet').onclick = protoSet;
+$('#btnProtoGet').onclick = protoGet;
+$('#btnPref').onclick = ecuPref;
+$('#btnWl').onclick = ecuWl;
+$('#btnClear').onclick = ecuClear;
+$('#btnStatus').onclick = ecuStatus;
+</script>
 </body>
 </html>
