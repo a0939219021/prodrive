@@ -1,111 +1,324 @@
 <!doctype html>
-<html lang="zh-Hant">
+<html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>OBD-C3 Monitor</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#0b0f14" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<title>THRUSTER PANEL</title>
 <style>
-  :root { --bg:#0f1115; --card:#171a22; --accent:#5cc8ff; --text:#e8edf2; --muted:#9aa6b2; }
-  html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Helvetica,Arial;}
-  .wrap{max-width:480px;margin:0 auto;padding:24px;}
-  .title{font-size:20px;font-weight:700;letter-spacing:.5px;margin-bottom:16px;text-align:center}
-  .btn{width:100%;padding:14px 16px;border-radius:14px;border:none;background:var(--accent);color:#012; font-weight:700; cursor:pointer; box-shadow:0 10px 30px rgba(92,200,255,.25)}
-  .btn:active{transform:translateY(1px)}
-  .row{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:16px}
-  .card{background:var(--card);border-radius:18px;padding:16px 18px;box-shadow:0 12px 30px rgba(0,0,0,.35)}
-  .label{color:var(--muted);font-size:12px;letter-spacing:.6px;text-transform:uppercase;margin-bottom:6px}
-  .value{font-size:28px;font-weight:800}
-  .unit{font-size:14px;color:var(--muted);margin-left:6px}
-  .status{margin:16px 2px 6px;color:var(--muted);font-size:12px;text-align:center}
-  .ok{color:#6fe38a}
-  .warn{color:#ffcb6b}
+  :root{
+    --bg:#0b0f14; --card:#121923; --muted:#7d8ca1; --text:#eaf2ff; --accent:#6aa6ff;
+    --ok:#35d07f; --warn:#ffd166; --bad:#ff6b6b;
+    --space: clamp(10px, 2vw, 16px);
+    --radius: 20px;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+  html,body{height:100%}
+  body{
+    margin:0; background:linear-gradient(160deg,#0b0f14 0%,#0e1420 40%,#0b0f14 100%);
+    color:var(--text);
+    font-family: ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans",sans-serif;
+    display:grid; place-items:center; padding:24px;
+  }
+  .card{
+    width:min(960px,96vw); background:linear-gradient(180deg,#151f2c 0%, #101826 100%);
+    border:1px solid #263041; border-radius:var(--radius); box-shadow:0 10px 30px rgba(0,0,0,.35);
+    padding: clamp(14px, 2.5vw, 20px);
+  }
+  .header{
+    display:flex; gap:12px; align-items:center; justify-content:space-between; margin-bottom:6px;
+  }
+  .title{ display:flex; align-items:center; gap:12px; }
+  .badge{
+    font-size:12px; color:#0b0f14; background:var(--accent); padding:6px 10px; border-radius:999px; font-weight:700;
+  }
+  .status{ display:flex; align-items:center; gap:10px; flex-wrap:wrap }
+  .dot{
+    width:10px; height:10px; border-radius:50%; background:#576279; box-shadow:0 0 0 2px #222c3a inset;
+  }
+  .dot.on{ background:var(--ok); box-shadow:0 0 12px 2px rgba(53,208,127,.6) }
+  .muted{ color:var(--muted); font-size:14px }
+  .btn{
+    background:#1b2737; color:var(--text); border:1px solid #2b3a51; padding:12px 16px; border-radius:12px;
+    font-weight:700; cursor:pointer; transition:.18s ease; min-height:44px; min-width:44px;
+  }
+  .btn:hover{ transform:translateY(-1px); border-color:#3d5272 }
+  .btn:active{ transform:translateY(0) }
+  .btn[disabled]{ opacity:.5; cursor:not-allowed }
+  .btn.primary{ background:linear-gradient(180deg,#2a69ff,#2256d9); border:0 }
+  .grid{ display:grid; grid-template-columns: 1.1fr 1fr; gap:16px; margin-top:12px; }
+  .panel{ background:rgba(13,20,31,.6); border:1px solid #263041; border-radius:16px; padding:14px; }
+  .section-title{
+    font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:#a7b6cc; margin:2px 0 10px;
+  }
+  .kv{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; }
+  .metric{
+    background:linear-gradient(180deg,#122033,#0f1a2a); border:1px solid #24334a; border-radius:14px; padding:12px;
+  }
+  .metric .label{ font-size:12px; color:#9cb0c9; letter-spacing:.02em }
+  .metric .value{ font-weight:800; font-size:clamp(18px, 4.2vw, 24px); margin-top:6px; line-height:1.1 }
+  .value .unit{ font-size:12px; color:#8fa3be; margin-left:4px; font-weight:700 }
+  .row{ display:flex; align-items:center; gap:12px; flex-wrap:wrap }
+  .led{
+    width:64px; height:64px; border-radius:50%;
+    background:#bbb; border:1px solid #7a879a;
+    box-shadow: inset 0 0 18px rgba(255,255,255,.15), 0 4px 16px rgba(0,0,0,.45);
+    transition: background .15s ease, box-shadow .15s ease, transform .15s ease;
+  }
+  .led.on{
+    background:lime;
+    box-shadow: 0 0 16px 4px rgba(0,255,0,.65), inset 0 0 14px rgba(0,0,0,.25);
+  }
+  .mono{
+    width:100%; min-height:88px; max-height:200px; overflow:auto;
+    background:linear-gradient(180deg,#0c1420,#0a111b); border:1px solid #223049; border-radius:12px;
+    padding:10px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; color:#b9c7dd;
+  }
+  .slider{
+    -webkit-appearance:none; appearance:none; width:100%; height:8px; border-radius:999px;
+    background:linear-gradient(90deg,#2e3b52,#244f93); outline:none;
+  }
+  .slider::-webkit-slider-thumb{
+    -webkit-appearance:none; appearance:none; width:24px; height:24px; border-radius:50%;
+    background:var(--accent); border:2px solid #d7e6ff; cursor:pointer; box-shadow:0 2px 8px rgba(0,0,0,.35);
+  }
+  .pill{
+    background:#172337; border:1px solid #273756; padding:8px 12px; border-radius:999px; color:#c4d3ea; font-size:13px; font-weight:800;
+  }
+  .hint{ color:#98aac4; font-size:12px }
+
+  /* ====== Mobile tweaks ====== */
+  @media (max-width: 880px){
+    body{ padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); }
+    .grid{ grid-template-columns:1fr; gap:12px }
+    .status{ width:100%; justify-content:flex-end }
+    .kv{ grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px }
+    .led{ width:56px; height:56px }
+    .btn{ padding:13px 18px; border-radius:14px }
+    .mono{ max-height: 160px }
+  }
+  @media (max-width: 420px){
+    .kv{ grid-template-columns:1fr 1fr }
+    .title div:first-child{ transform: scale(.95) }
+    .badge{ font-size:11px; padding:6px 10px }
+  }
 </style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="title">OBD-C3 • Live</div>
-    <button id="btn" class="btn">連線 / Connect</button>
-    <div class="status" id="status">尚未連線</div>
-
-    <div class="row" style="margin-top:18px">
-      <div class="card">
-        <div class="label">Engine RPM</div>
-        <div class="value"><span id="rpm">—</span><span class="unit">rpm</span></div>
+  <div class="card">
+    <div class="header">
+      <div class="title">
+        <div style="width:36px;height:36px;border-radius:12px;display:grid;place-items:center;
+            background:radial-gradient(120% 120% at 100% 0%,#2f4a6f 0%,#23344e 60%,#1a263a 100%); border:1px solid #2b3a51;">
+          🚗
+        </div>
+        <div>
+          <div style="font-size:clamp(18px,4.8vw,20px);font-weight:800;letter-spacing:.2px">THRUSTER PANEL</div>
+          <div class="muted">BLE: 6E40… / Realtime Display + Threshold Control</div>
+        </div>
       </div>
-      <div class="card">
-        <div class="label">MAP</div>
-        <div class="value"><span id="map">—</span><span class="unit">kPa</span></div>
+      <div class="status">
+        <span class="badge" id="bleState">Disconnected</span>
+        <span class="dot" id="dot"></span>
+        <button class="btn primary" id="btnConnect">Connect</button>
+        <button class="btn" id="btnDisconnect" disabled>Disconnect</button>
       </div>
     </div>
 
-    <div class="row">
-      <div class="card" style="grid-column:1/-1">
-        <div class="label">Throttle</div>
-        <div class="value"><span id="throttle">—</span><span class="unit">%</span></div>
+    <div class="grid">
+      <!-- Left: Realtime Info -->
+      <div class="panel">
+        <div class="section-title">Realtime Info</div>
+        <div class="kv">
+          <div class="metric"><div class="label">RPM</div><div class="value"><span id="rpm">0</span><span class="unit">rpm</span></div></div>
+          <div class="metric"><div class="label">Throttle</div><div class="value"><span id="thr">0</span><span class="unit">%</span></div></div>
+          <div class="metric"><div class="label">MAP</div><div class="value"><span id="map">0</span><span class="unit">kPa</span></div></div>
+          <div class="metric"><div class="label">Voltage</div><div class="value"><span id="volt">0.00</span><span class="unit">V</span></div></div>
+        </div>
+
+        <div style="height:12px"></div>
+
+        <div class="row">
+          <div style="display:flex;flex-direction:column;gap:8px;min-width:220px;flex:1">
+            <div class="section-title" style="margin:0">Threshold Setting</div>
+            <input id="thSlider" class="slider" type="range" min="0" max="255" value="40" />
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+              <div class="hint">MAP above threshold will trigger LED blinking</div>
+              <div class="pill">Threshold: <span id="thVal">40</span></div>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:14px">
+            <div id="led" class="led" title="LED"></div>
+            <div class="muted">MAP > threshold → Blink (Throttle 12–80 controls speed)</div>
+          </div>
+        </div>
+
+        <div style="height:10px"></div>
+        <div class="mono" id="log" role="log" aria-live="polite"></div>
+      </div>
+
+      <!-- Right: Device Info -->
+      <div class="panel">
+        <div class="section-title">Device</div>
+        <div style="display:grid;gap:10px">
+          <div class="metric">
+            <div class="label">THRUSTER Name</div>
+            <div class="value" style="font-size:clamp(15px,3.8vw,18px)"><span id="devName">—</span></div>
+          </div>
+          <div class="metric">
+            <div class="label">Service UUID</div>
+            <div class="value" style="font-size:13px;word-break:break-all">6e400001-b5a3-f393-e0a9-e50e24dcca9e</div>
+          </div>
+          <div class="metric">
+            <div class="label">Data Characteristic</div>
+            <div class="value" style="font-size:13px;word-break:break-all">6e400003-b5a3-f393-e0a9-e50e24dcca9e</div>
+          </div>
+          <div class="metric">
+            <div class="label">Control Characteristic</div>
+            <div class="value" style="font-size:13px;word-break:break-all">6e400002-b5a3-f393-e0a9-e50e24dcca9e</div>
+          </div>
+          <div class="hint">Tip: Web Bluetooth works only over HTTPS or <code>localhost</code>.</div>
+        </div>
       </div>
     </div>
   </div>
 
 <script>
-const OBD_SERVICE = '12345678-1234-5678-1234-56789abcdef0';
-const OBD_CHAR    = '12345678-1234-5678-1234-56789abcdef1';
+const $ = (s)=>document.querySelector(s);
+const log = (m)=>{ const el=$('#log'); const t=new Date().toLocaleTimeString(); el.textContent = `[${t}] ${m}\n` + el.textContent.slice(0,4000);};
 
-const $ = s => document.querySelector(s);
-const fmt = n => (n==null || isNaN(n)) ? '—' : Math.round(n);
+const SVC_UUID  = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+const DATA_UUID = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
+const CTRL_UUID = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
 
-let device, server, characteristic;
+let device, server, svc, chData, chCtrl;
+let connected = false;
 
-function logStatus(txt, ok=false) {
-  const el = $('#status');
-  el.textContent = txt;
-  el.className = ok ? 'status ok' : 'status warn';
+let blinkTimer = null;
+let ledState = 'off';
+let currentInterval = 0;
+
+function setBleState(ok){
+  connected = ok;
+  $('#bleState').textContent = ok ? 'Connected' : 'Disconnected';
+  $('#dot').classList.toggle('on', ok);
+  $('#btnDisconnect').disabled = !ok;
+  $('#btnConnect').disabled = ok;
 }
 
-async function connect() {
-  try {
-    logStatus('掃描中…');
-    device = await navigator.bluetooth.requestDevice({
-      filters: [{ services: [OBD_SERVICE] }],
-      optionalServices: [OBD_SERVICE]
-    });
-    device.addEventListener('gattserverdisconnected', () => logStatus('已斷線', false));
-
-    logStatus('連線中…');
-    server = await device.gatt.connect();
-
-    const svc = await server.getPrimaryService(OBD_SERVICE);
-    characteristic = await svc.getCharacteristic(OBD_CHAR);
-
-    await characteristic.startNotifications();
-    characteristic.addEventListener('characteristicvaluechanged', ev => {
-      const v = new TextDecoder().decode(ev.target.value);
-      try {
-        const j = JSON.parse(v);
-        if ('rpm' in j) $('#rpm').textContent = fmt(j.rpm);
-        if ('map_kpa' in j) $('#map').textContent = fmt(j.map_kpa);
-        if ('throttle_pct' in j) $('#throttle').textContent = fmt(j.throttle_pct);
-      } catch (e) {
-        console.warn('JSON parse error', e, v);
-      }
-    });
-
-    /* 初次 Read（避免等通知） */
-    const initVal = await characteristic.readValue();
-    try {
-      const j = JSON.parse(new TextDecoder().decode(initVal));
-      if ('rpm' in j) $('#rpm').textContent = fmt(j.rpm);
-      if ('map_kpa' in j) $('#map').textContent = fmt(j.map_kpa);
-      if ('throttle_pct' in j) $('#throttle').textContent = fmt(j.throttle_pct);
-    } catch {}
-
-    logStatus('已連線並訂閱通知', true);
-  } catch (e) {
-    console.error(e);
-    logStatus('連線失敗：' + e.message, false);
+function updateLED(j) {
+  const led = $('#led');
+  if (j.MAP <= j.Threshold || (Number(j.Throttle) || 0) < 12) {
+    clearInterval(blinkTimer);
+    led.classList.remove('on');
+    led.style.background = '#bbb';
+    ledState = 'off';
+    currentInterval = 0;
+    return;
+  }
+  let throttle = Math.min(80, Number(j.Throttle) || 0);
+  const newInterval = Math.max(100, 1000 - throttle * 8);
+  if (ledState !== 'blink' || newInterval !== currentInterval) {
+    clearInterval(blinkTimer);
+    let on = false;
+    blinkTimer = setInterval(()=>{
+      on = !on;
+      led.classList.toggle('on', on);
+      led.style.background = on ? 'lime' : '#bbb';
+    }, newInterval);
+    ledState = 'blink';
+    currentInterval = newInterval;
   }
 }
 
-$('#btn').addEventListener('click', connect);
+function onNotify(ev) {
+  try {
+    const j = JSON.parse(new TextDecoder().decode(ev.target.value));
+    $('#rpm').textContent  = j.RPM ?? 0;
+    $('#thr').textContent  = j.Throttle ?? 0;
+    $('#map').textContent  = j.MAP ?? 0;
+    $('#volt').textContent = (j.Voltage ?? 0).toFixed ? Number(j.Voltage).toFixed(2) : j.Voltage;
+    updateLED(j);
+  } catch (e) {
+    log('JSON parse error: ' + e);
+  }
+}
+
+async function connectBLE(){
+  try{
+    setBleState(false);
+    // Bluefy 支援 Web Bluetooth；使用 namePrefix 快速過濾 THRUSTER 裝置
+    const dev = await navigator.bluetooth.requestDevice({
+      filters:[{ namePrefix:'THRUSTER' }],
+      optionalServices:[SVC_UUID]
+    });
+    device = dev;
+    device.addEventListener('gattserverdisconnected', onDisconnected);
+    $('#devName').textContent = device.name || '—';
+
+    server = await device.gatt.connect();
+    svc = await server.getPrimaryService(SVC_UUID);
+    chData = await svc.getCharacteristic(DATA_UUID);
+    chCtrl = await svc.getCharacteristic(CTRL_UUID);
+
+    await chData.startNotifications();
+    chData.addEventListener('characteristicvaluechanged', onNotify);
+
+    const thStr = new TextDecoder().decode(await chCtrl.readValue()).trim();
+    const thNum = clamp(parseInt(thStr,10), 0, 255);
+    $('#thSlider').value = String(thNum);
+    $('#thVal').textContent = String(thNum);
+
+    setBleState(true);
+    log('Connected to: ' + (device.name || 'THRUSTER'));
+  }catch(e){
+    log('Connection failed: ' + e);
+    setBleState(false);
+  }
+}
+function onDisconnected(){
+  setBleState(false);
+  $('#devName').textContent = '—';
+  clearInterval(blinkTimer);
+  $('#led').classList.remove('on');
+  $('#led').style.background = '#bbb';
+  ledState = 'off'; currentInterval = 0;
+  log('BLE disconnected');
+}
+async function disconnectBLE(){
+  try{
+    if (device?.gatt?.connected) device.gatt.disconnect();
+  }catch(e){
+    log('Disconnect failed: ' + e);
+  }finally{
+    onDisconnected();
+  }
+}
+
+async function setThreshold(v){
+  if (!chCtrl || !connected) return;
+  const vv = clamp(Math.round(v), 0, 255);
+  try{
+    await chCtrl.writeValue(new TextEncoder().encode(String(vv)));
+    log('Threshold set to ' + vv);
+  }catch(e){
+    log('Failed to set threshold: ' + e);
+  }
+}
+
+const clamp = (n,min,max)=>Math.min(max,Math.max(min,n));
+
+$('#btnConnect').addEventListener('click', connectBLE);
+$('#btnDisconnect').addEventListener('click', disconnectBLE);
+$('#thSlider').addEventListener('input', (e)=>{
+  const v = clamp(parseInt(e.target.value,10) || 0, 0, 255);
+  $('#thVal').textContent = String(v);
+});
+$('#thSlider').addEventListener('change', (e)=>{
+  const v = clamp(parseInt(e.target.value,10) || 0, 0, 255);
+  setThreshold(v);
+});
 </script>
 </body>
 </html>
