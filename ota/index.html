@@ -1,328 +1,111 @@
 <!doctype html>
 <html lang="zh-Hant">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>ESP32C3-OBD BLE Console (2 Controls)</title>
-  <style>
-    :root{--bg:#0b1020;--fg:#dfe7ff;--muted:#9bb0ff;--card:#121a33;--ok:#15c37e;--warn:#e6b32a;--err:#ff6b6b;}
-    html,body{height:100%}
-    body{
-      margin:0;background:linear-gradient(180deg,#0b1020,#0b1020 180px,#0c1328);
-      color:var(--fg);font:15px/1.5 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto;
-      -webkit-font-smoothing:antialiased; padding:24px;
-    }
-    h1{margin:0 0 16px;font-size:22px;font-weight:700;color:#fff}
-    .row{display:grid;grid-template-columns:1.2fr 1fr;gap:16px;align-items:start}
-    .card{
-      background:var(--card);border:1px solid rgba(255,255,255,.06);
-      border-radius:14px;padding:14px 16px;box-shadow:0 10px 30px rgba(0,0,0,.25)
-    }
-    .card h2{margin:0 0 10px;font-size:16px;color:#fff}
-    .muted{color:var(--muted)}
-    .btn{
-      appearance:none;border:0;border-radius:10px;padding:10px 12px;margin:6px 6px 0 0;
-      color:#0b1020;background:#e8eeff;font-weight:600;cursor:pointer
-    }
-    .btn.alt{background:#cfe0ff}
-    .btn.warn{background:var(--warn);color:#140b00}
-    .btn.err{background:var(--err);color:#230000}
-    .btn.ok{background:var(--ok);color:#00160d}
-    .btn:disabled{opacity:.55;cursor:not-allowed}
-    .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
-    label{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px}
-    input[type="text"],select{
-      width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.08);
-      background:#0d142a;color:#eaf1ff;outline:none
-    }
-    .kv{display:grid;grid-template-columns:120px 1fr;gap:6px 10px;align-items:center}
-    .pill{display:inline-block;padding:2px 8px;border-radius:999px;background:#1a2448;color:#bcd1ff;font-size:12px}
-    pre#log{
-      background:#050913;border:1px solid rgba(255,255,255,.06);
-      padding:10px 12px;border-radius:12px;height:280px;overflow:auto;margin:0
-    }
-    .metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:6px}
-    .metric{background:#0e1731;border:1px solid rgba(255,255,255,.05);border-radius:12px;padding:10px}
-    .metric h3{margin:0 0 4px;font:600 12px/1 var(--fg);color:#b5c8ff;letter-spacing:.2px}
-    .metric .v{font:700 20px/1.1 var(--fg)}
-    .hint{font-size:12px;color:#94a8ff;margin-top:6px}
-    a{color:#a6c0ff}
-    .footer{margin-top:14px;font-size:12px;color:#97a9ff}
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>OBD-C3 Monitor</title>
+<style>
+  :root { --bg:#0f1115; --card:#171a22; --accent:#5cc8ff; --text:#e8edf2; --muted:#9aa6b2; }
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Helvetica,Arial;}
+  .wrap{max-width:480px;margin:0 auto;padding:24px;}
+  .title{font-size:20px;font-weight:700;letter-spacing:.5px;margin-bottom:16px;text-align:center}
+  .btn{width:100%;padding:14px 16px;border-radius:14px;border:none;background:var(--accent);color:#012; font-weight:700; cursor:pointer; box-shadow:0 10px 30px rgba(92,200,255,.25)}
+  .btn:active{transform:translateY(1px)}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:16px}
+  .card{background:var(--card);border-radius:18px;padding:16px 18px;box-shadow:0 12px 30px rgba(0,0,0,.35)}
+  .label{color:var(--muted);font-size:12px;letter-spacing:.6px;text-transform:uppercase;margin-bottom:6px}
+  .value{font-size:28px;font-weight:800}
+  .unit{font-size:14px;color:var(--muted);margin-left:6px}
+  .status{margin:16px 2px 6px;color:var(--muted);font-size:12px;text-align:center}
+  .ok{color:#6fe38a}
+  .warn{color:#ffcb6b}
+</style>
 </head>
 <body>
-  <h1>ESP32C3-OBD BLE Console <span class="pill">Service 12345678-...-f0</span></h1>
+  <div class="wrap">
+    <div class="title">OBD-C3 • Live</div>
+    <button id="btn" class="btn">連線 / Connect</button>
+    <div class="status" id="status">尚未連線</div>
 
-  <div class="row">
-    <!-- 左：連線 + 即時資料 / 日誌 -->
-    <div class="card">
-      <h2>裝置連線</h2>
-      <div class="grid">
-        <button id="btnConnect" class="btn ok">🔌 連線</button>
-        <button id="btnDisconnect" class="btn err" disabled>❌ 中斷</button>
+    <div class="row" style="margin-top:18px">
+      <div class="card">
+        <div class="label">Engine RPM</div>
+        <div class="value"><span id="rpm">—</span><span class="unit">rpm</span></div>
       </div>
-      <div class="kv" style="margin-top:8px">
-        <div>狀態</div><div id="status" class="muted">尚未連線</div>
-        <div>裝置</div><div id="devname" class="muted">—</div>
-        <div>Notify</div><div id="notif" class="muted">—</div>
+      <div class="card">
+        <div class="label">MAP</div>
+        <div class="value"><span id="map">—</span><span class="unit">kPa</span></div>
       </div>
-
-      <div class="metrics">
-        <div class="metric"><h3>RPM</h3><div id="mRpm" class="v">—</div></div>
-        <div class="metric"><h3>節氣門(%)</h3><div id="mThr" class="v">—</div></div>
-        <div class="metric"><h3>MAP(kPa)</h3><div id="mMap" class="v">—</div></div>
-        <div class="metric"><h3>CAN(kbps)</h3><div id="mKbps" class="v">—</div></div>
-      </div>
-      <div class="hint">會自動解析 DataChar 的 JSON（例如 <code>{"rpm":..., "diag":"alert", ...}</code>）。</div>
-
-      <h2 style="margin-top:14px">日誌</h2>
-      <pre id="log"></pre>
-      <div class="footer">瀏覽器需支援 Web Bluetooth（Chrome / Edge 桌面版）。</div>
     </div>
 
-    <!-- 右：兩個控制面板 -->
-    <div class="card">
-      <h2>控制面板</h2>
-      <div class="pill">DataChar: …f1 / ProtoCtrl: …f2 / EcuCtrl: …f3</div>
-
-      <!-- ProtoCtrl -->
-      <section style="margin-top:10px">
-        <h2>ProtoCtrl（模式/速率）</h2>
-        <div class="grid">
-          <button class="btn alt" id="pGet">GET 狀態</button>
-          <span></span>
-          <button class="btn" data-cmd="SET ext=1"  id="pExt29">ext=1 (29-bit)</button>
-          <button class="btn" data-cmd="SET ext=0"  id="pExt11">ext=0 (11-bit)</button>
-          <button class="btn" data-cmd="SET kbps=500" id="p500">500 kbps</button>
-          <button class="btn" data-cmd="SET kbps=250" id="p250">250 kbps</button>
-          <button class="btn" data-cmd="SET kbps=125" id="p125">125 kbps</button>
-        </div>
-        <label for="protoFree">自訂指令（例如：<code>SET ext=1 kbps=500</code> 或 <code>GET</code>）</label>
-        <input id="protoFree" type="text" placeholder="輸入 ProtoCtrl 指令後按 Enter 或下方送出" />
-        <div><button class="btn ok" id="protoSend">送出到 ProtoCtrl</button></div>
-      </section>
-
-      <hr style="border:0;border-top:1px solid rgba(255,255,255,.08);margin:14px 0">
-
-      <!-- EcuCtrl -->
-      <section>
-        <h2>EcuCtrl（ECU 選擇）</h2>
-        <div class="grid">
-          <button class="btn alt" id="eStatus">STATUS</button>
-          <button class="btn warn" id="eClear">CLEAR（解鎖/清空）</button>
-        </div>
-
-        <label for="pref">PREF（11-bit 回覆 ID；例如 7E8）</label>
-        <div class="grid">
-          <input id="pref" type="text" placeholder="7E8" />
-          <button class="btn" id="ePref">送出 PREF</button>
-        </div>
-
-        <label for="wl">WHITELIST（29-bit ECU清單，16進位逗號分隔；例如 10,11,17）</label>
-        <div class="grid">
-          <input id="wl" type="text" placeholder="10,11,17" />
-          <button class="btn" id="eWl">送出 WHITELIST</button>
-        </div>
-
-        <label for="ecuFree">自訂指令（<code>PREF 7E8</code>、<code>WHITELIST 10,11</code>、<code>CLEAR</code>、<code>STATUS</code>）</label>
-        <input id="ecuFree" type="text" placeholder="輸入 EcuCtrl 指令後按 Enter 或下方送出" />
-        <div><button class="btn ok" id="ecuSend">送出到 EcuCtrl</button></div>
-      </section>
+    <div class="row">
+      <div class="card" style="grid-column:1/-1">
+        <div class="label">Throttle</div>
+        <div class="value"><span id="throttle">—</span><span class="unit">%</span></div>
+      </div>
     </div>
   </div>
 
 <script>
-(() => {
-  // === UUIDs (固定於你的韌體) ===
-  const SVC  = '12345678-1234-5678-1234-56789abcdef0';
-  const DATA = '12345678-1234-5678-1234-56789abcdef1';
-  const PROTO= '12345678-1234-5678-1234-56789abcdef2';
-  const ECU  = '12345678-1234-5678-1234-56789abcdef3';
+const OBD_SERVICE = '12345678-1234-5678-1234-56789abcdef0';
+const OBD_CHAR    = '12345678-1234-5678-1234-56789abcdef1';
 
-  // === UI refs ===
-  const $ = id => document.getElementById(id);
-  const logEl = $('log');
-  const statusEl = $('status');
-  const devEl = $('devname');
-  const notifEl = $('notif');
-  const mRpm = $('mRpm'), mThr = $('mThr'), mMap = $('mMap'), mKbps = $('mKbps');
+const $ = s => document.querySelector(s);
+const fmt = n => (n==null || isNaN(n)) ? '—' : Math.round(n);
 
-  const btnConnect = $('btnConnect'), btnDisconnect = $('btnDisconnect');
+let device, server, characteristic;
 
-  // ProtoCtrl buttons
-  const protoQuick = ['pGet','pExt29','pExt11','p500','p250','p125'].map($);
-  const protoFree = $('protoFree'), protoSend = $('protoSend');
+function logStatus(txt, ok=false) {
+  const el = $('#status');
+  el.textContent = txt;
+  el.className = ok ? 'status ok' : 'status warn';
+}
 
-  // EcuCtrl
-  const eStatus = $('eStatus'), eClear = $('eClear');
-  const ePref = $('ePref'), pref = $('pref');
-  const eWl = $('eWl'), wl = $('wl');
-  const ecuFree = $('ecuFree'), ecuSend = $('ecuSend');
-
-  // === BLE state ===
-  let device = null, server = null, service = null;
-  let chData = null, chProto = null, chEcu = null;
-
-  function log(s){ 
-    const t = new Date().toLocaleTimeString();
-    logEl.textContent += `[${t}] ${s}\n`;
-    logEl.scrollTop = logEl.scrollHeight;
-  }
-  function setStatus(s){ statusEl.textContent = s; }
-  function setConnectedUI(connected){
-    btnConnect.disabled = connected;
-    btnDisconnect.disabled = !connected;
-    protoQuick.forEach(b => b.disabled = !connected);
-    protoSend.disabled = !connected;
-    eStatus.disabled = !connected;
-    eClear.disabled = !connected;
-    ePref.disabled = !connected;
-    eWl.disabled = !connected;
-    ecuSend.disabled = !connected;
-  }
-
-  function dvToString(dv){
-    const dec = new TextDecoder();
-    return dec.decode(dv.buffer);
-  }
-
-  // 解析資料 JSON 並更新儀錶
-  function handleDataJson(str){
-    try{
-      const obj = JSON.parse(str);
-      if ('rpm' in obj) mRpm.textContent = obj.rpm;
-      if ('throttle' in obj) mThr.textContent = obj.throttle;
-      if ('map' in obj) mMap.textContent = obj.map;
-      if ('kbps' in obj) mKbps.textContent = obj.kbps;
-      log(`• RX: ${str}`);
-    }catch(e){
-      log(`• RX (raw): ${str}`);
-    }
-  }
-
-  async function connect(){
-    try{
-      setStatus('選擇裝置中…');
-      device = await navigator.bluetooth.requestDevice({
-        filters: [{ namePrefix: 'ESP32C3-OBD' }],
-        optionalServices: [SVC]
-      });
-      devEl.textContent = `${device.name || '(unnamed)'} (${device.id || ''})`;
-      device.addEventListener('gattserverdisconnected', onDisconnected);
-
-      setStatus('連線 GATT…');
-      server = await device.gatt.connect();
-
-      setStatus('取得服務/特徵…');
-      service = await server.getPrimaryService(SVC);
-      chData  = await service.getCharacteristic(DATA);
-      chProto = await service.getCharacteristic(PROTO);
-      chEcu   = await service.getCharacteristic(ECU);
-
-      await chData.startNotifications();
-      chData.addEventListener('characteristicvaluechanged', e=>{
-        const s = dvToString(e.target.value);
-        notifEl.textContent = '開啟';
-        handleDataJson(s);
-      });
-
-      // 初始讀一次 DataChar
-      try{
-        const v = await chData.readValue();
-        const s = dvToString(v);
-        log(`• 初始讀取: ${s}`);
-        handleDataJson(s);
-      }catch(_){}
-
-      setStatus('✅ 已連線並啟用通知');
-      setConnectedUI(true);
-      log('✅ GATT connected ✅');
-      log('✅ Notifications started ✅');
-    }catch(err){
-      console.error(err);
-      setStatus('❌ 連線失敗');
-      log(`❌ Error: ${err.message || err}`);
-      setConnectedUI(false);
-    }
-  }
-
-  async function disconnect(){
-    try{
-      if (device && device.gatt.connected) device.gatt.disconnect();
-    }catch{}
-    setConnectedUI(false);
-    setStatus('已中斷連線');
-    notifEl.textContent = '—';
-  }
-  function onDisconnected(){
-    setConnectedUI(false);
-    setStatus('已中斷連線（裝置端）');
-    log('• GATT disconnected.');
-    notifEl.textContent = '—';
-  }
-
-  async function writeString(ch, s){
-    if (!ch) throw new Error('尚未連線');
-    const enc = new TextEncoder();
-    await ch.writeValue(enc.encode(s));
-  }
-
-  // --- ProtoCtrl handlers ---
-  protoQuick.forEach(btn=>{
-    btn?.addEventListener('click', async ()=>{
-      try{
-        if (btn.id === 'pGet') {
-          await writeString(chProto, 'GET');
-        } else {
-          await writeString(chProto, btn.dataset.cmd);
-        }
-        log(`→ ProtoCtrl TX: ${btn.id==='pGet'?'GET':btn.dataset.cmd}`);
-      }catch(e){ log(`ProtoCtrl error: ${e.message||e}`); }
+async function connect() {
+  try {
+    logStatus('掃描中…');
+    device = await navigator.bluetooth.requestDevice({
+      filters: [{ services: [OBD_SERVICE] }],
+      optionalServices: [OBD_SERVICE]
     });
-  });
-  protoSend.addEventListener('click', async ()=>{
-    const s = (protoFree.value||'').trim();
-    if (!s) return;
-    try{ await writeString(chProto, s); log(`→ ProtoCtrl TX: ${s}`); }catch(e){ log(`ProtoCtrl error: ${e.message||e}`); }
-  });
-  protoFree.addEventListener('keydown', e=>{
-    if (e.key==='Enter') protoSend.click();
-  });
+    device.addEventListener('gattserverdisconnected', () => logStatus('已斷線', false));
 
-  // --- EcuCtrl handlers ---
-  eStatus.addEventListener('click', async ()=>{
-    try{ await writeString(chEcu, 'STATUS'); log('→ EcuCtrl TX: STATUS'); }catch(e){ log(`EcuCtrl error: ${e.message||e}`); }
-  });
-  eClear.addEventListener('click', async ()=>{
-    try{ await writeString(chEcu, 'CLEAR'); log('→ EcuCtrl TX: CLEAR'); }catch(e){ log(`EcuCtrl error: ${e.message||e}`); }
-  });
-  ePref.addEventListener('click', async ()=>{
-    const v = (pref.value||'').trim();
-    if (!v){ pref.focus(); return; }
-    try{ await writeString(chEcu, `PREF ${v}`); log(`→ EcuCtrl TX: PREF ${v}`); }catch(e){ log(`EcuCtrl error: ${e.message||e}`); }
-  });
-  eWl.addEventListener('click', async ()=>{
-    const v = (wl.value||'').trim();
-    if (!v){ wl.focus(); return; }
-    try{ await writeString(chEcu, `WHITELIST ${v}`); log(`→ EcuCtrl TX: WHITELIST ${v}`); }catch(e){ log(`EcuCtrl error: ${e.message||e}`); }
-  });
-  ecuSend.addEventListener('click', async ()=>{
-    const s = (ecuFree.value||'').trim();
-    if (!s) return;
-    try{ await writeString(chEcu, s); log(`→ EcuCtrl TX: ${s}`); }catch(e){ log(`EcuCtrl error: ${e.message||e}`); }
-  });
-  ecuFree.addEventListener('keydown', e=>{
-    if (e.key==='Enter') ecuSend.click();
-  });
+    logStatus('連線中…');
+    server = await device.gatt.connect();
 
-  // --- Connect/Disconnect ---
-  btnConnect.addEventListener('click', connect);
-  btnDisconnect.addEventListener('click', disconnect);
+    const svc = await server.getPrimaryService(OBD_SERVICE);
+    characteristic = await svc.getCharacteristic(OBD_CHAR);
 
-  // 初始 UI
-  setConnectedUI(false);
-  setStatus('尚未連線');
-})();
+    await characteristic.startNotifications();
+    characteristic.addEventListener('characteristicvaluechanged', ev => {
+      const v = new TextDecoder().decode(ev.target.value);
+      try {
+        const j = JSON.parse(v);
+        if ('rpm' in j) $('#rpm').textContent = fmt(j.rpm);
+        if ('map_kpa' in j) $('#map').textContent = fmt(j.map_kpa);
+        if ('throttle_pct' in j) $('#throttle').textContent = fmt(j.throttle_pct);
+      } catch (e) {
+        console.warn('JSON parse error', e, v);
+      }
+    });
+
+    /* 初次 Read（避免等通知） */
+    const initVal = await characteristic.readValue();
+    try {
+      const j = JSON.parse(new TextDecoder().decode(initVal));
+      if ('rpm' in j) $('#rpm').textContent = fmt(j.rpm);
+      if ('map_kpa' in j) $('#map').textContent = fmt(j.map_kpa);
+      if ('throttle_pct' in j) $('#throttle').textContent = fmt(j.throttle_pct);
+    } catch {}
+
+    logStatus('已連線並訂閱通知', true);
+  } catch (e) {
+    console.error(e);
+    logStatus('連線失敗：' + e.message, false);
+  }
+}
+
+$('#btn').addEventListener('click', connect);
 </script>
 </body>
 </html>
