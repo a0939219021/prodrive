@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="theme-color" content="#0b0f14" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
-<title>THRUSTER + FAN-CTRL-C6 Console</title>
+<title>THRUSTER + Motor Console</title>
 <style>
   :root{
     --bg:#0b0f14; --card:#121923; --muted:#7d8ca1; --text:#eaf2ff; --accent:#6aa6ff;
@@ -53,7 +53,7 @@
     <div class="title">
       <div style="width:36px;height:36px;border-radius:12px;display:grid;place-items:center;background:radial-gradient(120% 120% at 100% 0%,#2f4a6f 0%,#23344e 60%,#1a263a 100%);border:1px solid #2b3a51">🚗</div>
       <div>
-        <div style="font-size:clamp(18px,4.8vw,20px);font-weight:800;letter-spacing:.2px">THRUSTER + FAN-CTRL-C6 Console</div>
+        <div style="font-size:clamp(18px,4.8vw,20px);font-weight:800;letter-spacing:.2px">THRUSTER + Motor Console</div>
         <div class="muted small">Nordic UART UUID • Dual BLE Monitor & Relay</div>
       </div>
     </div>
@@ -63,7 +63,7 @@
       <button class="btn" id="btnDiscA" disabled>Disconnect A</button>
       <span style="width:10px"></span>
       <span class="badge" id="stB">B: Disconnected</span><span class="dot" id="dotB"></span>
-      <button class="btn primary" id="btnConnB">Connect B (FAN-CTRL-C6)</button>
+      <button class="btn primary" id="btnConnB">Connect B (Motor)</button>
       <button class="btn" id="btnDiscB" disabled>Disconnect B</button>
     </div>
   </div>
@@ -113,9 +113,9 @@
       <div class="mono" id="logA"></div>
     </div>
 
-    <!-- Right: B (FAN-CTRL-C6) -->
+    <!-- Right: B (Motor) -->
     <div class="panel">
-      <div class="section-title">B. FAN-CTRL-C6 (ESP32-C6)</div>
+      <div class="section-title">B. Motor (ESP32-C6)</div>
       <div class="rowwrap">
         <label class="pill"><input type="checkbox" id="autoRelay" checked style="transform:translateY(2px);margin-right:8px">Auto Relay (A→B)</label>
         <div class="pill">B Name: <span id="bName">—</span></div>
@@ -162,7 +162,7 @@ const CTRL_UUID = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
 
 // A: THRUSTER
 let devA, srvA, chAData, chACtrl, aConnected=false;
-// B: FAN-CTRL-C6
+// B: Motor
 let devB, srvB, chBData, chBCtrl, bConnected=false;
 
 function setConnBadge(which, ok){
@@ -266,7 +266,7 @@ async function connectB(){
   try{
     const filters = isiOS()
       ? [{ services:[SVC_UUID] }]            // iOS requires service-based filter
-      : [{ namePrefix:'FAN-CTRL-C6' }];      // desktop Chrome fast path
+      : [{ namePrefix:'Motor' }];      // desktop Chrome fast path
 
     const dev = await navigator.bluetooth.requestDevice({
       filters,
@@ -280,9 +280,9 @@ async function connectB(){
     chBCtrl = await svc.getCharacteristic(CTRL_UUID);
     await chBData.startNotifications();
     chBData.addEventListener('characteristicvaluechanged', (ev)=>parseJSON(ev,'B'));
-    $('#bName').textContent = devB.name || 'FAN-CTRL-C6';
+    $('#bName').textContent = devB.name || 'Motor';
     setConnBadge('B', true); bConnected = true;
-    logB('Connected to ' + (devB.name||'FAN-CTRL-C6'));
+    logB('Connected to ' + (devB.name||'Motor'));
   }catch(e){
     // Fallback: if iOS user picked something but adv lacked UUID, suggest reflash
     logB('Connect failed: ' + e);
