@@ -37,7 +37,6 @@
   .metric .value{font-weight:800;font-size:clamp(18px,4.2vw,24px);margin-top:6px;line-height:1.1}
   .value .unit{font-size:12px;color:#8fa3be;margin-left:4px;font-weight:700}
   .row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-  .led{width:48px;height:48px;border-radius:50%;background:#bbb;border:1px solid #7a879a;box-shadow: inset 0 0 18px rgba(255,255,255,.15), 0 4px 16px rgba(0,0,0,.45)}
   .mono{width:100%;min-height:84px;max-height:200px;overflow:auto;background:linear-gradient(180deg,#0c1420,#0a111b);border:1px solid #223049;border-radius:12px;padding:10px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;color:#b9c7dd}
   .slider{-webkit-appearance:none;appearance:none;width:100%;height:8px;border-radius:999px;background:linear-gradient(90deg,#2e3b52,#244f93);outline:none}
   .slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:22px;height:22px;border-radius:50%;background:var(--accent);border:2px solid #d7e6ff;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.35)}
@@ -237,7 +236,6 @@ async function connectA(){
     chACtrl = await svc.getCharacteristic(CTRL_UUID);
     await chAData.startNotifications();
     chAData.addEventListener('characteristicvaluechanged', (ev)=>parseJSON(ev,'A'));
-    // read initial ctrl text (contains TH etc.)
     try{
       const s = new TextDecoder().decode(await chACtrl.readValue()).trim();
       const m = s.match(/TH:(\d+)/i); if (m) $('#thVal').textContent = m[1];
@@ -262,10 +260,16 @@ function handlePacketB(j){
   else { logB('unknown t=' + j.t); }
 }
 
+function isiOS(){ return /iPhone|iPad|iPod/i.test(navigator.userAgent); }
+
 async function connectB(){
   try{
+    const filters = isiOS()
+      ? [{ services:[SVC_UUID] }]            // iOS requires service-based filter
+      : [{ namePrefix:'FAN-CTRL-C6' }];      // desktop Chrome fast path
+
     const dev = await navigator.bluetooth.requestDevice({
-      filters:[{ namePrefix:'FAN-CTRL-C6' }],
+      filters,
       optionalServices:[SVC_UUID]
     });
     devB = dev;
@@ -280,6 +284,7 @@ async function connectB(){
     setConnBadge('B', true); bConnected = true;
     logB('Connected to ' + (devB.name||'FAN-CTRL-C6'));
   }catch(e){
+    // Fallback: if iOS user picked something but adv lacked UUID, suggest reflash
     logB('Connect failed: ' + e);
   }
 }
@@ -296,7 +301,6 @@ async function writeCtrlB(txt){
 }
 function autoRelayToB(pktA){
   if (!$('#autoRelay').checked || !bConnected) return;
-  // A fan==true → send TPS as PWM; else PWM=0
   const tps = Math.max(0, Math.min(100, parseInt(pktA.tps||0, 10)));
   const duty = pktA.fan ? tps : 0;
   const blink = Math.max(0, parseInt(pktA.bl||0,10)||0);
