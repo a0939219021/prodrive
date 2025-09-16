@@ -177,12 +177,18 @@ function setConnBadge(which, ok){
   }
 }
 
+// === 關鍵修正：正確解碼 DataView ===
+function decodeDV(dv){
+  const u8 = new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength);
+  return new TextDecoder().decode(u8);
+}
+
 function parseJSON(ev, which){
   try{
+    // Web BLE 通知 value 是 DataView；用 decodeDV 僅取有效片段
     const dv = ev.target.value;
-    let buf;
-    if (dv?.buffer) buf = dv.buffer; else if (dv instanceof DataView) buf = dv.buffer; else buf = dv;
-    const j = JSON.parse(new TextDecoder().decode(new DataView(buf)));
+    const s  = decodeDV(dv).trim();
+    const j = JSON.parse(s);
     if (!j || !j.t) return;
     if (which==='A') handlePacketA(j);
     else handlePacketB(j);
@@ -219,7 +225,7 @@ function applyA_diag(j){
 }
 
 function handlePacketA(j){
-  if (j.t === 'a'){ applyA_core(j); if ($('#autoRelay').checked && bConnected){ /* UI only; 真正轉發已在 A 韌體 */ } }
+  if (j.t === 'a'){ applyA_core(j); }
   else if (j.t === 'f'){ applyA_fuel(j); }
   else if (j.t === 'd'){ applyA_diag(j); }
   else { logA('unknown t=' + j.t); }
@@ -229,7 +235,7 @@ function handlePacketA(j){
 async function connectA(){
   try{
     const dev = await navigator.bluetooth.requestDevice({
-      filters:[{ services:[SVC_UUID] }],     // ✅ 服務過濾（與名稱無關）
+      filters:[{ services:[SVC_UUID] }],     // ✅ 服務過濾
       optionalServices:[SVC_UUID]
     });
     devA = dev;
@@ -267,7 +273,7 @@ function handlePacketB(j){
 async function connectB(){
   try{
     const dev = await navigator.bluetooth.requestDevice({
-      filters:[{ services:[SVC_UUID] }],     // ✅ 服務過濾
+      filters:[{ services:[SVC_UUID] }],
       optionalServices:[SVC_UUID]
     });
     devB = dev;
@@ -309,17 +315,28 @@ async function tryAutoReconnect(){
   if (!('getDevices' in navigator.bluetooth)) return;
   try{
     const devs = await navigator.bluetooth.getDevices();
-    // Try reconnect A first
     for (const d of devs){
       if (!d.gatt) continue;
-      // We only know after connecting whether it has NUS service, so try and catch
       try{
         await d.gatt.connect();
         const svc = await d.gatt.getPrimaryService(SVC_UUID);
         const chd = await svc.getCharacteristic(DATA_UUID);
         const chc = await svc.getCharacteristic(CTRL_UUID);
-        if (!devA){ devA=d; chAData=chd; chACtrl=chc; await chAData.startNotifications(); chAData.addEventListener('characteristicvaluechanged', (ev)=>parseJSON(ev,'A')); setConnBadge('A', true); aConnected=true; logA('Auto-reconnected A'); continue; }
-        if (!devB){ devB=d; chBData=chd; chBCtrl=chc; await chBData.startNotifications(); chBData.addEventListener('characteristicvaluechanged', (ev)=>parseJSON(ev,'B')); setConnBadge('B', true); bConnected=true; logB('Auto-reconnected B'); continue; }
+        // 判定 A 或 B：優先補 A，再補 B
+        if (!devA){
+          devA=d; chAData=chd; chACtrl=chc;
+          await chAData.startNotifications();
+          chAData.addEventListener('characteristicvaluechanged', (ev)=>parseJSON(ev,'A'));
+          setConnBadge('A', true); aConnected=true; logA('Auto-reconnected A');
+          continue;
+        }
+        if (!devB){
+          devB=d; chBData=chd; chBCtrl=chc;
+          await chBData.startNotifications();
+          chBData.addEventListener('characteristicvaluechanged', (ev)=>parseJSON(ev,'B'));
+          setConnBadge('B', true); bConnected=true; logB('Auto-reconnected B');
+          continue;
+        }
       }catch(e){
         try{ if (d?.gatt?.connected) d.gatt.disconnect(); }catch(_){}
       }
@@ -333,7 +350,7 @@ $('#btnDiscA').addEventListener('click', disconnectA);
 $('#btnConnB').addEventListener('click', connectB);
 $('#btnDiscB').addEventListener('click', disconnectB);
 
-// Attempt auto-reconnect on load (desktop Chrome 支援；iOS 視容器而定)
+// Attempt auto-reconnect on load
 tryAutoReconnect();
 </script>
 </body>
