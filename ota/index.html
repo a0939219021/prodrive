@@ -166,6 +166,9 @@ let devA, srvA, chAData, chACtrl, aConnected=false;
 // B: FAN-CTRL
 let devB, srvB, chBData, chBCtrl, bConnected=false;
 
+// ======= small utils =======
+const sleep = (ms)=>new Promise(r=>setTimeout(r, ms));
+
 function setConnBadge(which, ok){
   const st = which==='A' ? $('#stA') : $('#stB');
   const dot = which==='A' ? $('#dotA') : $('#dotB');
@@ -230,7 +233,7 @@ async function connectA(){
       optionalServices:[SVC_UUID]
     });
     devA = dev;
-    devA.addEventListener('gattserverdisconnected', ()=>{ setConnBadge('A', false); logA('Disconnected'); });
+    devA.addEventListener('gattserverdisconnected', ()=>{ setConnBadge('A', false); logA('Disconnected'); aConnected=false; });
     srvA = await devA.gatt.connect();
     const svc = await srvA.getPrimaryService(SVC_UUID);
     chAData = await svc.getCharacteristic(DATA_UUID);
@@ -269,7 +272,7 @@ async function connectB(){
       optionalServices:[SVC_UUID]
     });
     devB = dev;
-    devB.addEventListener('gattserverdisconnected', ()=>{ setConnBadge('B', false); logB('Disconnected'); });
+    devB.addEventListener('gattserverdisconnected', ()=>{ setConnBadge('B', false); logB('Disconnected'); bConnected=false; });
     srvB = await devB.gatt.connect();
     const svc = await srvB.getPrimaryService(SVC_UUID);
     chBData = await svc.getCharacteristic(DATA_UUID);
@@ -285,35 +288,75 @@ async function connectB(){
 }
 function disconnectB(){ try{ if (devB?.gatt?.connected) devB.gatt.disconnect(); }catch(e){} finally{ setConnBadge('B', false); bConnected=false; }}
 
-/********** Relay logic **********/
-async function writeCtrlB(txt){
-  if (!bConnected || !chBCtrl) return;
-  try{
-    await chBCtrl.writeValue(new TextEncoder().encode(txt));
-  }catch(e){
-    logB('Write failed: ' + e);
-  }
+/********** QUEUED writes to B (fix "GATT operation already in progress") **********/
+let bWriteQueue = Promise.resolve();
+let lastPWM = null, lastBlink = null;
+let lastRelayAt = 0;
+const RELAY_MIN_SPACING_MS = 120;   // 節流
+const BETWEEN_WRITES_MS    = 40;    // 同一組指令之間留一點空檔（iOS 友好）
+
+function enqueueWriteB(bytes, tag){
+  // 把寫入串接進同一條 promise 鏈，避免重疊
+  bWriteQueue = bWriteQueue.then(async ()=>{
+    if (!bConnected || !chBCtrl) return;
+    try{
+      // 若裝置支援「無回應寫入」，優先用它；否則用一般 writeValue
+      if (typeof chBCtrl.writeValueWithoutResponse === 'function') {
+        chBCtrl.writeValueWithoutResponse(bytes);
+      } else {
+        await chBCtrl.writeValue(bytes);
+      }
+    }catch(e){
+      logB(`Write failed (${tag||''}): ` + e);
+    }
+    await sleep(BETWEEN_WRITES_MS);
+  }).catch(()=>{ /* 保持隊列不中斷 */ });
+  return bWriteQueue;
 }
+
+function writeCtrlB(txt, tag){
+  if (!bConnected || !chBCtrl) return;
+  const enc = new TextEncoder().encode(txt);
+  enqueueWriteB(enc, tag);
+}
+
+/********** Relay logic (A → B) with de-dup + throttle **********/
 function autoRelayToB(pktA){
   if (!$('#autoRelay').checked || !bConnected) return;
-  // Rule: if A fan==true → send TPS as PWM; else PWM=0
-  const tps = Math.max(0, Math.min(100, parseInt(pktA.tps||0, 10)));
+
+  // 節流：最低間隔 RELAY_MIN_SPACING_MS
+  const now = performance.now();
+  if (now - lastRelayAt < RELAY_MIN_SPACING_MS) return;
+  lastRelayAt = now;
+
+  // 去重：同值不重送
+  const tps  = Math.max(0, Math.min(100, parseInt(pktA.tps||0, 10)));
   const duty = pktA.fan ? tps : 0;
   const blink = Math.max(0, parseInt(pktA.bl||0,10)||0);
-  writeCtrlB(`PWM:${duty}`);
-  writeCtrlB(`LED:${blink}`);
+
+  if (lastPWM !== duty) {
+    writeCtrlB(`PWM:${duty}`, 'PWM');
+    lastPWM = duty;
+  }
+  if (lastBlink !== blink) {
+    writeCtrlB(`LED:${blink}`, 'LED');
+    lastBlink = blink;
+  }
 }
 
 /********** Manual controls for B **********/
-$('#btnSendPWM').addEventListener('click', ()=>{ 
-  const v = Math.max(0, Math.min(100, parseInt($('#bSlider').value,10)||0)); 
-  writeCtrlB(`PWM:${v}`); 
+$('#btnSendPWM').addEventListener('click', ()=>{
+  const v = Math.max(0, Math.min(100, parseInt($('#bSlider').value,10)||0));
+  lastPWM = null; // 強制下一次允許同值覆寫
+  writeCtrlB(`PWM:${v}`, 'PWM-btn');
 });
-$('#btnSetHz').addEventListener('click', ()=>{ 
-  writeCtrlB(`FREQ:${parseInt($('#selHz').value,10)}`); 
+$('#btnSetHz').addEventListener('click', ()=>{
+  writeCtrlB(`FREQ:${parseInt($('#selHz').value,10)}`, 'FREQ');
 });
-$('#btnSetBlink').addEventListener('click', ()=>{ 
-  writeCtrlB(`LED:${parseInt($('#inBlink').value,10)||0}`); 
+$('#btnSetBlink').addEventListener('click', ()=>{
+  const ms = parseInt($('#inBlink').value,10)||0;
+  lastBlink = null; // 允許覆寫
+  writeCtrlB(`LED:${ms}`, 'LED-btn');
 });
 
 /********** Wire up buttons **********/
