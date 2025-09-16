@@ -252,7 +252,7 @@ async function connectA(){
 }
 function disconnectA(){ try{ if (devA?.gatt?.connected) devA.gatt.disconnect(); }catch(e){} finally{ setConnBadge('A', false); aConnected=false; }}
 
-/********** B handlers **********/
+/********** B handlers + polling fallback **********/
 let lastBSeen = 0;
 const markBSeen = ()=>{ lastBSeen = performance.now(); };
 let bPollTimer = null;
@@ -290,7 +290,7 @@ async function connectB(){
     setConnBadge('B', true); bConnected = true;
     logB('Connected to ' + (devB.name||'FAN-CTRL'));
 
-    // 保底輪詢：若 2 秒內沒任何通知，就主動 readValue 一次
+    // 保底輪詢：若 2 秒內沒任何通知，就主動 readValue 一次（DATA）
     if (bPollTimer){ clearInterval(bPollTimer); }
     bPollTimer = setInterval(async ()=>{
       if (!bConnected || !chBData) return;
@@ -316,24 +316,44 @@ function disconnectB(){
   }
 }
 
-/********** QUEUED writes to B (fix "GATT operation already in progress") **********/
+/********** REPLACEMENT: queued writes to B (force write-with-response + read back ACK) **********/
 let bWriteQueue = Promise.resolve();
 let lastPWM = null, lastBlink = null;
 let lastRelayAt = 0;
-const RELAY_MIN_SPACING_MS = 120;   // 節流
-const BETWEEN_WRITES_MS    = 40;    // 同組指令間隔（iOS 友好）
+const RELAY_MIN_SPACING_MS = 120;
+const BETWEEN_WRITES_MS    = 40;
+
+async function _readCtrlAckAndApply(){
+  try{
+    const dv  = await chBCtrl.readValue();
+    const ack = new TextDecoder().decode(dv).trim();
+    // 期望格式：OK;PWM:x;FREQ:y;LED:z
+    const m = ack.match(/PWM:(\d+).*FREQ:(\d+).*LED:(\d+)/i);
+    if (m){
+      applyB_status({
+        t: 'p',
+        pwm:  parseInt(m[1], 10),
+        hz:   parseInt(m[2], 10),
+        blink:parseInt(m[3], 10)
+      });
+      logB('ACK ' + ack);
+    }
+  }catch(e){
+    // ignore
+  }
+}
 
 function enqueueWriteB(bytes, tag){
   bWriteQueue = bWriteQueue.then(async ()=>{
     if (!bConnected || !chBCtrl) return;
     try{
-      if (typeof chBCtrl.writeValueWithoutResponse === 'function') {
-        chBCtrl.writeValueWithoutResponse(bytes);
-      } else if (typeof chBCtrl.writeValueWithResponse === 'function') {
+      if (typeof chBCtrl.writeValueWithResponse === 'function') {
         await chBCtrl.writeValueWithResponse(bytes);
       } else {
+        // 多數環境 writeValue 亦為有回應
         await chBCtrl.writeValue(bytes);
       }
+      await _readCtrlAckAndApply();   // 寫完立刻讀回 ACK，同步 UI
     }catch(e){
       logB(`Write failed (${tag||''}): ` + e);
     }
@@ -341,7 +361,12 @@ function enqueueWriteB(bytes, tag){
   }).catch(()=>{});
   return bWriteQueue;
 }
-function writeCtrlB(txt, tag){ if (!bConnected || !chBCtrl) return; enqueueWriteB(new TextEncoder().encode(txt), tag); }
+
+function writeCtrlB(txt, tag){
+  if (!bConnected || !chBCtrl) return;
+  const enc = new TextEncoder().encode(txt);
+  enqueueWriteB(enc, tag);
+}
 
 /********** Relay logic (A → B) with de-dup + throttle **********/
 function autoRelayToB(pktA){
