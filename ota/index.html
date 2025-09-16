@@ -37,12 +37,11 @@
   .metric .value{font-weight:800;font-size:clamp(18px,4.2vw,24px);margin-top:6px;line-height:1.1}
   .value .unit{font-size:12px;color:#8fa3be;margin-left:4px;font-weight:700}
   .row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-  .led{width:48px;height:48px;border-radius:50%;background:#bbb;border:1px solid #7a879a;box-shadow: inset 0 0 18px rgba(255,255,255,.15), 0 4px 16px rgba(0,0,0,.45)}
   .mono{width:100%;min-height:84px;max-height:200px;overflow:auto;background:linear-gradient(180deg,#0c1420,#0a111b);border:1px solid #223049;border-radius:12px;padding:10px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;color:#b9c7dd}
   .slider{-webkit-appearance:none;appearance:none;width:100%;height:8px;border-radius:999px;background:linear-gradient(90deg,#2e3b52,#244f93);outline:none}
   .slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:22px;height:22px;border-radius:50%;background:var(--accent);border:2px solid #d7e6ff;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.35)}
   .pill{background:#172337;border:1px solid #273756;padding:8px 12px;border-radius:999px;color:#c4d3ea;font-size:13px;font-weight:800}
-  .muted{color:var(--muted);font-size:13px}
+  .muted{color:#7d8ca1;font-size:13px}
   .rowwrap{display:flex;gap:10px;flex-wrap:wrap}
   .small{font-size:12px}
   @media (max-width: 980px){.grid{grid-template-columns:1fr}}
@@ -116,7 +115,7 @@
 
     <!-- Right: B (FAN-CTRL) -->
     <div class="panel">
-      <div class="section-title">B. FAN-CTRL (Pico W)</div>
+      <div class="section-title">B. FAN-CTRL (Pico W / ESP32-C6)</div>
       <div class="rowwrap">
         <label class="pill"><input type="checkbox" id="autoRelay" checked style="transform:translateY(2px);margin-right:8px">Auto Relay (A→B)</label>
         <div class="pill">B Name: <span id="bName">—</span></div>
@@ -254,6 +253,10 @@ async function connectA(){
 function disconnectA(){ try{ if (devA?.gatt?.connected) devA.gatt.disconnect(); }catch(e){} finally{ setConnBadge('A', false); aConnected=false; }}
 
 /********** B handlers **********/
+let lastBSeen = 0;
+const markBSeen = ()=>{ lastBSeen = performance.now(); };
+let bPollTimer = null;
+
 function applyB_status(j){
   if (typeof j.pwm === 'number') $('#b_pwm').textContent = String(j.pwm);
   if (typeof j.hz  === 'number') $('#b_hz').textContent  = String(j.hz);
@@ -261,6 +264,7 @@ function applyB_status(j){
 }
 
 function handlePacketB(j){
+  markBSeen();
   if (j.t === 'p'){ applyB_status(j); }
   else { logB('unknown t=' + j.t); }
 }
@@ -272,7 +276,10 @@ async function connectB(){
       optionalServices:[SVC_UUID]
     });
     devB = dev;
-    devB.addEventListener('gattserverdisconnected', ()=>{ setConnBadge('B', false); logB('Disconnected'); bConnected=false; });
+    devB.addEventListener('gattserverdisconnected', ()=>{
+      setConnBadge('B', false); logB('Disconnected'); bConnected=false;
+      if (bPollTimer){ clearInterval(bPollTimer); bPollTimer=null; }
+    });
     srvB = await devB.gatt.connect();
     const svc = await srvB.getPrimaryService(SVC_UUID);
     chBData = await svc.getCharacteristic(DATA_UUID);
@@ -282,27 +289,48 @@ async function connectB(){
     $('#bName').textContent = devB.name || '—';
     setConnBadge('B', true); bConnected = true;
     logB('Connected to ' + (devB.name||'FAN-CTRL'));
+
+    // 保底輪詢：若 2 秒內沒任何通知，就主動 readValue 一次
+    if (bPollTimer){ clearInterval(bPollTimer); }
+    bPollTimer = setInterval(async ()=>{
+      if (!bConnected || !chBData) return;
+      if (performance.now() - lastBSeen > 2000){
+        try{
+          const dv  = await chBData.readValue();
+          const txt = new TextDecoder().decode(dv);
+          const j   = JSON.parse(txt);
+          handlePacketB(j);
+          logB('polled status');
+        }catch(e){}
+      }
+    }, 2000);
   }catch(e){
     logB('Connect failed: ' + e);
   }
 }
-function disconnectB(){ try{ if (devB?.gatt?.connected) devB.gatt.disconnect(); }catch(e){} finally{ setConnBadge('B', false); bConnected=false; }}
+function disconnectB(){
+  try{ if (devB?.gatt?.connected) devB.gatt.disconnect(); }catch(e){}
+  finally{
+    setConnBadge('B', false); bConnected=false;
+    if (bPollTimer){ clearInterval(bPollTimer); bPollTimer=null; }
+  }
+}
 
 /********** QUEUED writes to B (fix "GATT operation already in progress") **********/
 let bWriteQueue = Promise.resolve();
 let lastPWM = null, lastBlink = null;
 let lastRelayAt = 0;
 const RELAY_MIN_SPACING_MS = 120;   // 節流
-const BETWEEN_WRITES_MS    = 40;    // 同一組指令之間留一點空檔（iOS 友好）
+const BETWEEN_WRITES_MS    = 40;    // 同組指令間隔（iOS 友好）
 
 function enqueueWriteB(bytes, tag){
-  // 把寫入串接進同一條 promise 鏈，避免重疊
   bWriteQueue = bWriteQueue.then(async ()=>{
     if (!bConnected || !chBCtrl) return;
     try{
-      // 若裝置支援「無回應寫入」，優先用它；否則用一般 writeValue
       if (typeof chBCtrl.writeValueWithoutResponse === 'function') {
         chBCtrl.writeValueWithoutResponse(bytes);
+      } else if (typeof chBCtrl.writeValueWithResponse === 'function') {
+        await chBCtrl.writeValueWithResponse(bytes);
       } else {
         await chBCtrl.writeValue(bytes);
       }
@@ -310,44 +338,31 @@ function enqueueWriteB(bytes, tag){
       logB(`Write failed (${tag||''}): ` + e);
     }
     await sleep(BETWEEN_WRITES_MS);
-  }).catch(()=>{ /* 保持隊列不中斷 */ });
+  }).catch(()=>{});
   return bWriteQueue;
 }
-
-function writeCtrlB(txt, tag){
-  if (!bConnected || !chBCtrl) return;
-  const enc = new TextEncoder().encode(txt);
-  enqueueWriteB(enc, tag);
-}
+function writeCtrlB(txt, tag){ if (!bConnected || !chBCtrl) return; enqueueWriteB(new TextEncoder().encode(txt), tag); }
 
 /********** Relay logic (A → B) with de-dup + throttle **********/
 function autoRelayToB(pktA){
   if (!$('#autoRelay').checked || !bConnected) return;
 
-  // 節流：最低間隔 RELAY_MIN_SPACING_MS
   const now = performance.now();
   if (now - lastRelayAt < RELAY_MIN_SPACING_MS) return;
   lastRelayAt = now;
 
-  // 去重：同值不重送
   const tps  = Math.max(0, Math.min(100, parseInt(pktA.tps||0, 10)));
   const duty = pktA.fan ? tps : 0;
   const blink = Math.max(0, parseInt(pktA.bl||0,10)||0);
 
-  if (lastPWM !== duty) {
-    writeCtrlB(`PWM:${duty}`, 'PWM');
-    lastPWM = duty;
-  }
-  if (lastBlink !== blink) {
-    writeCtrlB(`LED:${blink}`, 'LED');
-    lastBlink = blink;
-  }
+  if (lastPWM !== duty) { writeCtrlB(`PWM:${duty}`, 'PWM'); lastPWM = duty; }
+  if (lastBlink !== blink) { writeCtrlB(`LED:${blink}`, 'LED'); lastBlink = blink; }
 }
 
 /********** Manual controls for B **********/
 $('#btnSendPWM').addEventListener('click', ()=>{
   const v = Math.max(0, Math.min(100, parseInt($('#bSlider').value,10)||0));
-  lastPWM = null; // 強制下一次允許同值覆寫
+  lastPWM = null; // 允許覆寫同值
   writeCtrlB(`PWM:${v}`, 'PWM-btn');
 });
 $('#btnSetHz').addEventListener('click', ()=>{
@@ -355,7 +370,7 @@ $('#btnSetHz').addEventListener('click', ()=>{
 });
 $('#btnSetBlink').addEventListener('click', ()=>{
   const ms = parseInt($('#inBlink').value,10)||0;
-  lastBlink = null; // 允許覆寫
+  lastBlink = null; // 允許覆寫同值
   writeCtrlB(`LED:${ms}`, 'LED-btn');
 });
 
