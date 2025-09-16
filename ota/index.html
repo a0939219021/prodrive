@@ -165,7 +165,11 @@ let devA, srvA, chAData, chACtrl, aConnected=false;
 // B: Fan (ESP32-C6)
 let devB, srvB, chBData, chBCtrl, bConnected=false;
 
-// === 兩個接收緩衝（A / B 分開），累積 NDJSON 分片 ===
+// 連線中旗標（避免重入/競態）
+let connectingA = false;
+let connectingB = false;
+
+// 兩個接收緩衝（NDJSON 分片重組）
 let rxBufA = "";
 let rxBufB = "";
 
@@ -181,13 +185,13 @@ function setConnBadge(which, ok){
   }
 }
 
-// === 正確解碼 DataView（考慮 byteOffset/byteLength） ===
+// 正確解碼 DataView（考慮 byteOffset/byteLength）
 function decodeDV(dv){
   const u8 = new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength);
   return new TextDecoder().decode(u8);
 }
 
-// === NDJSON 分片重組：累積到 \n 再 JSON.parse ===
+// NDJSON 分片重組：累積到 \n 再 JSON.parse
 function parseJSON(ev, which){
   try{
     const chunk = decodeDV(ev.target.value);
@@ -249,32 +253,60 @@ function handlePacketA(j){
   else { logA('unknown t=' + j.t); }
 }
 
-/********** Connect A: use Service UUID filter (iOS friendly) **********/
+/********** Connect A（加防重入＋一次重試） **********/
 async function connectA(){
   try{
+    if (aConnected || connectingA) return;
+    connectingA = true;
+    $('#btnConnA').disabled = true;
+
     const dev = await navigator.bluetooth.requestDevice({
       filters:[{ services:[SVC_UUID] }],
       optionalServices:[SVC_UUID]
     });
+
     devA = dev;
-    devA.addEventListener('gattserverdisconnected', ()=>{ setConnBadge('A', false); logA('Disconnected'); });
-    srvA = await devA.gatt.connect();
+    devA.addEventListener('gattserverdisconnected', ()=>{
+      setConnBadge('A', false); aConnected=false; logA('Disconnected');
+      $('#btnConnA').disabled = false;
+    });
+
+    let server;
+    try {
+      server = await devA.gatt.connect();
+    } catch(e) {
+      logA('connect() first try failed, retrying...');
+      await new Promise(r=>setTimeout(r, 300));
+      server = await devA.gatt.connect();
+    }
+
+    srvA = server;
     const svc = await srvA.getPrimaryService(SVC_UUID);
     chAData = await svc.getCharacteristic(DATA_UUID);
     chACtrl = await svc.getCharacteristic(CTRL_UUID);
+
     await chAData.startNotifications();
     chAData.addEventListener('characteristicvaluechanged', (ev)=>parseJSON(ev,'A'));
+
     try{
       const s = new TextDecoder().decode(await chACtrl.readValue()).trim();
       const m = s.match(/TH:(\d+)/i); if (m) $('#thVal').textContent = m[1];
     }catch(e){}
+
     setConnBadge('A', true); aConnected = true;
     logA('Connected to ' + (devA.name||'THRUSTER'));
   }catch(e){
     logA('Connect A failed: ' + e);
+    try{ if (devA?.gatt?.connected) devA.gatt.disconnect(); }catch(_){}
+  }finally{
+    connectingA = false;
+    if (!aConnected) $('#btnConnA').disabled = false;
   }
 }
-function disconnectA(){ try{ if (devA?.gatt?.connected) devA.gatt.disconnect(); }catch(e){} finally{ setConnBadge('A', false); aConnected=false; }}
+function disconnectA(){
+  try{ if (devA?.gatt?.connected) devA.gatt.disconnect(); }catch(e){}
+  finally{ setConnBadge('A', false); aConnected=false; }
+}
 
 /********** B handlers **********/
 function applyB_status(j){
@@ -287,16 +319,33 @@ function handlePacketB(j){
   else { logB('unknown t=' + j.t); }
 }
 
-/********** Connect B: use Service UUID filter (optional) **********/
+/********** Connect B（加防重入） **********/
 async function connectB(){
   try{
+    if (bConnected || connectingB) return;
+    connectingB = true;
+   $('#btnConnB').disabled = true;
+
     const dev = await navigator.bluetooth.requestDevice({
       filters:[{ services:[SVC_UUID] }],
       optionalServices:[SVC_UUID]
     });
     devB = dev;
-    devB.addEventListener('gattserverdisconnected', ()=>{ setConnBadge('B', false); logB('Disconnected'); });
-    srvB = await devB.gatt.connect();
+    devB.addEventListener('gattserverdisconnected', ()=>{
+      setConnBadge('B', false); bConnected=false; logB('Disconnected');
+      $('#btnConnB').disabled = false;
+    });
+
+    let server;
+    try {
+      server = await devB.gatt.connect();
+    } catch(e) {
+      logB('connect() first try failed, retrying...');
+      await new Promise(r=>setTimeout(r, 300));
+      server = await devB.gatt.connect();
+    }
+
+    srvB = server;
     const svc = await srvB.getPrimaryService(SVC_UUID);
     chBData = await svc.getCharacteristic(DATA_UUID);
     chBCtrl = await svc.getCharacteristic(CTRL_UUID);
@@ -307,9 +356,16 @@ async function connectB(){
     logB('Connected to ' + (devB.name||'Fan'));
   }catch(e){
     logB('Connect B failed: ' + e);
+    try{ if (devB?.gatt?.connected) devB.gatt.disconnect(); }catch(_){}
+  }finally{
+    connectingB = false;
+    if (!bConnected) $('#btnConnB').disabled = false;
   }
 }
-function disconnectB(){ try{ if (devB?.gatt?.connected) devB.gatt.disconnect(); }catch(e){} finally{ setConnBadge('B', false); bConnected=false; }}
+function disconnectB(){
+  try{ if (devB?.gatt?.connected) devB.gatt.disconnect(); }catch(e){}
+  finally{ setConnBadge('B', false); bConnected=false; }
+}
 
 /********** Manual controls for B (direct write; A 仍會自動轉發) **********/
 async function writeCtrlB(txt){
@@ -328,18 +384,23 @@ $('#btnSetBlink').addEventListener('click', ()=>{
   writeCtrlB(`LED:${parseInt($('#inBlink').value,10)||0}`); 
 });
 
-/********** Auto-reconnect to previously granted devices (if supported) **********/
+/********** Auto-reconnect（加守門，避免與手動連線撞車） **********/
 async function tryAutoReconnect(){
   if (!('getDevices' in navigator.bluetooth)) return;
   try{
     const devs = await navigator.bluetooth.getDevices();
     for (const d of devs){
       if (!d.gatt) continue;
+
+      // 若正在手動連線或已連上，就跳過
+      if (aConnected || connectingA || bConnected || connectingB) continue;
+
       try{
         await d.gatt.connect();
         const svc = await d.gatt.getPrimaryService(SVC_UUID);
         const chd = await svc.getCharacteristic(DATA_UUID);
         const chc = await svc.getCharacteristic(CTRL_UUID);
+
         if (!devA){
           devA=d; chAData=chd; chACtrl=chc;
           await chAData.startNotifications();
@@ -367,7 +428,7 @@ $('#btnDiscA').addEventListener('click', disconnectA);
 $('#btnConnB').addEventListener('click', connectB);
 $('#btnDiscB').addEventListener('click', disconnectB);
 
-// Attempt auto-reconnect on load
+// 嘗試自動重連
 tryAutoReconnect();
 </script>
 </body>
