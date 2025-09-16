@@ -165,6 +165,10 @@ let devA, srvA, chAData, chACtrl, aConnected=false;
 // B: Fan (ESP32-C6)
 let devB, srvB, chBData, chBCtrl, bConnected=false;
 
+// === 兩個接收緩衝（A / B 分開），累積 NDJSON 分片 ===
+let rxBufA = "";
+let rxBufB = "";
+
 function setConnBadge(which, ok){
   const st = which==='A' ? $('#stA') : $('#stB');
   const dot = which==='A' ? $('#dotA') : $('#dotB');
@@ -177,23 +181,38 @@ function setConnBadge(which, ok){
   }
 }
 
-// === 關鍵修正：正確解碼 DataView ===
+// === 正確解碼 DataView（考慮 byteOffset/byteLength） ===
 function decodeDV(dv){
   const u8 = new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength);
   return new TextDecoder().decode(u8);
 }
 
+// === NDJSON 分片重組：累積到 \n 再 JSON.parse ===
 function parseJSON(ev, which){
   try{
-    // Web BLE 通知 value 是 DataView；用 decodeDV 僅取有效片段
-    const dv = ev.target.value;
-    const s  = decodeDV(dv).trim();
-    const j = JSON.parse(s);
-    if (!j || !j.t) return;
-    if (which==='A') handlePacketA(j);
-    else handlePacketB(j);
+    const chunk = decodeDV(ev.target.value);
+    let buf = which==='A' ? (rxBufA += chunk) : (rxBufB += chunk);
+
+    let idx;
+    while ((idx = buf.indexOf("\n")) >= 0) {
+      const line = buf.slice(0, idx).trim();
+      buf = buf.slice(idx + 1);
+      if (line) {
+        try {
+          const j = JSON.parse(line);
+          if (j && j.t) {
+            if (which==='A') handlePacketA(j); else handlePacketB(j);
+          }
+        } catch (e) {
+          (which==='A'?logA:logB)('JSON parse error: ' + e + ' | line=' + line);
+        }
+      }
+    }
+
+    if (which==='A') rxBufA = buf; else rxBufB = buf;
+
   }catch(e){
-    (which==='A'?logA:logB)('JSON parse error: ' + e);
+    (which==='A'?logA:logB)('parseJSON error: ' + e);
   }
 }
 
@@ -223,7 +242,6 @@ function applyA_diag(j){
   $('#d_rxok').textContent = j.rxok ?? '—';
   $('#d_rxto').textContent = j.rxto ?? '—';
 }
-
 function handlePacketA(j){
   if (j.t === 'a'){ applyA_core(j); }
   else if (j.t === 'f'){ applyA_fuel(j); }
@@ -235,7 +253,7 @@ function handlePacketA(j){
 async function connectA(){
   try{
     const dev = await navigator.bluetooth.requestDevice({
-      filters:[{ services:[SVC_UUID] }],     // ✅ 服務過濾
+      filters:[{ services:[SVC_UUID] }],
       optionalServices:[SVC_UUID]
     });
     devA = dev;
@@ -322,7 +340,6 @@ async function tryAutoReconnect(){
         const svc = await d.gatt.getPrimaryService(SVC_UUID);
         const chd = await svc.getCharacteristic(DATA_UUID);
         const chc = await svc.getCharacteristic(CTRL_UUID);
-        // 判定 A 或 B：優先補 A，再補 B
         if (!devA){
           devA=d; chAData=chd; chACtrl=chc;
           await chAData.startNotifications();
