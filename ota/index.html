@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="theme-color" content="#0b0f14" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
-<title>THRUSTER + FAN-CTRL-C6 Console</title>
+<title>THRUSTER + FAN Console</title>
 <style>
   :root{
     --bg:#0b0f14; --card:#121923; --muted:#7d8ca1; --text:#eaf2ff; --accent:#6aa6ff;
@@ -53,7 +53,7 @@
     <div class="title">
       <div style="width:36px;height:36px;border-radius:12px;display:grid;place-items:center;background:radial-gradient(120% 120% at 100% 0%,#2f4a6f 0%,#23344e 60%,#1a263a 100%);border:1px solid #2b3a51">🚗</div>
       <div>
-        <div style="font-size:clamp(18px,4.8vw,20px);font-weight:800;letter-spacing:.2px">THRUSTER + FAN-CTRL-C6 Console</div>
+        <div style="font-size:clamp(18px,4.8vw,20px);font-weight:800;letter-spacing:.2px">THRUSTER + FAN Console</div>
         <div class="muted small">Nordic UART UUID • Dual BLE Monitor & Relay</div>
       </div>
     </div>
@@ -63,7 +63,7 @@
       <button class="btn" id="btnDiscA" disabled>Disconnect A</button>
       <span style="width:10px"></span>
       <span class="badge" id="stB">B: Disconnected</span><span class="dot" id="dotB"></span>
-      <button class="btn primary" id="btnConnB">Connect B (Fan)</button>
+      <button class="btn primary" id="btnConnB">Connect B (Fan, optional)</button>
       <button class="btn" id="btnDiscB" disabled>Disconnect B</button>
     </div>
   </div>
@@ -82,7 +82,7 @@
       <div style="height:10px"></div>
       <div class="row">
         <div class="pill">Threshold: <span id="thVal">—</span></div>
-        <div class="muted small">MAP > TH → fan ON；頁面自動把 TPS 與 blink 轉發給 B</div>
+        <div class="muted small">頁面可視化 A；A 會自動當 central 連到 B 並轉發 PWM/LED</div>
       </div>
 
       <div style="height:12px"></div>
@@ -179,7 +179,10 @@ function setConnBadge(which, ok){
 
 function parseJSON(ev, which){
   try{
-    const j = JSON.parse(new TextDecoder().decode(ev.target.value));
+    const dv = ev.target.value;
+    let buf;
+    if (dv?.buffer) buf = dv.buffer; else if (dv instanceof DataView) buf = dv.buffer; else buf = dv;
+    const j = JSON.parse(new TextDecoder().decode(new DataView(buf)));
     if (!j || !j.t) return;
     if (which==='A') handlePacketA(j);
     else handlePacketB(j);
@@ -216,16 +219,17 @@ function applyA_diag(j){
 }
 
 function handlePacketA(j){
-  if (j.t === 'a'){ applyA_core(j); autoRelayToB(j); }
+  if (j.t === 'a'){ applyA_core(j); if ($('#autoRelay').checked && bConnected){ /* UI only; 真正轉發已在 A 韌體 */ } }
   else if (j.t === 'f'){ applyA_fuel(j); }
   else if (j.t === 'd'){ applyA_diag(j); }
   else { logA('unknown t=' + j.t); }
 }
 
+/********** Connect A: use Service UUID filter (iOS friendly) **********/
 async function connectA(){
   try{
     const dev = await navigator.bluetooth.requestDevice({
-      filters:[{ namePrefix:'THRUSTER' }],
+      filters:[{ services:[SVC_UUID] }],     // ✅ 服務過濾（與名稱無關）
       optionalServices:[SVC_UUID]
     });
     devA = dev;
@@ -243,7 +247,7 @@ async function connectA(){
     setConnBadge('A', true); aConnected = true;
     logA('Connected to ' + (devA.name||'THRUSTER'));
   }catch(e){
-    logA('Connect failed: ' + e);
+    logA('Connect A failed: ' + e);
   }
 }
 function disconnectA(){ try{ if (devA?.gatt?.connected) devA.gatt.disconnect(); }catch(e){} finally{ setConnBadge('A', false); aConnected=false; }}
@@ -254,17 +258,16 @@ function applyB_status(j){
   if (typeof j.hz  === 'number') $('#b_hz').textContent  = String(j.hz);
   if (typeof j.blink === 'number') $('#b_blink').textContent = String(j.blink);
 }
-
 function handlePacketB(j){
   if (j.t === 'p'){ applyB_status(j); }
   else { logB('unknown t=' + j.t); }
 }
 
-/********** Connect B: use Service UUID filter (name-agnostic) **********/
+/********** Connect B: use Service UUID filter (optional) **********/
 async function connectB(){
   try{
     const dev = await navigator.bluetooth.requestDevice({
-      filters:[{ services:[SVC_UUID] }],   // ✅ 用服務 UUID 過濾，與名稱無關
+      filters:[{ services:[SVC_UUID] }],     // ✅ 服務過濾
       optionalServices:[SVC_UUID]
     });
     devB = dev;
@@ -279,30 +282,17 @@ async function connectB(){
     setConnBadge('B', true); bConnected = true;
     logB('Connected to ' + (devB.name||'Fan'));
   }catch(e){
-    logB('Connect failed: ' + e);
+    logB('Connect B failed: ' + e);
   }
 }
 function disconnectB(){ try{ if (devB?.gatt?.connected) devB.gatt.disconnect(); }catch(e){} finally{ setConnBadge('B', false); bConnected=false; }}
 
-/********** Relay logic **********/
+/********** Manual controls for B (direct write; A 仍會自動轉發) **********/
 async function writeCtrlB(txt){
   if (!bConnected || !chBCtrl) return;
-  try{
-    await chBCtrl.writeValue(new TextEncoder().encode(txt));
-  }catch(e){
-    logB('Write failed: ' + e);
-  }
+  try{ await chBCtrl.writeValue(new TextEncoder().encode(txt)); }
+  catch(e){ logB('Write failed: ' + e); }
 }
-function autoRelayToB(pktA){
-  if (!$('#autoRelay').checked || !bConnected) return;
-  const tps = Math.max(0, Math.min(100, parseInt(pktA.tps||0, 10)));
-  const duty = pktA.fan ? tps : 0;
-  const blink = Math.max(0, parseInt(pktA.bl||0,10)||0);
-  writeCtrlB(`PWM:${duty}`);
-  writeCtrlB(`LED:${blink}`);
-}
-
-/********** Manual controls for B **********/
 $('#btnSendPWM').addEventListener('click', ()=>{ 
   const v = Math.max(0, Math.min(100, parseInt($('#bSlider').value,10)||0)); 
   writeCtrlB(`PWM:${v}`); 
@@ -314,11 +304,37 @@ $('#btnSetBlink').addEventListener('click', ()=>{
   writeCtrlB(`LED:${parseInt($('#inBlink').value,10)||0}`); 
 });
 
+/********** Auto-reconnect to previously granted devices (if supported) **********/
+async function tryAutoReconnect(){
+  if (!('getDevices' in navigator.bluetooth)) return;
+  try{
+    const devs = await navigator.bluetooth.getDevices();
+    // Try reconnect A first
+    for (const d of devs){
+      if (!d.gatt) continue;
+      // We only know after connecting whether it has NUS service, so try and catch
+      try{
+        await d.gatt.connect();
+        const svc = await d.gatt.getPrimaryService(SVC_UUID);
+        const chd = await svc.getCharacteristic(DATA_UUID);
+        const chc = await svc.getCharacteristic(CTRL_UUID);
+        if (!devA){ devA=d; chAData=chd; chACtrl=chc; await chAData.startNotifications(); chAData.addEventListener('characteristicvaluechanged', (ev)=>parseJSON(ev,'A')); setConnBadge('A', true); aConnected=true; logA('Auto-reconnected A'); continue; }
+        if (!devB){ devB=d; chBData=chd; chBCtrl=chc; await chBData.startNotifications(); chBData.addEventListener('characteristicvaluechanged', (ev)=>parseJSON(ev,'B')); setConnBadge('B', true); bConnected=true; logB('Auto-reconnected B'); continue; }
+      }catch(e){
+        try{ if (d?.gatt?.connected) d.gatt.disconnect(); }catch(_){}
+      }
+    }
+  }catch(e){}
+}
+
 /********** Wire up buttons **********/
 $('#btnConnA').addEventListener('click', connectA);
 $('#btnDiscA').addEventListener('click', disconnectA);
 $('#btnConnB').addEventListener('click', connectB);
 $('#btnDiscB').addEventListener('click', disconnectB);
+
+// Attempt auto-reconnect on load (desktop Chrome 支援；iOS 視容器而定)
+tryAutoReconnect();
 </script>
 </body>
 </html>
