@@ -1,409 +1,407 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="theme-color" content="#0b0f14" />
-<meta name="apple-mobile-web-app-capable" content="yes" />
-<title>THRUSTER + FAN-CTRL Console</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Pico ↔ RF-BM-2340QA2 AT/Bridge</title>
 <style>
   :root{
-    --bg:#0b0f14; --card:#121923; --muted:#7d8ca1; --text:#eaf2ff; --accent:#6aa6ff;
-    --ok:#35d07f; --warn:#ffd166; --bad:#ff6b6b;
-    --space: clamp(10px, 2vw, 16px); --radius: 20px;
+    --bg:#0b0f19; --panel:#0f1526; --card:#151c2f;
+    --text:#e6ecff; --muted:#9bb0ff; --acc:#6ea8fe; --ok:#2ecc71; --bad:#ff6b6b;
+    --warn:#ffd166; --shadow:0 10px 30px rgba(0,0,0,.35);
+    --radius:16px;
   }
-  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-  html,body{height:100%}
-  body{margin:0;background:linear-gradient(160deg,#0b0f14 0%,#0e1420 40%,#0b0f14 100%);color:var(--text);
-    font-family: ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans",sans-serif;
-    display:grid;place-items:center;padding:24px}
-  .card{width:min(1080px,96vw);background:linear-gradient(180deg,#151f2c 0%, #101826 100%);border:1px solid #263041;border-radius:var(--radius);box-shadow:0 10px 30px rgba(0,0,0,.35);
-    padding: clamp(14px, 2.5vw, 20px)}
-  .header{display:flex;gap:12px;align-items:center;justify-content:space-between;margin-bottom:6px}
-  .title{display:flex;align-items:center;gap:12px}
-  .badge{font-size:12px;color:#0b0f14;background:var(--accent);padding:6px 10px;border-radius:999px;font-weight:700}
-  .status{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-  .dot{width:10px;height:10px;border-radius:50%;background:#576279;box-shadow:0 0 0 2px #222c3a inset}
-  .dot.on{background:var(--ok);box-shadow:0 0 12px 2px rgba(53,208,127,.6)}
-  .btn{background:#1b2737;color:var(--text);border:1px solid #2b3a51;padding:12px 16px;border-radius:12px;font-weight:700;cursor:pointer;transition:.18s ease;min-height:44px}
-  .btn:hover{transform:translateY(-1px);border-color:#3d5272}.btn:active{transform:translateY(0)}.btn[disabled]{opacity:.5;cursor:not-allowed}
-  .btn.primary{background:linear-gradient(180deg,#2a69ff,#2256d9);border:0}
-  .grid{display:grid;grid-template-columns:1.1fr 1fr;gap:16px;margin-top:12px}
-  .panel{background:rgba(13,20,31,.6);border:1px solid #263041;border-radius:16px;padding:14px}
-  .section-title{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#a7b6cc;margin:2px 0 10px}
-  .kv{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
-  .metric{background:linear-gradient(180deg,#122033,#0f1a2a);border:1px solid #24334a;border-radius:14px;padding:12px}
-  .metric .label{font-size:12px;color:#9cb0c9;letter-spacing:.02em}
-  .metric .value{font-weight:800;font-size:clamp(18px,4.2vw,24px);margin-top:6px;line-height:1.1}
-  .value .unit{font-size:12px;color:#8fa3be;margin-left:4px;font-weight:700}
-  .row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-  .mono{width:100%;min-height:84px;max-height:200px;overflow:auto;background:linear-gradient(180deg,#0c1420,#0a111b);border:1px solid #223049;border-radius:12px;padding:10px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;color:#b9c7dd}
-  .slider{-webkit-appearance:none;appearance:none;width:100%;height:8px;border-radius:999px;background:linear-gradient(90deg,#2e3b52,#244f93);outline:none}
-  .slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:22px;height:22px;border-radius:50%;background:var(--accent);border:2px solid #d7e6ff;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.35)}
-  .pill{background:#172337;border:1px solid #273756;padding:8px 12px;border-radius:999px;color:#c4d3ea;font-size:13px;font-weight:800}
-  .muted{color:#7d8ca1;font-size:13px}
-  .rowwrap{display:flex;gap:10px;flex-wrap:wrap}
-  .small{font-size:12px}
-  @media (max-width: 980px){.grid{grid-template-columns:1fr}}
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:linear-gradient(180deg,#0a0f1a 0%,#0b0f19 70%,#0a0e18 100%);
+    color:var(--text); font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", "Helvetica Neue", Arial;
+  }
+  header{padding:20px 16px; text-align:center}
+  header h1{margin:.2rem 0 .4rem; font-size:1.2rem; font-weight:700; letter-spacing:.3px}
+  header p{margin:0; color:var(--muted); font-size:.9rem}
+  .wrap{max-width:980px; margin:0 auto; padding:10px 12px 24px; display:grid; gap:12px}
+  .row{display:grid; gap:12px}
+  @media(min-width:900px){ .row{grid-template-columns: 1.2fr .8fr} }
+
+  .card{background:var(--card); border:1px solid #1c2540; border-radius:var(--radius); box-shadow:var(--shadow)}
+  .card h2{margin:0; padding:12px 14px; font-size:1rem; border-bottom:1px solid #1c2540; color:#d8e1ff}
+  .card .body{padding:12px 14px}
+
+  .toolbar{display:flex; flex-wrap:wrap; gap:8px}
+  button, select, input[type="text"]{
+    background:#0f1730; color:var(--text); border:1px solid #22305d; border-radius:12px; padding:10px 12px; font-size:.95rem;
+  }
+  button{cursor:pointer}
+  button.primary{background:linear-gradient(180deg,#1b56f0,#1547c7); border-color:#1a49c8}
+  button.ghost{background:#0f173000}
+  button:disabled{opacity:.6; cursor:not-allowed}
+  .pill{display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border-radius:999px; font-size:.85rem; background:#0f1730; border:1px solid #22305d}
+  .pill.online{border-color:#2d8659; color:#b7ffd9; background:#10271e}
+  .pill.offline{border-color:#5a2030; color:#ffc6d0; background:#271018}
+
+  .grid{display:grid; gap:8px}
+  .grid.c2{grid-template-columns: 1fr 1fr}
+  .grid.c3{grid-template-columns: repeat(3,1fr)}
+  .muted{color:var(--muted); font-size:.88rem}
+  .hr{height:1px; background:#1c2540; margin:10px 0}
+
+  #log{
+    background:#0b1124; border:1px dashed #22305d; border-radius:12px; min-height:240px; max-height:420px;
+    overflow:auto; padding:10px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; font-size:.92rem;
+  }
+  .logline{display:flex; gap:8px; align-items:flex-start; padding:4px 0; border-bottom:1px dashed #1b2446}
+  .ts{color:#85a0ff; opacity:.9; min-width:86px}
+  .dir{font-weight:700}
+  .dir.out{color:#ffd166}
+  .dir.in{color:#8df5a4}
+  .msg{white-space:pre-wrap; word-break:break-word}
+  .kbd{font-family:ui-monospace,Menlo,Consolas,monospace; background:#111930; padding:2px 6px; border-radius:6px; border:1px solid #22305d}
+  .note{font-size:.85rem; color:#a8b8ff}
 </style>
 </head>
 <body>
-<div class="card">
-  <div class="header">
-    <div class="title">
-      <div style="width:36px;height:36px;border-radius:12px;display:grid;place-items:center;background:radial-gradient(120% 120% at 100% 0%,#2f4a6f 0%,#23344e 60%,#1a263a 100%);border:1px solid #2b3a51">🚗</div>
-      <div>
-        <div style="font-size:clamp(18px,4.8vw,20px);font-weight:800;letter-spacing:.2px">THRUSTER + FAN-CTRL Console</div>
-        <div class="muted small">Nordic UART UUID • Dual BLE Monitor & Relay</div>
+<header>
+  <h1>RF-BM-2340QA2 — AT / 透傳 控制台</h1>
+  <p>連上模組後，可用「AT 面板」或「RAW 透傳」與 QA2 溝通；預設嘗試 NUS（6E40****）並自動偵測可寫/通知特徵。</p>
+</header>
+
+<div class="wrap">
+  <div class="row">
+    <div class="card">
+      <h2>連線</h2>
+      <div class="body grid">
+        <div class="toolbar">
+          <button id="btnConnect" class="primary">連線</button>
+          <button id="btnDisconnect" class="ghost" disabled>斷線</button>
+          <span id="status" class="pill offline">未連線</span>
+        </div>
+        <div class="grid c3">
+          <div>
+            <label class="muted">名稱過濾（namePrefix）</label>
+            <input id="inpNamePrefix" type="text" placeholder="例如：RF-BM 或 Pico-QA2">
+          </div>
+          <div>
+            <label class="muted">固定 Service UUID（可留空）</label>
+            <input id="inpSvc" type="text" placeholder="預設 NUS: 6e400001-b5a3-f393-e0a9-e50e24dcca9e">
+          </div>
+          <div>
+            <label class="muted">允許任意裝置</label><br/>
+            <label><input id="chkAcceptAll" type="checkbox"> acceptAllDevices</label>
+          </div>
+        </div>
+        <div class="hr"></div>
+        <div class="grid c2">
+          <div>
+            <div class="muted">TX（write）Characteristic UUID</div>
+            <input id="inpTxChar" type="text" placeholder="若留空會自動尋找可寫特徵">
+          </div>
+          <div>
+            <div class="muted">RX（notify）Characteristic UUID</div>
+            <input id="inpRxChar" type="text" placeholder="若留空會自動尋找可通知特徵">
+          </div>
+        </div>
+        <div class="note">小提示：QA2 常見是 <span class="kbd">NUS</span>：Service <span class="kbd">6e400001-…-dcca9e</span>，TX(write) <span class="kbd">6e400002-…-dcca9e</span>，RX(notify) <span class="kbd">6e400003-…-dcca9e</span>。</div>
       </div>
     </div>
-    <div class="status">
-      <span class="badge" id="stA">A: Disconnected</span><span class="dot" id="dotA"></span>
-      <button class="btn primary" id="btnConnA">Connect A (THRUSTER)</button>
-      <button class="btn" id="btnDiscA" disabled>Disconnect A</button>
-      <span style="width:10px"></span>
-      <span class="badge" id="stB">B: Disconnected</span><span class="dot" id="dotB"></span>
-      <button class="btn primary" id="btnConnB">Connect B (FAN-CTRL)</button>
-      <button class="btn" id="btnDiscB" disabled>Disconnect B</button>
+
+    <div class="card">
+      <h2>傳輸選項</h2>
+      <div class="body grid">
+        <div class="grid c3">
+          <div>
+            <label class="muted">行尾（EOL）</label>
+            <select id="selEOL">
+              <option value="CRLF">\r\n</option>
+              <option value="CR">\r</option>
+              <option value="LF">\n</option>
+              <option value="NONE">無</option>
+            </select>
+          </div>
+          <div>
+            <label class="muted">自動捲動</label><br/>
+            <label><input id="chkAutoscroll" type="checkbox" checked> 新訊息自動捲動</label>
+          </div>
+          <div>
+            <label class="muted">保留日誌</label><br/>
+            <label><input id="chkPersist" type="checkbox" checked> 儲存到 localStorage</label>
+          </div>
+        </div>
+        <div class="toolbar" style="margin-top:8px">
+          <button id="btnCopyLog">複製日誌</button>
+          <button id="btnClearLog">清除日誌</button>
+        </div>
+      </div>
+    </div>
+  </div><!-- row -->
+
+  <div class="card">
+    <h2>AT 面板</h2>
+    <div class="body grid">
+      <div class="toolbar">
+        <button id="btnPlus">發送 +++</button>
+        <button id="btnExit">AT+EXIT</button>
+        <button id="btnEcho1">AT+ECHO=1</button>
+        <button id="btnCDL">AT+CDL=10,20</button>
+        <button id="btnNameQ">AT+NAME?</button>
+        <button id="btnMacQ">AT+MAC?</button>
+      </div>
+      <div class="grid c2" style="margin-top:8px">
+        <div>
+          <div class="muted">AT 指令</div>
+          <input id="inpAT" type="text" placeholder="例如：AT+UART? 或 AT+NAME=0,Pico-QA2">
+        </div>
+        <div class="toolbar" style="align-items:flex-end">
+          <button id="btnSendAT" class="primary">送出 AT</button>
+        </div>
+      </div>
+      <div class="hr"></div>
+      <div class="grid c2">
+        <div>
+          <div class="muted">RAW 透傳</div>
+          <input id="inpRAW" type="text" placeholder="輸入要透傳的字串（會套用上方 EOL）">
+        </div>
+        <div class="toolbar" style="align-items:flex-end">
+          <button id="btnSendRAW">透傳 SEND</button>
+        </div>
+      </div>
     </div>
   </div>
 
-  <div class="grid">
-    <!-- Left: A (THRUSTER) -->
-    <div class="panel">
-      <div class="section-title">A. THRUSTER (Pico 2W + CAN)</div>
-      <div class="kv">
-        <div class="metric"><div class="label">RPM</div><div class="value"><span id="rpm">0</span><span class="unit">rpm</span></div></div>
-        <div class="metric"><div class="label">Throttle</div><div class="value"><span id="thr">0</span><span class="unit">%</span></div></div>
-        <div class="metric"><div class="label">MAP</div><div class="value"><span id="map">0</span><span class="unit">kPa</span></div></div>
-        <div class="metric"><div class="label">Voltage</div><div class="value"><span id="volt">0.00</span><span class="unit">V</span></div></div>
-      </div>
-
-      <div style="height:10px"></div>
-      <div class="row">
-        <div class="pill">Threshold: <span id="thVal">—</span></div>
-        <div class="muted small">MAP > TH → fan ON；頁面自動把 TPS 與 blink 轉發給 B</div>
-      </div>
-
-      <div style="height:12px"></div>
-      <div class="section-title">Fuel & Trip</div>
-      <div class="kv">
-        <div class="metric"><div class="label">Source</div><div class="value"><span id="src">NA</span></div></div>
-        <div class="metric"><div class="label">Fuel Rate</div><div class="value"><span id="fr">0.00</span><span class="unit">L/h</span></div></div>
-        <div class="metric"><div class="label">iL/100</div><div class="value"><span id="iL100">—</span></div></div>
-        <div class="metric"><div class="label">iKm/L</div><div class="value"><span id="iKML">—</span></div></div>
-        <div class="metric"><div class="label">Trip L</div><div class="value"><span id="tripL">0.000</span><span class="unit">L</span></div></div>
-        <div class="metric"><div class="label">Trip Km</div><div class="value"><span id="tripK">0.000</span><span class="unit">km</span></div></div>
-        <div class="metric"><div class="label">aL/100</div><div class="value"><span id="aL100">—</span></div></div>
-        <div class="metric"><div class="label">aKm/L</div><div class="value"><span id="aKML">—</span></div></div>
-      </div>
-
-      <div style="height:12px"></div>
-      <div class="section-title">Diagnostics</div>
-      <div class="kv">
-        <div class="metric"><div class="label">CAN kbps</div><div class="value"><span id="d_can">—</span></div></div>
-        <div class="metric"><div class="label">PWM Hz</div><div class="value"><span id="d_pwm">—</span></div></div>
-        <div class="metric"><div class="label">Rate Hz</div><div class="value"><span id="d_rate">—</span></div></div>
-        <div class="metric"><div class="label">Loop ms</div><div class="value"><span id="d_loop">—</span></div></div>
-        <div class="metric"><div class="label">RX OK</div><div class="value"><span id="d_rxok">—</span></div></div>
-        <div class="metric"><div class="label">RX TO</div><div class="value"><span id="d_rxto">—</span></div></div>
-      </div>
-
-      <div style="height:12px"></div>
-      <div class="mono" id="logA"></div>
-    </div>
-
-    <!-- Right: B (FAN-CTRL) -->
-    <div class="panel">
-      <div class="section-title">B. FAN-CTRL (Pico W / ESP32-C6)</div>
-      <div class="rowwrap">
-        <label class="pill"><input type="checkbox" id="autoRelay" checked style="transform:translateY(2px);margin-right:8px">Auto Relay (A→B)</label>
-        <div class="pill">B Name: <span id="bName">—</span></div>
-      </div>
-
-      <div style="height:10px"></div>
-      <div class="kv" style="grid-template-columns:repeat(3,minmax(0,1fr))">
-        <div class="metric"><div class="label">PWM %</div><div class="value"><span id="b_pwm">0</span><span class="unit">%</span></div></div>
-        <div class="metric"><div class="label">PWM Hz</div><div class="value"><span id="b_hz">—</span></div></div>
-        <div class="metric"><div class="label">Blink</div><div class="value"><span id="b_blink">0</span><span class="unit">ms</span></div></div>
-      </div>
-
-      <div style="height:10px"></div>
-      <div class="section-title">Manual Override</div>
-      <div class="rowwrap">
-        <input id="bSlider" class="slider" type="range" min="0" max="100" value="0" style="flex:1;min-width:240px" />
-        <button class="btn" id="btnSendPWM">Send PWM</button>
-      </div>
-      <div style="height:8px"></div>
-      <div class="rowwrap">
-        <select id="selHz" class="btn" style="padding:10px 12px">
-          <option value="1000">FREQ: 1 kHz</option>
-          <option value="25000">FREQ: 25 kHz</option>
-        </select>
-        <button class="btn" id="btnSetHz">Set FREQ</button>
-        <input id="inBlink" class="btn" type="number" min="0" value="0" style="width:120px" />
-        <button class="btn" id="btnSetBlink">Set LED(ms)</button>
-      </div>
-
-      <div style="height:12px"></div>
-      <div class="mono" id="logB"></div>
+  <div class="card">
+    <h2>Log</h2>
+    <div class="body">
+      <div id="log"></div>
     </div>
   </div>
-</div>
+</div><!-- wrap -->
 
 <script>
-const $ = (s)=>document.querySelector(s);
-const logA = (m)=>{ const el=$('#logA'); const t=new Date().toLocaleTimeString(); el.textContent = `[${t}] ${m}\n` + el.textContent.slice(0,4000);};
-const logB = (m)=>{ const el=$('#logB'); const t=new Date().toLocaleTimeString(); el.textContent = `[${t}] ${m}\n` + el.textContent.slice(0,4000);};
+(() => {
+  // ===== Helpers =====
+  const $ = sel => document.querySelector(sel);
+  const logEl = $("#log");
 
-const SVC_UUID  = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
-const DATA_UUID = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
-const CTRL_UUID = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
-
-// A: THRUSTER
-let devA, srvA, chAData, chACtrl, aConnected=false;
-// B: FAN-CTRL
-let devB, srvB, chBData, chBCtrl, bConnected=false;
-
-// ======= small utils =======
-const sleep = (ms)=>new Promise(r=>setTimeout(r, ms));
-
-function setConnBadge(which, ok){
-  const st = which==='A' ? $('#stA') : $('#stB');
-  const dot = which==='A' ? $('#dotA') : $('#dotB');
-  st.textContent = which + ': ' + (ok?'Connected':'Disconnected');
-  dot.classList.toggle('on', ok);
-  if (which==='A') {
-    $('#btnDiscA').disabled = !ok; $('#btnConnA').disabled = ok;
-  } else {
-    $('#btnDiscB').disabled = !ok; $('#btnConnB').disabled = ok;
+  function ts(){
+    const d = new Date();
+    const hh = String(d.getHours()).padStart(2,"0");
+    const mm = String(d.getMinutes()).padStart(2,"0");
+    const ss = String(d.getSeconds()).padStart(2,"0");
+    const ms = String(d.getMilliseconds()).padStart(3,"0");
+    return `${hh}:${mm}:${ss}.${ms}`;
   }
-}
-
-function parseJSON(ev, which){
-  try{
-    const j = JSON.parse(new TextDecoder().decode(ev.target.value));
-    if (!j || !j.t) return;
-    if (which==='A') handlePacketA(j);
-    else handlePacketB(j);
-  }catch(e){
-    (which==='A'?logA:logB)('JSON parse error: ' + e);
+  function addLog(dir, msg){
+    const line = document.createElement("div");
+    line.className = "logline";
+    const spanTs = document.createElement("span"); spanTs.className="ts"; spanTs.textContent=ts();
+    const spanDir = document.createElement("span"); spanDir.className = "dir " + (dir === "OUT" ? "out":"in"); spanDir.textContent = dir === "OUT" ? "→" : "←";
+    const spanMsg = document.createElement("div"); spanMsg.className="msg"; spanMsg.textContent = msg;
+    line.appendChild(spanTs); line.appendChild(spanDir); line.appendChild(spanMsg);
+    logEl.appendChild(line);
+    if ($("#chkPersist").checked) { try {
+      const prev = JSON.parse(localStorage.getItem("qa2_log")||"[]");
+      prev.push({t:Date.now(), dir, msg});
+      if (prev.length>2000) prev.splice(0, prev.length-2000);
+      localStorage.setItem("qa2_log", JSON.stringify(prev));
+    } catch(e){} }
+    if ($("#chkAutoscroll").checked) logEl.scrollTop = logEl.scrollHeight;
   }
-}
-
-/********** A handlers **********/
-function applyA_core(j){
-  $('#rpm').textContent  = j.rpm ?? 0;
-  $('#thr').textContent  = j.tps ?? 0;
-  $('#map').textContent  = j.map ?? 0;
-  const v = j.vol ?? 0; $('#volt').textContent = (v.toFixed? v.toFixed(2): v);
-  if (typeof j.thr === 'number'){ $('#thVal').textContent = String(j.thr); }
-}
-function applyA_fuel(j){
-  $('#src').textContent   = j.src ?? 'NA';
-  $('#fr').textContent    = (j.fr ?? '—');
-  $('#iL100').textContent = (j.iL100 ?? '—');
-  $('#iKML').textContent  = (j.iKML  ?? '—');
-  $('#aL100').textContent = (j.aL100 ?? '—');
-  $('#aKML').textContent  = (j.aKML  ?? '—');
-  $('#tripL').textContent = (j.tripL?.toFixed? j.tripL.toFixed(3): j.tripL ?? 0);
-  $('#tripK').textContent = (j.tripK?.toFixed? j.tripK.toFixed(3): j.tripK ?? 0);
-}
-function applyA_diag(j){
-  $('#d_can').textContent  = j.can ?? '—';
-  $('#d_pwm').textContent  = j.pwm ?? '—';
-  $('#d_rate').textContent = j.rate ?? '—';
-  $('#d_loop').textContent = j.loop ?? '—';
-  $('#d_rxok').textContent = j.rxok ?? '—';
-  $('#d_rxto').textContent = j.rxto ?? '—';
-}
-
-function handlePacketA(j){
-  if (j.t === 'a'){ applyA_core(j); autoRelayToB(j); }
-  else if (j.t === 'f'){ applyA_fuel(j); }
-  else if (j.t === 'd'){ applyA_diag(j); }
-  else { logA('unknown t=' + j.t); }
-}
-
-async function connectA(){
-  try{
-    const dev = await navigator.bluetooth.requestDevice({
-      filters:[{ namePrefix:'THRUSTER' }],
-      optionalServices:[SVC_UUID]
-    });
-    devA = dev;
-    devA.addEventListener('gattserverdisconnected', ()=>{ setConnBadge('A', false); logA('Disconnected'); aConnected=false; });
-    srvA = await devA.gatt.connect();
-    const svc = await srvA.getPrimaryService(SVC_UUID);
-    chAData = await svc.getCharacteristic(DATA_UUID);
-    chACtrl = await svc.getCharacteristic(CTRL_UUID);
-    await chAData.startNotifications();
-    chAData.addEventListener('characteristicvaluechanged', (ev)=>parseJSON(ev,'A'));
-    // read initial ctrl text (contains TH etc.)
+  function restoreLog(){
     try{
-      const s = new TextDecoder().decode(await chACtrl.readValue()).trim();
-      const m = s.match(/TH:(\d+)/i); if (m) $('#thVal').textContent = m[1];
+      const arr = JSON.parse(localStorage.getItem("qa2_log")||"[]");
+      arr.forEach(x=> addLog(x.dir, x.msg));
     }catch(e){}
-    setConnBadge('A', true); aConnected = true;
-    logA('Connected to ' + (devA.name||'THRUSTER'));
-  }catch(e){
-    logA('Connect failed: ' + e);
   }
-}
-function disconnectA(){ try{ if (devA?.gatt?.connected) devA.gatt.disconnect(); }catch(e){} finally{ setConnBadge('A', false); aConnected=false; }}
-
-/********** B handlers + polling fallback **********/
-let lastBSeen = 0;
-const markBSeen = ()=>{ lastBSeen = performance.now(); };
-let bPollTimer = null;
-
-function applyB_status(j){
-  if (typeof j.pwm === 'number') $('#b_pwm').textContent = String(j.pwm);
-  if (typeof j.hz  === 'number') $('#b_hz').textContent  = String(j.hz);
-  if (typeof j.blink === 'number') $('#b_blink').textContent = String(j.blink);
-}
-
-function handlePacketB(j){
-  markBSeen();
-  if (j.t === 'p'){ applyB_status(j); }
-  else { logB('unknown t=' + j.t); }
-}
-
-async function connectB(){
-  try{
-    const dev = await navigator.bluetooth.requestDevice({
-      filters:[{ namePrefix:'FAN-CTRL' }],
-      optionalServices:[SVC_UUID]
-    });
-    devB = dev;
-    devB.addEventListener('gattserverdisconnected', ()=>{
-      setConnBadge('B', false); logB('Disconnected'); bConnected=false;
-      if (bPollTimer){ clearInterval(bPollTimer); bPollTimer=null; }
-    });
-    srvB = await devB.gatt.connect();
-    const svc = await srvB.getPrimaryService(SVC_UUID);
-    chBData = await svc.getCharacteristic(DATA_UUID);
-    chBCtrl = await svc.getCharacteristic(CTRL_UUID);
-    await chBData.startNotifications();
-    chBData.addEventListener('characteristicvaluechanged', (ev)=>parseJSON(ev,'B'));
-    $('#bName').textContent = devB.name || '—';
-    setConnBadge('B', true); bConnected = true;
-    logB('Connected to ' + (devB.name||'FAN-CTRL'));
-
-    // 保底輪詢：若 2 秒內沒任何通知，就主動 readValue 一次（DATA）
-    if (bPollTimer){ clearInterval(bPollTimer); }
-    bPollTimer = setInterval(async ()=>{
-      if (!bConnected || !chBData) return;
-      if (performance.now() - lastBSeen > 2000){
-        try{
-          const dv  = await chBData.readValue();
-          const txt = new TextDecoder().decode(dv);
-          const j   = JSON.parse(txt);
-          handlePacketB(j);
-          logB('polled status');
-        }catch(e){}
-      }
-    }, 2000);
-  }catch(e){
-    logB('Connect failed: ' + e);
+  function savePrefs(){
+    localStorage.setItem("qa2_prefs", JSON.stringify({
+      namePrefix: $("#inpNamePrefix").value || "",
+      svc: $("#inpSvc").value || "",
+      tx: $("#inpTxChar").value || "",
+      rx: $("#inpRxChar").value || "",
+      eol: $("#selEOL").value,
+      acceptAll: $("#chkAcceptAll").checked,
+      autoscroll: $("#chkAutoscroll").checked,
+      persist: $("#chkPersist").checked
+    }));
   }
-}
-function disconnectB(){
-  try{ if (devB?.gatt?.connected) devB.gatt.disconnect(); }catch(e){}
-  finally{
-    setConnBadge('B', false); bConnected=false;
-    if (bPollTimer){ clearInterval(bPollTimer); bPollTimer=null; }
-  }
-}
-
-/********** REPLACEMENT: queued writes to B (force write-with-response + read back ACK) **********/
-let bWriteQueue = Promise.resolve();
-let lastPWM = null, lastBlink = null;
-let lastRelayAt = 0;
-const RELAY_MIN_SPACING_MS = 120;
-const BETWEEN_WRITES_MS    = 40;
-
-async function _readCtrlAckAndApply(){
-  try{
-    const dv  = await chBCtrl.readValue();
-    const ack = new TextDecoder().decode(dv).trim();
-    // 期望格式：OK;PWM:x;FREQ:y;LED:z
-    const m = ack.match(/PWM:(\d+).*FREQ:(\d+).*LED:(\d+)/i);
-    if (m){
-      applyB_status({
-        t: 'p',
-        pwm:  parseInt(m[1], 10),
-        hz:   parseInt(m[2], 10),
-        blink:parseInt(m[3], 10)
-      });
-      logB('ACK ' + ack);
-    }
-  }catch(e){
-    // ignore
-  }
-}
-
-function enqueueWriteB(bytes, tag){
-  bWriteQueue = bWriteQueue.then(async ()=>{
-    if (!bConnected || !chBCtrl) return;
+  function loadPrefs(){
     try{
-      if (typeof chBCtrl.writeValueWithResponse === 'function') {
-        await chBCtrl.writeValueWithResponse(bytes);
-      } else {
-        // 多數環境 writeValue 亦為有回應
-        await chBCtrl.writeValue(bytes);
+      const p = JSON.parse(localStorage.getItem("qa2_prefs")||"{}");
+      $("#inpNamePrefix").value = p.namePrefix || "";
+      $("#inpSvc").value = p.svc || "";
+      $("#inpTxChar").value = p.tx || "";
+      $("#inpRxChar").value = p.rx || "";
+      $("#selEOL").value = p.eol || "CRLF";
+      $("#chkAcceptAll").checked = !!p.acceptAll;
+      $("#chkAutoscroll").checked = p.autoscroll !== false;
+      $("#chkPersist").checked = p.persist !== false;
+    }catch(e){}
+  }
+
+  // ===== BLE state =====
+  let device = null, server = null, service = null;
+  let txChar = null, rxChar = null;
+  let notifyAbort = null;
+
+  const NUS_SERVICE = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
+  const NUS_TX = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"; // Write
+  const NUS_RX = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"; // Notify
+
+  function setStatus(online){
+    const badge = $("#status");
+    if (online){ badge.classList.remove("offline"); badge.classList.add("online"); badge.textContent="已連線"; }
+    else { badge.classList.remove("online"); badge.classList.add("offline"); badge.textContent="未連線"; }
+    $("#btnConnect").disabled = online;
+    $("#btnDisconnect").disabled = !online;
+  }
+
+  async function connect(){
+    try{
+      savePrefs();
+      const namePrefix = $("#inpNamePrefix").value.trim();
+      const svcUUID = ($("#inpSvc").value.trim() || NUS_SERVICE).toLowerCase();
+      const acceptAll = $("#chkAcceptAll").checked;
+
+      const filters = [];
+      if (namePrefix) filters.push({namePrefix});
+      if (!acceptAll) filters.push({services:[svcUUID]});
+
+      const options = acceptAll
+        ? { acceptAllDevices:true, optionalServices:[svcUUID] }
+        : { filters, optionalServices:[svcUUID] };
+
+      addLog("OUT", "[BLE] requestDevice...");
+      device = await navigator.bluetooth.requestDevice(options);
+      device.addEventListener("gattserverdisconnected", onDisconnected);
+
+      addLog("OUT", "[BLE] connecting GATT...");
+      server = await device.gatt.connect();
+
+      // Service
+      addLog("OUT", `[BLE] getPrimaryService: ${svcUUID}`);
+      service = await server.getPrimaryService(svcUUID);
+
+      // Characteristics: try user-provided first
+      const txUUID = ($("#inpTxChar").value.trim() || NUS_TX).toLowerCase();
+      const rxUUID = ($("#inpRxChar").value.trim() || NUS_RX).toLowerCase();
+
+      try { txChar = await service.getCharacteristic(txUUID); } catch(e){ txChar = null; }
+      try { rxChar = await service.getCharacteristic(rxUUID); } catch(e){ rxChar = null; }
+
+      // If not found, scan all to autodetect
+      if (!txChar || !rxChar){
+        const chars = await service.getCharacteristics();
+        if (!txChar){
+          txChar = chars.find(c => c.properties.write || c.properties.writeWithoutResponse) || null;
+        }
+        if (!rxChar){
+          rxChar = chars.find(c => c.properties.notify || c.properties.indicate) || null;
+        }
       }
-      await _readCtrlAckAndApply();   // 寫完立刻讀回 ACK，同步 UI
-    }catch(e){
-      logB(`Write failed (${tag||''}): ` + e);
+
+      if (!txChar || !rxChar) throw new Error("找不到可寫/可通知的特徵（請手動填入 UUID）");
+
+      // Notifications
+      await rxChar.startNotifications();
+      const controller = new AbortController();
+      notifyAbort = controller;
+      rxChar.addEventListener("characteristicvaluechanged", ev=>{
+        const v = ev.target.value;
+        let s = "";
+        for (let i=0;i<v.byteLength;i++) s += String.fromCharCode(v.getUint8(i));
+        addLog("IN", s);
+      }, {signal: controller.signal});
+
+      setStatus(true);
+      addLog("OUT", `✅ 已連線：${device.name||"(無名)"}  — service OK, tx/rx OK`);
+    }catch(err){
+      addLog("IN", "❌ 連線失敗：" + err.message);
+      await disconnect(true);
     }
-    await sleep(BETWEEN_WRITES_MS);
-  }).catch(()=>{});
-  return bWriteQueue;
-}
+  }
 
-function writeCtrlB(txt, tag){
-  if (!bConnected || !chBCtrl) return;
-  const enc = new TextEncoder().encode(txt);
-  enqueueWriteB(enc, tag);
-}
+  async function disconnect(silent){
+    try{
+      if (notifyAbort){ try{ notifyAbort.abort(); }catch(e){} notifyAbort=null; }
+      if (rxChar){ try{ await rxChar.stopNotifications(); }catch(e){} }
+      rxChar = null; txChar = null; service = null;
+      if (server && server.connected){ await server.disconnect(); }
+      if (device) device.removeEventListener("gattserverdisconnected", onDisconnected);
+    }catch(e){}
+    finally{
+      setStatus(false);
+      if (!silent) addLog("IN", "🔌 已斷線");
+    }
+  }
+  function onDisconnected(){ disconnect(); }
 
-/********** Relay logic (A → B) with de-dup + throttle **********/
-function autoRelayToB(pktA){
-  if (!$('#autoRelay').checked || !bConnected) return;
+  function eolString(){
+    const v = $("#selEOL").value;
+    if (v==="CRLF") return "\r\n";
+    if (v==="CR") return "\r";
+    if (v==="LF") return "\n";
+    return "";
+  }
 
-  const now = performance.now();
-  if (now - lastRelayAt < RELAY_MIN_SPACING_MS) return;
-  lastRelayAt = now;
+  async function sendString(s){
+    if (!txChar) { addLog("IN","尚未連線"); return; }
+    const msg = s;
+    const data = new TextEncoder().encode(msg);
+    // 分片避免超過 ATT 上限（保守 180）
+    const MTU = 180;
+    for (let i=0;i<data.byteLength;i+=MTU){
+      const chunk = data.slice(i, i+MTU);
+      await txChar.writeValue(chunk);
+      await new Promise(r=>setTimeout(r, 5)); // 小延遲
+    }
+    addLog("OUT", msg);
+  }
 
-  const tps  = Math.max(0, Math.min(100, parseInt(pktA.tps||0, 10)));
-  const duty = pktA.fan ? tps : 0;
-  const blink = Math.max(0, parseInt(pktA.bl||0,10)||0);
+  // ===== Wire UI =====
+  $("#btnConnect").addEventListener("click", connect);
+  $("#btnDisconnect").addEventListener("click", ()=>disconnect(false));
 
-  if (lastPWM !== duty) { writeCtrlB(`PWM:${duty}`, 'PWM'); lastPWM = duty; }
-  if (lastBlink !== blink) { writeCtrlB(`LED:${blink}`, 'LED'); lastBlink = blink; }
-}
+  $("#btnPlus").addEventListener("click", ()=> sendString("+++"));
+  $("#btnExit").addEventListener("click", ()=> sendString("AT+EXIT"+eolString()));
+  $("#btnEcho1").addEventListener("click", ()=> sendString("AT+ECHO=1"+eolString()));
+  $("#btnCDL").addEventListener("click", ()=> sendString("AT+CDL=10,20"+eolString()));
+  $("#btnNameQ").addEventListener("click", ()=> sendString("AT+NAME?"+eolString()));
+  $("#btnMacQ").addEventListener("click", ()=> sendString("AT+MAC?"+eolString()));
 
-/********** Manual controls for B **********/
-$('#btnSendPWM').addEventListener('click', ()=>{
-  const v = Math.max(0, Math.min(100, parseInt($('#bSlider').value,10)||0));
-  lastPWM = null; // 允許覆寫同值
-  writeCtrlB(`PWM:${v}`, 'PWM-btn');
-});
-$('#btnSetHz').addEventListener('click', ()=>{
-  writeCtrlB(`FREQ:${parseInt($('#selHz').value,10)}`, 'FREQ');
-});
-$('#btnSetBlink').addEventListener('click', ()=>{
-  const ms = parseInt($('#inBlink').value,10)||0;
-  lastBlink = null; // 允許覆寫同值
-  writeCtrlB(`LED:${ms}`, 'LED-btn');
-});
+  $("#btnSendAT").addEventListener("click", ()=>{
+    const cmd = $("#inpAT").value||"";
+    if (!cmd) return;
+    sendString(cmd + eolString());
+  });
+  $("#btnSendRAW").addEventListener("click", ()=>{
+    const s = $("#inpRAW").value||"";
+    sendString(s + eolString());
+  });
 
-/********** Wire up buttons **********/
-$('#btnConnA').addEventListener('click', connectA);
-$('#btnDiscA').addEventListener('click', disconnectA);
-$('#btnConnB').addEventListener('click', connectB);
-$('#btnDiscB').addEventListener('click', disconnectB);
+  $("#btnCopyLog").addEventListener("click", async ()=>{
+    let text = "";
+    document.querySelectorAll("#log .logline").forEach(line=>{
+      const a = line.querySelector(".ts").textContent;
+      const b = line.querySelector(".dir").textContent;
+      const c = line.querySelector(".msg").textContent;
+      text += `[${a}] ${b} ${c}\n`;
+    });
+    try{ await navigator.clipboard.writeText(text); addLog("IN","📋 已複製"); }catch(e){ addLog("IN","無法複製："+e.message); }
+  });
+  $("#btnClearLog").addEventListener("click", ()=>{
+    logEl.innerHTML="";
+    localStorage.removeItem("qa2_log");
+  });
+
+  ["inpNamePrefix","inpSvc","inpTxChar","inpRxChar","selEOL","chkAcceptAll","chkAutoscroll","chkPersist"].forEach(id=>{
+    $("#"+id).addEventListener("change", savePrefs);
+    $("#"+id).addEventListener("keyup", savePrefs);
+  });
+
+  // ===== Init =====
+  loadPrefs();
+  restoreLog();
+  setStatus(false);
+})();
 </script>
 </body>
 </html>
