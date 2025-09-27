@@ -389,10 +389,12 @@
     sendString("+++"); // 無 EOL
   });
   // AT+EXIT 應走 RAW/UART
-  $("#btnExit").addEventListener("click", ()=>{
-    if(currentMode!=="RAW"){ seg.querySelector('[data-mode="RAW"]').click(); }
-    sendString("AT+EXIT"+eolString());
-  });
+// 只有 RAW/UART 情境需要 AT+EXIT
+$("#btnExit").addEventListener("click", ()=>{
+  if(currentMode!=="RAW"){ seg.querySelector('[data-mode="RAW"]').click(); }
+  sendString("AT+EXIT"+eolString());
+});
+
   $("#btnEcho1").addEventListener("click", ()=>{ ensureAT(); sendString("AT+ECHO=1"+eolString()); });
   $("#btnCDL").addEventListener("click", ()=>{ ensureAT(); sendString("AT+CDL=10,20"+eolString()); });
   $("#btnNameQ").addEventListener("click", ()=>{ ensureAT(); sendString("AT+NAME?"+eolString()); });
