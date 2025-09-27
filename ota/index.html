@@ -317,16 +317,16 @@
   // AT panel buttons (will auto-switch to AT mode)
   function ensureAT(){ if(currentMode!=="AT"){ seg.querySelector('[data-mode="AT"]').click(); } }
   $("#btnPlus").addEventListener("click", ()=>{
-  // '+' 僅適用於 UART 情境：RAW 通道（6e400002/0003）
-  if(currentMode!=="RAW"){ seg.querySelector('[data-mode="RAW"]').click(); }
-  addLog("OUT","提示：'+++' 僅供 UART 端進入 AT 模式；AT 通道無需使用 '+'.");
-  sendString("+++"); // 無 EOL
-});
+    // '+' 僅適用於 UART 情境：RAW 通道（6e400002/0003）
+    if(currentMode!=="RAW"){ seg.querySelector('[data-mode="RAW"]').click(); }
+    addLog("OUT","提示：'+++' 僅供 UART 端進入 AT 模式；AT 通道無需使用 '+'.");
+    sendString("+++"); // 無 EOL
+  });
+  // 🔧 修正：AT+EXIT 應走 RAW
   $("#btnExit").addEventListener("click", ()=>{
-  // 只有 RAW/UART 情境需要 AT+EXIT；確保目前在 RAW 通道再送
-  if(currentMode!=="RAW"){ seg.querySelector('[data-mode="RAW"]').click(); }
-  sendString("AT+EXIT"+eolString());
-});
+    if(currentMode!=="RAW"){ seg.querySelector('[data-mode=\"RAW\"]').click(); }
+    sendString("AT+EXIT"+eolString());
+  });
   $("#btnEcho1").addEventListener("click", ()=>{ ensureAT(); sendString("AT+ECHO=1"+eolString()); });
   $("#btnCDL").addEventListener("click", ()=>{ ensureAT(); sendString("AT+CDL=10,20"+eolString()); });
   $("#btnNameQ").addEventListener("click", ()=>{ ensureAT(); sendString("AT+NAME?"+eolString()); });
