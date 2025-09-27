@@ -61,7 +61,7 @@
 <body>
 <header>
   <h1>RF-BM-2340QA2 — AT / RAW 通道自動切換</h1>
-  <p>AT 面板用 <span class="kbd">6e400004</span>；RAW 用 <span class="kbd">6e400002/0003</span>。新增：<b>通道狀態燈</b>、<b>回應合併</b>。</p>
+  <p>AT 面板用 <span class="kbd">6e400004</span>；RAW 用 <span class="kbd">6e400002/0003</span>。新增：<b>通道狀態燈</b>、<b>AT 回應合併</b>。</p>
 </header>
 
 <div class="wrap">
@@ -382,12 +382,14 @@
 
   // AT 面板（自動切回 AT 模式）
   function ensureAT(){ if(currentMode!=="AT"){ seg.querySelector('[data-mode="AT"]').click(); } }
-  $("#btnPlus").addEventListener("click", ()=>{ // '+' 僅 RAW/UART 有效
+  // '+' 僅 RAW/UART 有效
+  $("#btnPlus").addEventListener("click", ()=>{
     if(currentMode!=="RAW"){ seg.querySelector('[data-mode="RAW"]').click(); }
     addLog("OUT","提示：'+++' 僅供 UART 端進入 AT 模式；AT 通道無需 '+'.");
     sendString("+++"); // 無 EOL
   });
-  $("#btnExit").addEventListener("click", ()=>{ // RAW/UART 才需要
+  // AT+EXIT 應走 RAW/UART
+  $("#btnExit").addEventListener("click", ()=>{
     if(currentMode!=="RAW"){ seg.querySelector('[data-mode="RAW"]').click(); }
     sendString("AT+EXIT"+eolString());
   });
