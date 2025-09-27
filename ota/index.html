@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>RF-BM-2340QA2 — AT/RAW 通道自動切換 + 狀態燈 + 回應合併</title>
+<title>RF-BM-2340QA2 — AT/RAW 通道自動切換</title>
 <style>
   :root{
     --bg:#0b0f19; --panel:#0f1526; --card:#151c2f;
@@ -12,10 +12,8 @@
     --radius:16px;
   }
   *{box-sizing:border-box}
-  body{
-    margin:0; background:linear-gradient(180deg,#0a0f1a 0%,#0b0f19 70%,#0a0e18 100%);
-    color:var(--text); font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial
-  }
+  body{margin:0; background:linear-gradient(180deg,#0a0f1a 0%,#0b0f19 70%,#0a0e18 100%);
+       color:var(--text); font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial}
   header{padding:20px 16px; text-align:center}
   header h1{margin:.2rem 0 .4rem; font-size:1.2rem; font-weight:700; letter-spacing:.3px}
   header p{margin:0; color:var(--muted); font-size:.9rem}
@@ -26,9 +24,7 @@
   .card h2{margin:0; padding:12px 14px; font-size:1rem; border-bottom:1px solid #1c2540; color:#d8e1ff}
   .card .body{padding:12px 14px}
   .toolbar{display:flex; flex-wrap:wrap; gap:8px}
-  button, select, input[type="text"]{
-    background:#0f1730; color:var(--text); border:1px solid #22305d; border-radius:12px; padding:10px 12px; font-size:.95rem
-  }
+  button, select, input[type="text"]{background:#0f1730; color:var(--text); border:1px solid #22305d; border-radius:12px; padding:10px 12px; font-size:.95rem}
   button{cursor:pointer}
   button.primary{background:linear-gradient(180deg,#1b56f0,#1547c7); border-color:#1a49c8}
   button.ghost{background:#0f173000}
@@ -36,16 +32,13 @@
   .pill{display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border-radius:999px; font-size:.85rem; background:#0f1730; border:1px solid #22305d}
   .pill.online{border-color:#2d8659; color:#b7ffd9; background:#10271e}
   .pill.offline{border-color:#5a2030; color:#ffc6d0; background:#271018}
-  .pill.mode{border-color:#3550a4; background:#11215a; color:#cfe0ff}
   .grid{display:grid; gap:8px}
   .grid.c2{grid-template-columns: 1fr 1fr}
   .grid.c3{grid-template-columns: repeat(3,1fr)}
   .muted{color:var(--muted); font-size:.88rem}
   .hr{height:1px; background:#1c2540; margin:10px 0}
-  #log{
-    background:#0b1124; border:1px dashed #22305d; border-radius:12px; min-height:240px; max-height:460px;
-    overflow:auto; padding:10px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size:.92rem
-  }
+  #log{background:#0b1124; border:1px dashed #22305d; border-radius:12px; min-height:240px; max-height:420px;
+       overflow:auto; padding:10px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size:.92rem}
   .logline{display:flex; gap:8px; align-items:flex-start; padding:4px 0; border-bottom:1px dashed #1b2446}
   .ts{color:#85a0ff; opacity:.9; min-width:86px}
   .dir{font-weight:700}
@@ -61,9 +54,8 @@
 <body>
 <header>
   <h1>RF-BM-2340QA2 — AT / RAW 通道自動切換</h1>
-  <p>AT 面板用 <span class="kbd">6e400004</span>；RAW 用 <span class="kbd">6e400002/0003</span>。新增：<b>通道狀態燈</b>、<b>AT 回應合併</b>。</p>
+  <p>AT 面板自動使用 <span class="kbd">6e400004</span>；RAW 透傳使用 <span class="kbd">6e400002/0003</span>。</p>
 </header>
-
 <div class="wrap">
   <div class="row">
     <div class="card">
@@ -73,7 +65,6 @@
           <button id="btnConnect" class="primary">連線</button>
           <button id="btnDisconnect" class="ghost" disabled>斷線</button>
           <span id="status" class="pill offline">未連線</span>
-          <span id="modeBadge" class="pill mode">模式：—</span>
         </div>
         <div class="grid c3">
           <div>
@@ -85,7 +76,7 @@
             <input id="inpSvc" type="text" placeholder="6e400001-b5a3-f393-e0a9-e50e24dcca9e">
           </div>
           <div>
-            <label class="muted">允許任意裝置</label><br/>
+            <label class="muted">允許任意裝置</label><br>
             <label><input id="chkAcceptAll" type="checkbox"> acceptAllDevices</label>
           </div>
         </div>
@@ -103,7 +94,6 @@
         <div class="note">若你的韌體使用不同 UUID，可在此覆寫。</div>
       </div>
     </div>
-
     <div class="card">
       <h2>傳輸選項</h2>
       <div class="body grid">
@@ -118,11 +108,11 @@
             </select>
           </div>
           <div>
-            <label class="muted">自動捲動</label><br/>
+            <label class="muted">自動捲動</label><br>
             <label><input id="chkAutoscroll" type="checkbox" checked> 新訊息自動捲動</label>
           </div>
           <div>
-            <label class="muted">保留日誌</label><br/>
+            <label class="muted">保留日誌</label><br>
             <label><input id="chkPersist" type="checkbox" checked> 儲存到 localStorage</label>
           </div>
         </div>
@@ -132,7 +122,7 @@
         </div>
       </div>
     </div>
-  </div><!-- row -->
+  </div>
 
   <div class="card">
     <h2>模式</h2>
@@ -148,8 +138,8 @@
     <h2>AT 面板（自動用 AT 通道）</h2>
     <div class="body grid">
       <div class="toolbar">
-        <button id="btnPlus">發送 +++（僅 UART/RAW 情境需要）</button>
-        <button id="btnExit">AT+EXIT（RAW/UART 才需要）</button>
+        <button id="btnPlus">發送 +++（僅 UART 情境需要）</button>
+        <button id="btnExit">AT+EXIT</button>
         <button id="btnEcho1">AT+ECHO=1</button>
         <button id="btnCDL">AT+CDL=10,20</button>
         <button id="btnNameQ">AT+NAME?</button>
@@ -179,7 +169,7 @@
           <button id="btnSendRAW" class="primary">透傳 SEND</button>
         </div>
       </div>
-      <div class="note">提示：若要用 RAW 通道下 AT，請先確保 MCU 端已用 <code>+++</code> 進入 AT 模式；退出用 <code>AT+EXIT</code>。</div>
+      <div class="note">提示：若要用 RAW 通道下 AT，請先確保 MCU 端已用 <code>+++</code> 進入 AT 模式。</div>
     </div>
   </div>
 
@@ -187,7 +177,7 @@
     <h2>Log</h2>
     <div class="body"><div id="log"></div></div>
   </div>
-</div><!-- wrap -->
+</div>
 
 <script>
 (() => {
@@ -225,34 +215,17 @@
   let notifyAbort=null;
   let currentMode="AT"; // "AT" or "RAW"
 
-  // 通道狀態燈
-  function updateModeBadge(){
-    const el=$("#modeBadge");
-    el.textContent = currentMode==="AT" ? "模式：AT（004）" : "模式：RAW（002/003）";
-  }
-
   const NUS_SERVICE = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
   const NUS_TX = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"; // RAW write
   const NUS_RX = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"; // RAW notify
-  const AT_UU  = "6e400004-b5a3-f393-e0a9-e50e24dcca9e"; // AT write/notify
+  const AT_UU =  "6e400004-b5a3-f393-e0a9-e50e24dcca9e"; // AT write/notify
 
-  function eolString(){
-    const v=$("#selEOL").value;
-    if(v==="CRLF")return "\r\n";
-    if(v==="CR")return "\r";
-    if(v==="LF")return "\n";
-    return "";
-  }
-  function setStatus(online){
-    const badge=$("#status");
-    if(online){badge.classList.remove("offline"); badge.classList.add("online"); badge.textContent="已連線";}
-    else {badge.classList.remove("online"); badge.classList.add("offline"); badge.textContent="未連線";}
-    $("#btnConnect").disabled=online; $("#btnDisconnect").disabled=!online;
-  }
+  function eolString(){const v=$("#selEOL").value; if(v==="CRLF")return "\r\n"; if(v==="CR")return "\r"; if(v==="LF")return "\n"; return "";}
+  function setStatus(online){const badge=$("#status"); if(online){badge.classList.remove("offline"); badge.classList.add("online"); badge.textContent="已連線";} else {badge.classList.remove("online"); badge.classList.add("offline"); badge.textContent="未連線";} $("#btnConnect").disabled=online; $("#btnDisconnect").disabled=!online;}
 
   function parseRawUU(){
     const s = ($("#inpRAWuu").value||"").trim();
-    const [tx,rx] = s.split(/[,\\s]+/);
+    const [tx,rx] = s.split(/[,\s]+/);
     return { tx:(tx||NUS_TX).toLowerCase(), rx:(rx||NUS_RX).toLowerCase() };
   }
 
@@ -265,60 +238,32 @@
       const filters=[]; if(namePrefix) filters.push({namePrefix}); if(!acceptAll) filters.push({services:[svcUUID]});
       const options = acceptAll? {acceptAllDevices:true, optionalServices:[svcUUID]} : {filters, optionalServices:[svcUUID]};
       addLog("OUT","[BLE] requestDevice...");
-      device=await navigator.bluetooth.requestDevice(options);
-      device.addEventListener("gattserverdisconnected", onDisconnected);
-
+      device=await navigator.bluetooth.requestDevice(options); device.addEventListener("gattserverdisconnected", onDisconnected);
       addLog("OUT","[BLE] connecting GATT...");
       server=await device.gatt.connect();
-
       addLog("OUT",`[BLE] getPrimaryService: ${svcUUID}`);
       service=await server.getPrimaryService(svcUUID);
-
       await bindMode(currentMode); // bind chars for current mode
-      setStatus(true); updateModeBadge();
-      addLog("OUT",`✅ 已連線：${device.name||"(無名)"} — service OK, tx/rx OK`);
-    }catch(err){
-      addLog("IN","❌ 連線失敗："+err.message);
-      await disconnect(true);
-    }
-  }
-
-  // ===== Response coalescer (AT 模式用) =====
-  let respBuf=""; let respTimer=null;
-  const END_PAT=/\r\n(?:OK|ERROR|FAIL)\r\n/;
-  function feedNotifyString(s){
-    // 累積到遇到 OK/ERROR/FAIL 結尾，或 400ms 無新資料就輸出
-    if(!s) return;
-    respBuf += s;
-    if(END_PAT.test(respBuf)) { flushResp(); return; }
-    if(respTimer) clearTimeout(respTimer);
-    respTimer = setTimeout(()=> flushResp(), 400);
-  }
-  function flushResp(){
-    if(!respBuf) return;
-    addLog("IN", respBuf);
-    respBuf="";
-    if(respTimer){clearTimeout(respTimer); respTimer=null;}
+      setStatus(true); addLog("OUT",`✅ 已連線：${device.name||"(無名)"} — service OK, tx/rx OK`);
+    }catch(err){ addLog("IN","❌ 連線失敗："+err.message); await disconnect(true); }
   }
 
   async function bindMode(mode){
-    // 停止舊通知
+    // Stop old notifications if any
     if (notifyAbort){ try{notifyAbort.abort()}catch(e){} notifyAbort=null; }
     if (rxChar){ try{ await rxChar.stopNotifications(); }catch(e){} }
-    txChar=null; rxChar=null; respBuf=""; if(respTimer){clearTimeout(respTimer); respTimer=null;}
-
-    updateModeBadge();
+    txChar=null; rxChar=null;
 
     if(mode==="AT"){
       const atUU = ($("#inpATUU").value||AT_UU).toLowerCase();
+      // single characteristic for write/notify
       rxChar = await service.getCharacteristic(atUU);
-      txChar = rxChar; // 同一 char
+      txChar = rxChar; // same
       await rxChar.startNotifications();
       const controller=new AbortController(); notifyAbort=controller;
-      rxChar.addEventListener("characteristicvaluechanged", ev=>{
-        const v=ev.target.value; let s="";
-        for(let i=0;i<v.byteLength;i++) s+=String.fromCharCode(v.getUint8(i));
-        feedNotifyString(s);
+      rxChar.addEventListener("characteristicvaluechanged", ev=> {
+        const v=ev.target.value; let s=""; for(let i=0;i<v.byteLength;i++) s+=String.fromCharCode(v.getUint8(i));
+        addLog("IN", s);
       }, {signal:controller.signal});
     } else {
       const {tx, rx} = parseRawUU();
@@ -327,9 +272,7 @@
       await rxChar.startNotifications();
       const controller=new AbortController(); notifyAbort=controller;
       rxChar.addEventListener("characteristicvaluechanged", ev=>{
-        const v=ev.target.value; let s="";
-        for(let i=0;i<v.byteLength;i++) s+=String.fromCharCode(v.getUint8(i));
-        // RAW 模式不一定有 OK/ERROR 結尾，逐段顯示
+        const v=ev.target.value; let s=""; for(let i=0;i<v.byteLength;i++) s+=String.fromCharCode(v.getUint8(i));
         addLog("IN", s);
       }, {signal:controller.signal});
     }
@@ -339,92 +282,74 @@
     try{
       if (notifyAbort){ try{notifyAbort.abort()}catch(e){} notifyAbort=null; }
       if (rxChar){ try{ await rxChar.stopNotifications(); }catch(e){} }
-      rxChar=null; txChar=null; service=null; respBuf=""; if(respTimer){clearTimeout(respTimer); respTimer=null;}
+      rxChar=null; txChar=null; service=null;
       if (server && server.connected){ await server.disconnect(); }
       if (device) device.removeEventListener("gattserverdisconnected", onDisconnected);
     }catch(e){}
-    finally{
-      setStatus(false); $("#modeBadge").textContent = "模式：—";
-      if(!silent) addLog("IN","🔌 已斷線");
-    }
+    finally{ setStatus(false); if(!silent) addLog("IN","🔌 已斷線"); }
   }
   function onDisconnected(){ disconnect(); }
 
   async function sendString(s){
     if(!txChar){ addLog("IN","尚未連線或尚未綁定通道"); return; }
     const data=new TextEncoder().encode(s);
-    const MTU=180;
-    for(let i=0;i<data.byteLength;i+=MTU){
-      const chunk=data.slice(i,i+MTU);
-      await txChar.writeValue(chunk);
-      await new Promise(r=>setTimeout(r,5));
-    }
+    // chunk to avoid ATT overflow
+    const MTU=180; for(let i=0;i<data.byteLength;i+=MTU){ const chunk=data.slice(i,i+MTU); await txChar.writeValue(chunk); await new Promise(r=>setTimeout(r,5)); }
     addLog("OUT", s);
   }
 
-  // ===== UI =====
+  // ===== UI wires =====
   $("#btnConnect").addEventListener("click", connect);
   $("#btnDisconnect").addEventListener("click", ()=>disconnect(false));
 
-  // 模式切換
+  // Mode segment
   const seg = $("#modeSeg");
   seg.addEventListener("click", async (e)=>{
     if(e.target.tagName!=="BUTTON") return;
     const m=e.target.dataset.mode; if(m===currentMode) return;
-    seg.querySelectorAll("button").forEach(b=>b.classList.remove("active"));
-    e.target.classList.add("active");
+    seg.querySelectorAll("button").forEach(b=>b.classList.remove("active")); e.target.classList.add("active");
     currentMode=m;
     $("#cardAT").style.display = (m==="AT")?"block":"none";
     $("#cardRAW").style.display = (m==="RAW")?"block":"none";
     if(service){ addLog("OUT","[BLE] 重新綁定通道: "+m); await bindMode(m); }
-    else updateModeBadge();
   });
 
-  // AT 面板（自動切回 AT 模式）
+  // AT panel buttons (will auto-switch to AT mode)
   function ensureAT(){ if(currentMode!=="AT"){ seg.querySelector('[data-mode="AT"]').click(); } }
-  // '+' 僅 RAW/UART 有效
   $("#btnPlus").addEventListener("click", ()=>{
-    if(currentMode!=="RAW"){ seg.querySelector('[data-mode="RAW"]').click(); }
-    addLog("OUT","提示：'+++' 僅供 UART 端進入 AT 模式；AT 通道無需 '+'.");
-    sendString("+++"); // 無 EOL
-  });
-  // AT+EXIT 應走 RAW/UART
-// 只有 RAW/UART 情境需要 AT+EXIT
-$("#btnExit").addEventListener("click", ()=>{
+  // '+' 僅適用於 UART 情境：RAW 通道（6e400002/0003）
+  if(currentMode!=="RAW"){ seg.querySelector('[data-mode="RAW"]').click(); }
+  addLog("OUT","提示：'+++' 僅供 UART 端進入 AT 模式；AT 通道無需使用 '+'.");
+  sendString("+++"); // 無 EOL
+});
+  $("#btnExit").addEventListener("click", ()=>{
+  // 只有 RAW/UART 情境需要 AT+EXIT；確保目前在 RAW 通道再送
   if(currentMode!=="RAW"){ seg.querySelector('[data-mode="RAW"]').click(); }
   sendString("AT+EXIT"+eolString());
 });
-
   $("#btnEcho1").addEventListener("click", ()=>{ ensureAT(); sendString("AT+ECHO=1"+eolString()); });
   $("#btnCDL").addEventListener("click", ()=>{ ensureAT(); sendString("AT+CDL=10,20"+eolString()); });
   $("#btnNameQ").addEventListener("click", ()=>{ ensureAT(); sendString("AT+NAME?"+eolString()); });
   $("#btnMacQ").addEventListener("click", ()=>{ ensureAT(); sendString("AT+MAC?"+eolString()); });
   $("#btnSendAT").addEventListener("click", ()=>{ ensureAT(); const cmd=$("#inpAT").value||""; if(cmd) sendString(cmd+eolString()); });
 
-  // RAW 面板（自動切到 RAW）
+  // RAW panel (auto-switch RAW mode)
   function ensureRAW(){ if(currentMode!=="RAW"){ seg.querySelector('[data-mode="RAW"]').click(); } }
   $("#btnSendRAW").addEventListener("click", ()=>{ ensureRAW(); const s=$("#inpRAW").value||""; sendString(s+eolString()); });
 
-  // 偏好 & 日誌
+  // Prefs & log
   ["inpNamePrefix","inpSvc","inpATUU","inpRAWuu","selEOL","chkAcceptAll"].forEach(id=>{
     $("#"+id).addEventListener("change", savePrefs);
     $("#"+id).addEventListener("keyup", savePrefs);
   });
   $("#btnCopyLog").addEventListener("click", async ()=>{
-    let text=""; document.querySelectorAll("#log .logline").forEach(line=>{
-      const a=line.querySelector(".ts").textContent;
-      const b=line.querySelector(".dir").textContent;
-      const c=line.querySelector(".msg").textContent;
-      text += `[${a}] ${b} ${c}\n`;
-    });
+    let text=""; document.querySelectorAll("#log .logline").forEach(line=>{const a=line.querySelector(".ts").textContent; const b=line.querySelector(".dir").textContent; const c=line.querySelector(".msg").textContent; text += `[${a}] ${b} ${c}\n`;});
     try{ await navigator.clipboard.writeText(text); addLog("IN","📋 已複製"); }catch(e){ addLog("IN","無法複製："+e.message); }
   });
-  $("#btnClearLog").addEventListener("click", ()=>{
-    logEl.innerHTML=""; localStorage.removeItem("qa2_log");
-  });
+  $("#btnClearLog").addEventListener("click", ()=>{ logEl.innerHTML=""; localStorage.removeItem("qa2_log"); });
 
   // Init
-  loadPrefs(); restoreLog(); setStatus(false); updateModeBadge();
+  loadPrefs(); restoreLog(); setStatus(false);
 })();
 </script>
 </body>
