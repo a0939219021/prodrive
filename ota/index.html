@@ -1,356 +1,595 @@
-<!DOCTYPE html>
+# 專案樹與說明（第一版 MVP / 可驗證版）
+
+```
+EASY_THRUSTER/
+├─ app/
+│  └─ index.html                 # 手機端（Bluefy 風格）Web‑Bluetooth：連 NUS、讀/寫 FFF4、曲線編輯
+├─ BLE_CAN_M/                    # 主控：Pico 2W + CAN 模組（SPI0；可切換 SIM_CAN 模式）
+│  ├─ ble_can_m_main.py          # 主程式：BLE NUS Peripheral + FFF4 特徵 + OBD 輪詢 + 心跳
+│  ├─ can_obd.py                 # OBD‑II 輪詢/解析（010C/0111/010B），封裝讀寫 & 模擬
+│  ├─ mcp2515.py                 # MCP2515 SPI 驅動（最小可用集）
+│  └─ cfg_default.json           # FFF4 的預設曲線/濾波/failsafe
+└─ AT_ble/                       # 執行器：Pico + 2340AQ2（UART AT/RAW）
+   └─ pico_ble_bridge_qa2.py     # 穩定橋接版（BRTS=GP13・三模式）＋命令解析（LED/PWM）＋看門狗
+```
+
+> 說明：為便於你快速驗證，本版 **BLE_CAN_M** 先提供完整 **Peripheral（對手機）** + **CAN 輪詢** 與 **FFF4**，
+> 「Central（對 AT ble）」抽象成 `ActuatorLink` 介面，預設為 **LOOPBACK 模式**（先直接在主控上輸出 PWM/LED 做閉環驗證）。
+> 後續只要把 `ActuatorLink` 的 `send_pwm/led_on/led_off/hb` 連接到 **Central‑BLE 實作** 即可無痛切換。
+
+---
+
+## app/index.html
+
+```html
+<!doctype html>
 <html lang="zh-Hant">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>RF-BM-2340QA2 — AT/RAW 通道自動切換</title>
-<style>
-  :root{
-    --bg:#0b0f19; --panel:#0f1526; --card:#151c2f;
-    --text:#e6ecff; --muted:#9bb0ff; --acc:#6ea8fe; --ok:#2ecc71; --bad:#ff6b6b;
-    --warn:#ffd166; --shadow:0 10px 30px rgba(0,0,0,.35);
-    --radius:16px;
-  }
-  *{box-sizing:border-box}
-  body{margin:0; background:linear-gradient(180deg,#0a0f1a 0%,#0b0f19 70%,#0a0e18 100%);
-       color:var(--text); font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial}
-  header{padding:20px 16px; text-align:center}
-  header h1{margin:.2rem 0 .4rem; font-size:1.2rem; font-weight:700; letter-spacing:.3px}
-  header p{margin:0; color:var(--muted); font-size:.9rem}
-  .wrap{max-width:1000px; margin:0 auto; padding:10px 12px 24px; display:grid; gap:12px}
-  .row{display:grid; gap:12px}
-  @media(min-width:900px){ .row{grid-template-columns: 1.2fr .8fr} }
-  .card{background:var(--card); border:1px solid #1c2540; border-radius:var(--radius); box-shadow:var(--shadow)}
-  .card h2{margin:0; padding:12px 14px; font-size:1rem; border-bottom:1px solid #1c2540; color:#d8e1ff}
-  .card .body{padding:12px 14px}
-  .toolbar{display:flex; flex-wrap:wrap; gap:8px}
-  button, select, input[type="text"]{background:#0f1730; color:var(--text); border:1px solid #22305d; border-radius:12px; padding:10px 12px; font-size:.95rem}
-  button{cursor:pointer}
-  button.primary{background:linear-gradient(180deg,#1b56f0,#1547c7); border-color:#1a49c8}
-  button.ghost{background:#0f173000}
-  button:disabled{opacity:.6; cursor:not-allowed}
-  .pill{display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border-radius:999px; font-size:.85rem; background:#0f1730; border:1px solid #22305d}
-  .pill.online{border-color:#2d8659; color:#b7ffd9; background:#10271e}
-  .pill.offline{border-color:#5a2030; color:#ffc6d0; background:#271018}
-  .grid{display:grid; gap:8px}
-  .grid.c2{grid-template-columns: 1fr 1fr}
-  .grid.c3{grid-template-columns: repeat(3,1fr)}
-  .muted{color:var(--muted); font-size:.88rem}
-  .hr{height:1px; background:#1c2540; margin:10px 0}
-  #log{background:#0b1124; border:1px dashed #22305d; border-radius:12px; min-height:240px; max-height:420px;
-       overflow:auto; padding:10px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size:.92rem}
-  .logline{display:flex; gap:8px; align-items:flex-start; padding:4px 0; border-bottom:1px dashed #1b2446}
-  .ts{color:#85a0ff; opacity:.9; min-width:86px}
-  .dir{font-weight:700}
-  .dir.out{color:#ffd166}
-  .dir.in{color:#8df5a4}
-  .msg{white-space:pre-wrap; word-break:break-word}
-  .seg{display:inline-flex; border:1px solid #22305d; border-radius:12px; overflow:hidden}
-  .seg button{border:0; background:#0f1730; padding:8px 12px}
-  .seg button.active{background:#1a2a59}
-  .note{font-size:.85rem; color:#a8b8ff}
-</style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>EASY THRUSTER · App</title>
+  <style>
+    :root { --bg:#0b0f17; --card:#121826; --txt:#e8eefc; --muted:#98a2b3; --acc:#66d9ff; }
+    html,body{height:100%;background:var(--bg);color:var(--txt);font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial}
+    .wrap{max-width:980px;margin:0 auto;padding:20px}
+    .row{display:grid;gap:16px}
+    .grid-2{grid-template-columns:1fr 1fr}
+    .card{background:var(--card);border-radius:16px;padding:16px;box-shadow:0 4px 24px rgba(0,0,0,.25)}
+    h1{margin:8px 0 16px;font-size:24px}
+    button{background:var(--acc);color:#001018;border:0;border-radius:12px;padding:10px 14px;font-weight:600;cursor:pointer}
+    input,textarea{width:100%;background:#0e1422;color:var(--txt);border:1px solid #1f2b44;border-radius:10px;padding:10px}
+    .badge{display:inline-block;padding:4px 8px;border-radius:999px;background:#0f2236;color:#a5d9ff;border:1px solid #1f3652}
+    .row-kv{display:grid;grid-template-columns:120px 1fr;gap:8px;align-items:center}
+    .log{height:180px;overflow:auto;font-family:ui-monospace,Consolas,monospace;font-size:12px;white-space:pre-wrap}
+    .pts{display:flex;gap:8px;flex-wrap:wrap}
+    .pts input{width:70px}
+  </style>
 </head>
 <body>
-<header>
-  <h1>RF-BM-2340QA2 — AT / RAW 通道自動切換</h1>
-  <p>AT 面板自動使用 <span class="kbd">6e400004</span>；RAW 透傳使用 <span class="kbd">6e400002/0003</span>。</p>
-</header>
 <div class="wrap">
-  <div class="row">
+  <h1>EASY THRUSTER <span class="badge" id="state">未連線</span></h1>
+  <div class="row grid-2">
     <div class="card">
-      <h2>連線</h2>
-      <div class="body grid">
-        <div class="toolbar">
-          <button id="btnConnect" class="primary">連線</button>
-          <button id="btnDisconnect" class="ghost" disabled>斷線</button>
-          <span id="status" class="pill offline">未連線</span>
-        </div>
-        <div class="grid c3">
-          <div>
-            <label class="muted">名稱過濾（namePrefix）</label>
-            <input id="inpNamePrefix" type="text" placeholder="例如：RF-BM 或 Pico-QA2">
-          </div>
-          <div>
-            <label class="muted">Service UUID（預設 NUS）</label>
-            <input id="inpSvc" type="text" placeholder="6e400001-b5a3-f393-e0a9-e50e24dcca9e">
-          </div>
-          <div>
-            <label class="muted">允許任意裝置</label><br>
-            <label><input id="chkAcceptAll" type="checkbox"> acceptAllDevices</label>
-          </div>
-        </div>
-        <div class="hr"></div>
-        <div class="grid c2">
-          <div>
-            <div class="muted">AT 通道（Write/Notify）</div>
-            <input id="inpATUU" type="text" value="6e400004-b5a3-f393-e0a9-e50e24dcca9e">
-          </div>
-          <div>
-            <div class="muted">RAW 通道（TX write / RX notify）</div>
-            <input id="inpRAWuu" type="text" value="6e400002-b5a3-f393-e0a9-e50e24dcca9e,6e400003-b5a3-f393-e0a9-e50e24dcca9e">
-          </div>
-        </div>
-        <div class="note">若你的韌體使用不同 UUID，可在此覆寫。</div>
-      </div>
+      <h3>連線</h3>
+      <button id="btnConnect">連線主控（BLE_CAN_M）</button>
+      <button id="btnDisconnect">斷線</button>
+      <div class="row-kv"><span>裝置：</span><span id="dev"></span></div>
+      <div class="row-kv"><span>心跳：</span><span id="hb">--</span></div>
     </div>
+
     <div class="card">
-      <h2>傳輸選項</h2>
-      <div class="body grid">
-        <div class="grid c3">
-          <div>
-            <label class="muted">行尾（EOL）</label>
-            <select id="selEOL">
-              <option value="CRLF">\r\n</option>
-              <option value="CR">\r</option>
-              <option value="LF">\n</option>
-              <option value="NONE">無</option>
-            </select>
-          </div>
-          <div>
-            <label class="muted">自動捲動</label><br>
-            <label><input id="chkAutoscroll" type="checkbox" checked> 新訊息自動捲動</label>
-          </div>
-          <div>
-            <label class="muted">保留日誌</label><br>
-            <label><input id="chkPersist" type="checkbox" checked> 儲存到 localStorage</label>
-          </div>
-        </div>
-        <div class="toolbar" style="margin-top:8px">
-          <button id="btnCopyLog">複製日誌</button>
-          <button id="btnClearLog">清除日誌</button>
-        </div>
+      <h3>即時遙測</h3>
+      <div class="row-kv"><span>RPM</span><input id="rpm" readonly></div>
+      <div class="row-kv"><span>Throttle %</span><input id="th" readonly></div>
+      <div class="row-kv"><span>MAP</span><input id="map" readonly></div>
+      <div class="row-kv"><span>Diag</span><input id="diag" readonly></div>
+    </div>
+
+    <div class="card">
+      <h3>控制</h3>
+      <div class="row-kv"><span>Fan %</span><input id="fan" type="number" min="0" max="100" value="30"></div>
+      <div class="row" style="margin-top:8px">
+        <button id="btnSend">下發 FAN%</button>
+        <button id="btnLedOn">LED ON</button>
+        <button id="btnLedOff">LED OFF</button>
       </div>
     </div>
-  </div>
 
-  <div class="card">
-    <h2>模式</h2>
-    <div class="body">
-      <div class="seg" id="modeSeg">
-        <button data-mode="AT" class="active">AT 模式</button>
-        <button data-mode="RAW">RAW 透傳</button>
+    <div class="card">
+      <h3>CFG 曲線（FFF4）</h3>
+      <div class="pts" id="pts"></div>
+      <div class="row" style="margin-top:8px">
+        <button id="btnReadCfg">讀取</button>
+        <button id="btnWriteCfg">寫入</button>
       </div>
     </div>
-  </div>
 
-  <div class="card" id="cardAT">
-    <h2>AT 面板（自動用 AT 通道）</h2>
-    <div class="body grid">
-      <div class="toolbar">
-        <button id="btnPlus">發送 +++（僅 UART 情境需要）</button>
-        <button id="btnExit">AT+EXIT</button>
-        <button id="btnEcho1">AT+ECHO=1</button>
-        <button id="btnCDL">AT+CDL=10,20</button>
-        <button id="btnNameQ">AT+NAME?</button>
-        <button id="btnMacQ">AT+MAC?</button>
-      </div>
-      <div class="grid c2" style="margin-top:8px">
-        <div>
-          <div class="muted">AT 指令</div>
-          <input id="inpAT" type="text" placeholder="例如：AT+UART? 或 AT+NAME=0,Pico-QA2">
-        </div>
-        <div class="toolbar" style="align-items:flex-end">
-          <button id="btnSendAT" class="primary">送出 AT</button>
-        </div>
-      </div>
+    <div class="card" style="grid-column:1/-1">
+      <h3>日誌</h3>
+      <div class="log" id="log"></div>
     </div>
-  </div>
-
-  <div class="card" id="cardRAW" style="display:none">
-    <h2>RAW 透傳（使用 TX/RX 通道）</h2>
-    <div class="body grid">
-      <div class="grid c2">
-        <div>
-          <div class="muted">RAW 透傳</div>
-          <input id="inpRAW" type="text" placeholder="輸入要透傳的字串（會套用上方 EOL）">
-        </div>
-        <div class="toolbar" style="align-items:flex-end">
-          <button id="btnSendRAW" class="primary">透傳 SEND</button>
-        </div>
-      </div>
-      <div class="note">提示：若要用 RAW 通道下 AT，請先確保 MCU 端已用 <code>+++</code> 進入 AT 模式。</div>
-    </div>
-  </div>
-
-  <div class="card">
-    <h2>Log</h2>
-    <div class="body"><div id="log"></div></div>
   </div>
 </div>
-
 <script>
-(() => {
-  // ===== Helpers =====
-  const $ = s => document.querySelector(s);
-  const logEl = $("#log");
-  function ts(){const d=new Date();return [d.getHours(),d.getMinutes(),d.getSeconds()].map(v=>String(v).padStart(2,"0")).join(":")+"."+String(d.getMilliseconds()).padStart(3,"0");}
-  function addLog(dir,msg){
-    const line=document.createElement("div"); line.className="logline";
-    const a=document.createElement("span"); a.className="ts"; a.textContent=ts();
-    const b=document.createElement("span"); b.className="dir "+(dir==="OUT"?"out":"in"); b.textContent=dir==="OUT"?"→":"←";
-    const c=document.createElement("div"); c.className="msg"; c.textContent=msg;
-    line.append(a,b,c); logEl.appendChild(line);
-    if($("#chkPersist").checked){ try{const prev=JSON.parse(localStorage.getItem("qa2_log")||"[]"); prev.push({t:Date.now(),dir,msg}); if(prev.length>2000) prev.splice(0,prev.length-2000); localStorage.setItem("qa2_log",JSON.stringify(prev));}catch(e){} }
-    if($("#chkAutoscroll").checked) logEl.scrollTop=logEl.scrollHeight;
-  }
-  function restoreLog(){try{(JSON.parse(localStorage.getItem("qa2_log")||"[]")).forEach(x=>addLog(x.dir,x.msg));}catch(e){}}
-  function savePrefs(){localStorage.setItem("qa2_prefs", JSON.stringify({
-    namePrefix:$("#inpNamePrefix").value||"",
-    svc:$("#inpSvc").value||"",
-    atUU:$("#inpATUU").value||"",
-    rawUU:$("#inpRAWuu").value||"",
-    eol:$("#selEOL").value,
-    acceptAll:$("#chkAcceptAll").checked
-  }));}
-  function loadPrefs(){try{const p=JSON.parse(localStorage.getItem("qa2_prefs")||"{}");
-    $("#inpNamePrefix").value=p.namePrefix||""; $("#inpSvc").value=p.svc||"";
-    $("#inpATUU").value=p.atUU||"6e400004-b5a3-f393-e0a9-e50e24dcca9e";
-    $("#inpRAWuu").value=p.rawUU||"6e400002-b5a3-f393-e0a9-e50e24dcca9e,6e400003-b5a3-f393-e0a9-e50e24dcca9e";
-    $("#selEOL").value=p.eol||"CRLF"; $("#chkAcceptAll").checked=!!p.acceptAll; }catch(e){} }
+const NUS_SERVICE = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
+const NUS_RX =      "6e400003-b5a3-f393-e0a9-e50e24dcca9e"; // notify
+const NUS_TX =      "6e400002-b5a3-f393-e0a9-e50e24dcca9e"; // write
+const FFF4_UUID =   0xFFF4; // readable + writable JSON
 
-  // ===== BLE state =====
-  let device=null, server=null, service=null;
-  let txChar=null, rxChar=null; // active pair depends on mode
-  let notifyAbort=null;
-  let currentMode="AT"; // "AT" or "RAW"
+let device, gatt, nusSvc, chTx, chRx, chCfg;
+let pingTimer, lastPong = 0;
 
-  const NUS_SERVICE = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
-  const NUS_TX = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"; // RAW write
-  const NUS_RX = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"; // RAW notify
-  const AT_UU =  "6e400004-b5a3-f393-e0a9-e50e24dcca9e"; // AT write/notify
+function log(s){ const el=document.getElementById('log'); el.textContent += s+"\n"; el.scrollTop = el.scrollHeight; }
+function setState(s){ document.getElementById('state').textContent = s; }
+function enc(s){ return new TextEncoder().encode(s); }
+function dec(b){ return new TextDecoder().decode(b); }
 
-  function eolString(){const v=$("#selEOL").value; if(v==="CRLF")return "\r\n"; if(v==="CR")return "\r"; if(v==="LF")return "\n"; return "";}
-  function setStatus(online){const badge=$("#status"); if(online){badge.classList.remove("offline"); badge.classList.add("online"); badge.textContent="已連線";} else {badge.classList.remove("online"); badge.classList.add("offline"); badge.textContent="未連線";} $("#btnConnect").disabled=online; $("#btnDisconnect").disabled=!online;}
-
-  function parseRawUU(){
-    const s = ($("#inpRAWuu").value||"").trim();
-    const [tx,rx] = s.split(/[,\s]+/);
-    return { tx:(tx||NUS_TX).toLowerCase(), rx:(rx||NUS_RX).toLowerCase() };
-  }
-
-  async function connect(){
-    try{
-      savePrefs();
-      const namePrefix=$("#inpNamePrefix").value.trim();
-      const svcUUID=($("#inpSvc").value.trim()||NUS_SERVICE).toLowerCase();
-      const acceptAll=$("#chkAcceptAll").checked;
-      const filters=[]; if(namePrefix) filters.push({namePrefix}); if(!acceptAll) filters.push({services:[svcUUID]});
-      const options = acceptAll? {acceptAllDevices:true, optionalServices:[svcUUID]} : {filters, optionalServices:[svcUUID]};
-      addLog("OUT","[BLE] requestDevice...");
-      device=await navigator.bluetooth.requestDevice(options); device.addEventListener("gattserverdisconnected", onDisconnected);
-      addLog("OUT","[BLE] connecting GATT...");
-      server=await device.gatt.connect();
-      addLog("OUT",`[BLE] getPrimaryService: ${svcUUID}`);
-      service=await server.getPrimaryService(svcUUID);
-      await bindMode(currentMode); // bind chars for current mode
-      setStatus(true); addLog("OUT",`✅ 已連線：${device.name||"(無名)"} — service OK, tx/rx OK`);
-    }catch(err){ addLog("IN","❌ 連線失敗："+err.message); await disconnect(true); }
-  }
-
-  async function bindMode(mode){
-    // Stop old notifications if any
-    if (notifyAbort){ try{notifyAbort.abort()}catch(e){} notifyAbort=null; }
-    if (rxChar){ try{ await rxChar.stopNotifications(); }catch(e){} }
-    txChar=null; rxChar=null;
-
-    if(mode==="AT"){
-      const atUU = ($("#inpATUU").value||AT_UU).toLowerCase();
-      // single characteristic for write/notify
-      rxChar = await service.getCharacteristic(atUU);
-      txChar = rxChar; // same
-      await rxChar.startNotifications();
-      const controller=new AbortController(); notifyAbort=controller;
-      rxChar.addEventListener("characteristicvaluechanged", ev=> {
-        const v=ev.target.value; let s=""; for(let i=0;i<v.byteLength;i++) s+=String.fromCharCode(v.getUint8(i));
-        addLog("IN", s);
-      }, {signal:controller.signal});
-    } else {
-      const {tx, rx} = parseRawUU();
-      txChar = await service.getCharacteristic(tx);
-      rxChar = await service.getCharacteristic(rx);
-      await rxChar.startNotifications();
-      const controller=new AbortController(); notifyAbort=controller;
-      rxChar.addEventListener("characteristicvaluechanged", ev=>{
-        const v=ev.target.value; let s=""; for(let i=0;i<v.byteLength;i++) s+=String.fromCharCode(v.getUint8(i));
-        addLog("IN", s);
-      }, {signal:controller.signal});
-    }
-  }
-
-  async function disconnect(silent){
-    try{
-      if (notifyAbort){ try{notifyAbort.abort()}catch(e){} notifyAbort=null; }
-      if (rxChar){ try{ await rxChar.stopNotifications(); }catch(e){} }
-      rxChar=null; txChar=null; service=null;
-      if (server && server.connected){ await server.disconnect(); }
-      if (device) device.removeEventListener("gattserverdisconnected", onDisconnected);
-    }catch(e){}
-    finally{ setStatus(false); if(!silent) addLog("IN","🔌 已斷線"); }
-  }
-  function onDisconnected(){ disconnect(); }
-
-  async function sendString(s){
-    if(!txChar){ addLog("IN","尚未連線或尚未綁定通道"); return; }
-    const data=new TextEncoder().encode(s);
-    // chunk to avoid ATT overflow
-    const MTU=180; for(let i=0;i<data.byteLength;i+=MTU){ const chunk=data.slice(i,i+MTU); await txChar.writeValue(chunk); await new Promise(r=>setTimeout(r,5)); }
-    addLog("OUT", s);
-  }
-
-  // ===== UI wires =====
-  $("#btnConnect").addEventListener("click", connect);
-  $("#btnDisconnect").addEventListener("click", ()=>disconnect(false));
-
-  // Mode segment
-  const seg = $("#modeSeg");
-  seg.addEventListener("click", async (e)=>{
-    if(e.target.tagName!=="BUTTON") return;
-    const m=e.target.dataset.mode; if(m===currentMode) return;
-    seg.querySelectorAll("button").forEach(b=>b.classList.remove("active")); e.target.classList.add("active");
-    currentMode=m;
-    $("#cardAT").style.display = (m==="AT")?"block":"none";
-    $("#cardRAW").style.display = (m==="RAW")?"block":"none";
-    if(service){ addLog("OUT","[BLE] 重新綁定通道: "+m); await bindMode(m); }
+async function connect(){
+  device = await navigator.bluetooth.requestDevice({
+    filters:[{ services:[NUS_SERVICE] }], optionalServices:[FFF4_UUID]
   });
+  device.addEventListener('gattserverdisconnected', onDisc);
+  gatt = await device.gatt.connect();
+  nusSvc = await gatt.getPrimaryService(NUS_SERVICE);
+  chTx = await nusSvc.getCharacteristic(NUS_TX);
+  chRx = await nusSvc.getCharacteristic(NUS_RX);
+  await chRx.startNotifications();
+  chRx.addEventListener('characteristicvaluechanged', ev=> onNus(dec(ev.target.value.buffer)));
+  const svcCfg = await gatt.getPrimaryService(FFF4_UUID);
+  const chars = await svcCfg.getCharacteristics();
+  chCfg = chars[0]; // 單一 FFF4
+  document.getElementById('dev').textContent = device.name || '(無名稱)';
+  setState('已連線');
+  log('✅ 已連線');
+  startPing();
+}
 
-  // AT panel buttons (will auto-switch to AT mode)
-  function ensureAT(){ if(currentMode!=="AT"){ seg.querySelector('[data-mode="AT"]').click(); } }
-  $("#btnPlus").addEventListener("click", ()=>{
-    // '+' 僅適用於 UART 情境：RAW 通道（6e400002/0003）
-    if(currentMode!=="RAW"){ seg.querySelector('[data-mode="RAW"]').click(); }
-    addLog("OUT","提示：'+++' 僅供 UART 端進入 AT 模式；AT 通道無需使用 '+'.");
-    sendString("+++"); // 無 EOL
-  });
-  // 🔧 修正：AT+EXIT 應走 RAW
-  $("#btnExit").addEventListener("click", ()=>{
-    if(currentMode!=="RAW"){ seg.querySelector('[data-mode=\"RAW\"]').click(); }
-    sendString("AT+EXIT"+eolString());
-  });
-  $("#btnEcho1").addEventListener("click", ()=>{ ensureAT(); sendString("AT+ECHO=1"+eolString()); });
-  $("#btnCDL").addEventListener("click", ()=>{ ensureAT(); sendString("AT+CDL=10,20"+eolString()); });
-  $("#btnNameQ").addEventListener("click", ()=>{ ensureAT(); sendString("AT+NAME?"+eolString()); });
-  $("#btnMacQ").addEventListener("click", ()=>{ ensureAT(); sendString("AT+MAC?"+eolString()); });
-  $("#btnSendAT").addEventListener("click", ()=>{ ensureAT(); const cmd=$("#inpAT").value||""; if(cmd) sendString(cmd+eolString()); });
+function onDisc(){ setState('未連線'); log('🔌 已斷線'); stopPing(); }
 
-  // RAW panel (auto-switch RAW mode)
-  function ensureRAW(){ if(currentMode!=="RAW"){ seg.querySelector('[data-mode="RAW"]').click(); } }
-  $("#btnSendRAW").addEventListener("click", ()=>{ ensureRAW(); const s=$("#inpRAW").value||""; sendString(s+eolString()); });
+function startPing(){
+  stopPing();
+  lastPong = Date.now();
+  pingTimer = setInterval(()=>{
+    sendLine('PING');
+    const diff = Math.round((Date.now()-lastPong)/1000);
+    document.getElementById('hb').textContent = diff+' s';
+    if(diff>=3) document.getElementById('state').textContent = '心跳逾時（UI）';
+  }, 1000);
+}
+function stopPing(){ if(pingTimer) clearInterval(pingTimer); }
 
-  // Prefs & log
-  ["inpNamePrefix","inpSvc","inpATUU","inpRAWuu","selEOL","chkAcceptAll"].forEach(id=>{
-    $("#"+id).addEventListener("change", savePrefs);
-    $("#"+id).addEventListener("keyup", savePrefs);
-  });
-  $("#btnCopyLog").addEventListener("click", async ()=>{
-    let text=""; document.querySelectorAll("#log .logline").forEach(line=>{const a=line.querySelector(".ts").textContent; const b=line.querySelector(".dir").textContent; const c=line.querySelector(".msg").textContent; text += `[${a}] ${b} ${c}\n`;});
-    try{ await navigator.clipboard.writeText(text); addLog("IN","📋 已複製"); }catch(e){ addLog("IN","無法複製："+e.message); }
-  });
-  $("#btnClearLog").addEventListener("click", ()=>{ logEl.innerHTML=""; localStorage.removeItem("qa2_log"); });
+function sendLine(s){ if(!chTx) return; log('→ '+s); return chTx.writeValue(enc(s+'\n')); }
 
-  // Init
-  loadPrefs(); restoreLog(); setStatus(false);
-})();
+function onNus(s){
+  s = s.trim(); if(!s) return; log('← '+s);
+  if(s.startsWith('PONG')){ lastPong = Date.now(); document.getElementById('state').textContent='已連線'; return; }
+  try{
+    const j = JSON.parse(s);
+    if('rpm' in j) document.getElementById('rpm').value = j.rpm;
+    if('th' in j)  document.getElementById('th').value  = j.th;
+    if('map' in j) document.getElementById('map').value = j.map;
+    if('diag' in j)document.getElementById('diag').value= j.diag;
+  }catch{ /* ignore */ }
+}
+
+// CFG
+async function readCfg(){
+  const v = await chCfg.readValue();
+  const txt = dec(v.buffer);
+  log('CFG ← '+txt); renderPoints(JSON.parse(txt));
+}
+async function writeCfg(){
+  const cfg = collectPoints();
+  const txt = JSON.stringify(cfg);
+  log('CFG → '+txt);
+  await chCfg.writeValue(enc(txt));
+}
+
+function renderPoints(cfg){
+  const box = document.getElementById('pts'); box.innerHTML='';
+  const pts = cfg.points || [[0,0],[50,50],[100,100]];
+  pts.forEach((p,i)=>{
+    const x = document.createElement('input'); x.type='number'; x.min=0; x.max=100; x.value=p[0]; x.id='x'+i;
+    const y = document.createElement('input'); y.type='number'; y.min=0; y.max=100; y.value=p[1]; y.id='y'+i;
+    box.appendChild(x); box.appendChild(y);
+  });
+}
+function collectPoints(){
+  const box = document.getElementById('pts');
+  const inputs = [...box.querySelectorAll('input')];
+  const pts=[]; for(let i=0;i<inputs.length;i+=2){ pts.push([+inputs[i].value, +inputs[i+1].value]); }
+  // 夾取/排序
+  pts.sort((a,b)=>a[0]-b[0]);
+  pts.forEach(p=>{ p[0]=Math.min(100,Math.max(0,p[0])); p[1]=Math.min(100,Math.max(0,p[1])); });
+  return {ver:1, points:pts, failsafe:{lost_master_secs:2.5,fallback_pwm:20}, filter:{alpha:0.3}};
+}
+
+// UI 綁定
+btnConnect.onclick = connect;
+btnDisconnect.onclick = ()=> device?.gatt?.disconnect();
+btnSend.onclick = ()=> sendLine('CTRL: FAN='+(+document.getElementById('fan').value|0)+'%');
+btnLedOn.onclick = ()=> sendLine('CTRL: LED ON');
+btnLedOff.onclick = ()=> sendLine('CTRL: LED OFF');
+btnReadCfg.onclick = readCfg;
+btnWriteCfg.onclick = writeCfg;
+
+renderPoints(collectPoints());
 </script>
 </body>
 </html>
+```
+
+---
+
+## BLE_CAN_M/ble_can_m_main.py
+
+```python
+# MicroPython (Pico 2W) — BLE NUS Peripheral + FFF4 + OBD 模擬/實機切換 + 心跳
+import ujson, utime, machine
+from machine import Pin, PWM
+try:
+    import ubluetooth as bluetooth
+except ImportError:
+    import bluetooth
+
+from can_obd import OBDReader
+
+# ====== 參數區 ======
+SIM_CAN = True   # 沒接 MCP2515 時先用模擬
+PWM_PIN = 6      # LOOPBACK 測試：用 Pico 2W 自己的 PWM 先驅動風扇/LED
+LED_PIN = 25     # 板載 LED 指示
+HB_INTERVAL_MS = 1000
+AT_TIMEOUT_MS = 2500  # 給 actuator 的控制超時（LOOPBACK 即自用）
+
+# NUS & FFF4 UUID
+_UUID_NUS  = bluetooth.UUID("6e400001-b5a3-f393-e0a9-e50e24dcca9e")
+_UUID_TX   = bluetooth.UUID("6e400003-b5a3-f393-e0a9-e50e24dcca9e")
+_UUID_TX_CH= ( _UUID_TX, bluetooth.FLAG_NOTIFY )
+_UUID_RX   = bluetooth.UUID("6e400002-b5a3-f393-e0a9-e50e24dcca9e")
+_UUID_RX_CH= ( _UUID_RX, bluetooth.FLAG_WRITE )
+_UUID_CFG  = bluetooth.UUID(0xFFF4)
+_UUID_CFG_CH=( _UUID_CFG, bluetooth.FLAG_READ | bluetooth.FLAG_WRITE )
+
+# ====== Actuator 連結（抽象）— 先 LOOPBACK 到本地 PWM/LED ======
+class ActuatorLink:
+    def __init__(self, pwm_pin=PWM_PIN, led_pin=LED_PIN):
+        self.led = Pin(led_pin, Pin.OUT)
+        self.pwm = PWM(Pin(pwm_pin))
+        self.pwm.freq(1000)
+        self.last_cmd_ms = utime.ticks_ms()
+        self.current = 0
+    def send_pwm(self, pct:int):
+        pct = max(0, min(100, int(pct)))
+        self.current = pct
+        duty = int(pct*65535/100)
+        self.pwm.duty_u16(duty)
+        self.last_cmd_ms = utime.ticks_ms()
+    def led_on(self):
+        self.led.value(1); self.last_cmd_ms = utime.ticks_ms()
+    def led_off(self):
+        self.led.value(0); self.last_cmd_ms = utime.ticks_ms()
+    def heartbeat(self):
+        # 預留：Central BLE 可在此送 HB 封包給 AT ble
+        pass
+    def check_timeout(self, ms=AT_TIMEOUT_MS, fallback=20):
+        if utime.ticks_diff(utime.ticks_ms(), self.last_cmd_ms) > ms:
+            self.send_pwm(fallback)
+
+# ====== CFG 管理 ======
+_DEFAULT_CFG = {
+    "ver": 1,
+    "points": [[0,0],[20,20],[40,35],[60,55],[80,78],[100,100]],
+    "failsafe": {"lost_master_secs":2.5, "fallback_pwm":20},
+    "filter": {"alpha":0.3}
+}
+
+class CfgStore:
+    def __init__(self, path='cfg_default.json'):
+        self.path = path
+        self.cfg = _DEFAULT_CFG
+        try:
+            with open(path) as f:
+                self.cfg = ujson.loads(f.read())
+        except:
+            pass
+    def read_json(self):
+        return self.cfg
+    def write_json(self, obj):
+        self.cfg = obj
+        try:
+            with open(self.path,'w') as f: f.write(ujson.dumps(obj))
+        except: pass
+
+# ====== BLE Peripheral ======
+class NUSPeripheral:
+    def __init__(self, name="BLE_CAN_M"):
+        self._ble = bluetooth.BLE(); self._ble.active(True)
+        self._ble.irq(self._irq)
+        self._connections = set()
+        self._name = name
+        TX = (_UUID_TX, bluetooth.FLAG_NOTIFY)
+        RX = (_UUID_RX, bluetooth.FLAG_WRITE)
+        CFG= (_UUID_CFG, bluetooth.FLAG_READ | bluetooth.FLAG_WRITE)
+        self._handle_tx = None; self._handle_rx = None; self._handle_cfg=None
+        self._services = (( _UUID_NUS, (TX, RX) ), ( _UUID_CFG, (CFG,) ))
+        ((self._tx_handle, self._rx_handle), (self._cfg_handle,)) = self._ble.gatts_register_services([
+            (_UUID_NUS, (TX, RX)), (_UUID_CFG, (CFG,))
+        ])
+        self._ble.gatts_write(self._cfg_handle, ujson.dumps(_DEFAULT_CFG))
+        self._payload = bluetooth.advertising_payload(name=name, services=[_UUID_NUS]) if hasattr(bluetooth,'advertising_payload') else None
+        self._adv()
+        self.on_rx = None
+    def _adv(self):
+        try:
+            from micropython import const
+            ADV_IND = const(0x00)
+            self._ble.gap_advertise(100_000, adv_data=self._payload)
+        except Exception:
+            self._ble.gap_advertise(100_000)
+    def _irq(self, event, data):
+        if event == 1: # _IRQ_CENTRAL_CONNECT
+            conn_handle, _, _ = data
+            self._connections.add(conn_handle)
+        elif event == 2: # _IRQ_CENTRAL_DISCONNECT
+            conn_handle, _, _ = data
+            self._connections.discard(conn_handle)
+            self._adv()
+        elif event == 3: # _IRQ_GATTS_WRITE
+            conn_handle, value_handle = data
+            if value_handle == self._rx_handle:
+                raw = self._ble.gatts_read(self._rx_handle)
+                if self.on_rx: self.on_rx(raw)
+            elif value_handle == self._cfg_handle:
+                # 客戶端寫入新 CFG
+                pass
+    def send_text(self, s:str):
+        for h in self._connections:
+            try: self._ble.gatts_notify(h, self._tx_handle, s)
+            except: pass
+    def read_cfg(self):
+        return self._ble.gatts_read(self._cfg_handle)
+    def write_cfg(self, b):
+        self._ble.gatts_write(self._cfg_handle, b)
+
+# ====== 主流程 ======
+led = Pin(LED_PIN, Pin.OUT)
+act = ActuatorLink()
+cfg = CfgStore()
+
+# OBD 讀取
+obd = OBDReader(sim=SIM_CAN)
+
+ble = NUSPeripheral("BLE_CAN_M")
+
+def parse_line(line:str):
+    line = line.strip()
+    if not line: return
+    if line == 'PING':
+        ble.send_text('PONG')
+        return
+    if line.startswith('CTRL:'):
+        # CTRL: FAN=55% / LED ON / LED OFF
+        body = line[5:].strip()
+        if body.startswith('FAN='):
+            try:
+                val = int(body.split('=')[1].replace('%','').strip())
+                act.send_pwm(val)
+            except: pass
+        elif 'LED ON' in body:
+            act.led_on()
+        elif 'LED OFF' in body:
+            act.led_off()
+        return
+    if line.startswith('SAVE:CFG'):
+        cfg.write_json(ujson.loads(ble.read_cfg()))
+        return
+
+ble.on_rx = lambda raw: parse_line(raw.decode())
+
+last_hb = utime.ticks_ms()
+alpha = cfg.read_json().get('filter',{}).get('alpha',0.3)
+fan_pct = 0
+
+while True:
+    # 心跳（上行 JSON）
+    if utime.ticks_diff(utime.ticks_ms(), last_hb) >= HB_INTERVAL_MS:
+        j = obd.read_once()  # {rpm, th, map, kbps, diag}
+        # 用曲線把 throttle -> fan 目標
+        pts = cfg.read_json().get('points', _DEFAULT_CFG['points'])
+        th = j.get('th',0)
+        # 線性插值
+        tgt = 0
+        for i in range(len(pts)-1):
+            if pts[i][0] <= th <= pts[i+1][0]:
+                x0,y0 = pts[i]; x1,y1 = pts[i+1]
+                if x1==x0: tgt=y1
+                else: tgt = y0 + (y1-y0)*(th-x0)/(x1-x0)
+                break
+        # 濾波
+        fan_pct = alpha*tgt + (1-alpha)*fan_pct
+        act.send_pwm(int(fan_pct))
+
+        j['diag'] = 'ok'
+        ble.send_text(ujson.dumps(j))
+        ble.send_text('\n')
+        last_hb = utime.ticks_ms()
+    # 失聯保護（對執行器）
+    act.check_timeout(ms=int(cfg.read_json()['failsafe']['lost_master_secs']*1000),
+                      fallback=cfg.read_json()['failsafe']['fallback_pwm'])
+    utime.sleep_ms(20)
+```
+
+---
+
+## BLE_CAN_M/can_obd.py
+
+```python
+# OBD-II 輪詢/解析（模擬或 MCP2515）
+import utime, urandom
+try:
+    from mcp2515 import MCP2515
+except ImportError:
+    MCP2515 = None
+
+class OBDReader:
+    def __init__(self, sim=True, spi=None, cs_pin=5, int_pin=21, kbps=500):
+        self.sim = sim or (MCP2515 is None)
+        if not self.sim:
+            self.can = MCP2515(spi=spi, cs_pin=cs_pin, int_pin=int_pin, kbps=kbps)
+        self._t = 0
+    def _sim_val(self):
+        rpm = 900 + (urandom.getrandbits(10) % 2500)
+        th  = urandom.getrandbits(7) % 100
+        mapk= 90 + urandom.getrandbits(5)
+        return {"rpm":rpm, "th":th, "map":mapk, "kbps":500, "ext":0}
+    def read_once(self):
+        if self.sim:
+            j = self._sim_val(); j['diag'] = 'heartbeat'; return j
+        # TODO: 真實 MCP2515 查詢 010C/0111/010B
+        # self.can.request_pid(0x010C) ...
+        return {"rpm":1000, "th":20, "map":100, "kbps":500, "ext":0, "diag":"stub"}
+```
+
+---
+
+## BLE_CAN_M/mcp2515.py（最小可用桿件；可後續擴充）
+
+```python
+# MCP2515 Minimal for MicroPython on RP2040 (SPI0)
+from machine import SPI, Pin
+import utime
+
+# 實作僅含初始化/位元率設定的骨架；後續再擴充 TX/RX/PID helper
+class MCP2515:
+    def __init__(self, spi=None, cs_pin=5, int_pin=21, kbps=500):
+        self.cs = Pin(cs_pin, Pin.OUT, value=1)
+        self.int = Pin(int_pin, Pin.IN)
+        self.spi = spi or SPI(0, baudrate=1_000_000, polarity=0, phase=0, bits=8, firstbit=SPI.MSB)
+        self.reset(); self.set_bitrate(kbps); self.set_normal_mode()
+    def _cs(self, v):
+        self.cs.value(v)
+    def _rw(self, b):
+        self._cs(0); self.spi.write(b); self._cs(1)
+    def reset(self):
+        self._rw(bytes([0xC0]))  # RESET
+        utime.sleep_ms(10)
+    def set_bitrate(self, kbps):
+        # 簡化：假設 16MHz 晶振，500kbps（CNF1..3）常數
+        # 500kbps: CNF1=0x00, CNF2=0x90, CNF3=0x02 （僅示意）
+        if kbps==500:
+            cnf1,cnf2,cnf3 = 0x00,0x90,0x02
+        elif kbps==250:
+            cnf1,cnf2,cnf3 = 0x01,0x90,0x02
+        else:
+            cnf1,cnf2,cnf3 = 0x03,0x90,0x02
+        # Write registers starting at CNF3(0x28), CNF2(0x29), CNF1(0x2A) via WRITE(0x02)
+        self._cs(0)
+        self.spi.write(bytes([0x02, 0x2A, cnf1, 0x29, cnf2, 0x28, cnf3]))
+        self._cs(1)
+    def set_normal_mode(self):
+        # Write CANCTRL (0x0F) to Normal (REQOP=000)
+        self._cs(0)
+        self.spi.write(bytes([0x02, 0x0F, 0x00]))
+        self._cs(1)
+```
+
+---
+
+## BLE_CAN_M/cfg_default.json
+
+```json
+{
+  "ver": 1,
+  "points": [[0,0],[20,20],[40,35],[60,55],[80,78],[100,100]],
+  "failsafe": {"lost_master_secs": 2.5, "fallback_pwm": 20},
+  "filter": {"alpha": 0.3}
+}
+```
+
+---
+
+## AT_ble/pico_ble_bridge_qa2.py
+
+```python
+# Pico + 2340AQ2（UART AT/RAW）橋接 + 指令解析（LED/PWM）+ 看門狗
+# 已知穩定點：PIN_BRTS=13；支援 always-low / timed / gnd-external 三模式；
+# 'LED ON' / 'LED OFF' 命令、'PWM:<0..100>'、心跳 '.'
+
+import machine, utime
+from machine import Pin, PWM, UART
+
+PIN_BRTS = 13   # BRTS 控制腳（預設 HIGH 禁止；拉低允許 MCU→BLE 模組發送）
+PIN_LED  = 6    # 例：外接 LED 或風扇控制 PWM 腳（可依板子調整）
+UART_TX  = 0    # GP0 → 模組 RX
+UART_RX  = 1    # GP1 ← 模組 TX
+BAUD     = 115200
+
+MODE = 'timed'  # 'always-low' | 'timed' | 'gnd-external'
+BRTS_PULSE_MS = 5
+
+uart = UART(0, baudrate=BAUD, tx=machine.Pin(UART_TX), rx=machine.Pin(UART_RX))
+brts = Pin(PIN_BRTS, Pin.OUT, value=1)
+led  = Pin(25, Pin.OUT)  # 板載 LED 指示
+pwm  = PWM(Pin(PIN_LED)); pwm.freq(1000)
+
+last_cmd_ms = utime.ticks_ms()
+TIMEOUT_MS = 2500
+FALLBACK_PWM = 20
+
+
+def brts_enable_once():
+    if MODE == 'always-low':
+        brts.value(0)
+    elif MODE == 'timed':
+        brts.value(0); utime.sleep_ms(BRTS_PULSE_MS); brts.value(1)
+    elif MODE == 'gnd-external':
+        pass
+
+def mcu_send_to_ble_string(s: str):
+    brts_enable_once()
+    uart.write(s)
+
+
+def set_pwm_pct(pct:int):
+    pct = max(0,min(100,int(pct)))
+    duty = int(pct*65535/100)
+    pwm.duty_u16(duty)
+
+
+# ====== 初始化：進 AT 模式，開回顯，示例指令 ======
+print('Entering AT mode...')
+mcu_send_to_ble_string(b'+++')
+utime.sleep_ms(50)
+# 模組會回 'K' 或 'OK'，此處略過同步等待簡化
+mcu_send_to_ble_string(b'AT+ECHO=1\r\n')
+utime.sleep_ms(30)
+print('Exit AT...')
+mcu_send_to_ble_string(b'AT+EXIT\r\n')  # 進 RAW
+utime.sleep_ms(30)
+print('Ready. Type: \'+++\' / \'AT:<cmd>\' / \'SEND:<text>\'')
+
+
+# ====== 命令處理 ======
+
+def process_line(s:str):
+    global last_cmd_ms
+    s = s.strip()
+    if not s:
+        return
+    # 心跳：單點 '.'
+    if s == '.':
+        last_cmd_ms = utime.ticks_ms(); return
+    # LED / PWM 控制
+    if s.upper().startswith('LED ON'):
+        Pin(25, Pin.OUT).value(1)
+        last_cmd_ms = utime.ticks_ms(); return
+    if s.upper().startswith('LED OFF'):
+        Pin(25, Pin.OUT).value(0)
+        last_cmd_ms = utime.ticks_ms(); return
+    if s.upper().startswith('PWM:'):
+        try:
+            v = int(s.split(':',1)[1])
+            set_pwm_pct(v)
+            last_cmd_ms = utime.ticks_ms(); return
+        except: pass
+
+
+buf = b''
+while True:
+    # 讀取來自模組的資料（或來自上游主控透過模組轉發而來）
+    if uart.any():
+        ch = uart.read(1)
+        if ch:
+            c = ch
+            if c == b'\n':
+                try:
+                    process_line(buf.decode())
+                except: pass
+                buf = b''
+            elif c not in (b'\r',):
+                buf += c
+    # 看門狗：逾時 → 降至 fallback PWM
+    if utime.ticks_diff(utime.ticks_ms(), last_cmd_ms) > TIMEOUT_MS:
+        set_pwm_pct(FALLBACK_PWM)
+    utime.sleep_ms(5)
+```
