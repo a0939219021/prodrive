@@ -1,88 +1,213 @@
 <!doctype html>
 <html lang="zh-Hant">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>EASY THRUSTER · App</title>
-<style>
-:root { --bg:#0b0f17; --card:#121826; --txt:#e8eefc; --muted:#98a2b3; --acc:#66d9ff; }
-html,body{height:100%;background:var(--bg);color:var(--txt);font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial}
-.wrap{max-width:980px;margin:0 auto;padding:20px}
-.row{display:grid;gap:16px}
-.grid-2{grid-template-columns:1fr 1fr}
-.card{background:var(--card);border-radius:16px;padding:16px;box-shadow:0 4px 24px rgba(0,0,0,.25)}
-h1{margin:8px 0 16px;font-size:24px}
-button{background:var(--acc);color:#001018;border:0;border-radius:12px;padding:10px 14px;font-weight:600;cursor:pointer}
-input,textarea{width:100%;background:#0e1422;color:var(--txt);border:1px solid #1f2b44;border-radius:10px;padding:10px}
-.badge{display:inline-block;padding:4px 8px;border-radius:999px;background:#0f2236;color:#a5d9ff;border:1px solid #1f3652}
-.row-kv{display:grid;grid-template-columns:120px 1fr;gap:8px;align-items:center}
-.log{height:180px;overflow:auto;font-family:ui-monospace,Consolas,monospace;font-size:12px;white-space:pre-wrap}
-.pts{display:flex;gap:8px;flex-wrap:wrap}
-.pts input{width:70px}
-</style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>EASY THRUSTER · App</title>
+  <style>
+    :root { --bg:#0b0f17; --card:#121826; --txt:#e8eefc; --muted:#98a2b3; --acc:#66d9ff; }
+    html,body{height:100%;background:var(--bg);color:var(--txt);font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial}
+    .wrap{max-width:980px;margin:0 auto;padding:20px}
+    .row{display:grid;gap:16px}
+    .grid-2{grid-template-columns:1fr 1fr}
+    .card{background:var(--card);border-radius:16px;padding:16px;box-shadow:0 4px 24px rgba(0,0,0,.25)}
+    h1{margin:8px 0 16px;font-size:24px}
+    button{background:var(--acc);color:#001018;border:0;border-radius:12px;padding:10px 14px;font-weight:600;cursor:pointer}
+    input,textarea{width:100%;background:#0e1422;color:var(--txt);border:1px solid #1f2b44;border-radius:10px;padding:10px}
+    .badge{display:inline-block;padding:4px 8px;border-radius:999px;background:#0f2236;color:#a5d9ff;border:1px solid #1f3652}
+    .row-kv{display:grid;grid-template-columns:120px 1fr;gap:8px;align-items:center}
+    .log{height:180px;overflow:auto;font-family:ui-monospace,Consolas,monospace;font-size:12px;white-space:pre-wrap}
+    .pts{display:flex;gap:8px;flex-wrap:wrap}
+    .pts input{width:70px}
+    .hide{display:none}
+  </style>
 </head>
 <body>
 <div class="wrap">
-<h1>EASY THRUSTER <span class="badge" id="state">未連線</span></h1>
-<div class="row grid-2">
-<div class="card">
-<h3>連線</h3>
-<button id="btnConnect">連線主控（BLE_CAN_M）</button>
-<button id="btnDisconnect">斷線</button>
-<div class="row-kv"><span>裝置：</span><span id="dev"></span></div>
-<div class="row-kv"><span>心跳：</span><span id="hb">--</span></div>
-</div>
+  <h1>EASY THRUSTER <span class="badge" id="state">未連線</span></h1>
+  <div class="row grid-2">
+    <div class="card">
+      <h3>連線</h3>
+      <button id="btnConnect">連線主控（BLE_CAN_M）</button>
+      <button id="btnDisconnect" disabled>斷線</button>
+      <div class="row-kv"><span>裝置：</span><span id="dev"></span></div>
+      <div class="row-kv"><span>心跳：</span><span id="hb">--</span></div>
+      <div class="row-kv"><span>環境：</span><span id="env">checking…</span></div>
+    </div>
 
+    <div class="card">
+      <h3>即時遙測</h3>
+      <div class="row-kv"><span>RPM</span><input id="rpm" readonly></div>
+      <div class="row-kv"><span>Throttle %</span><input id="th" readonly></div>
+      <div class="row-kv"><span>MAP</span><input id="map" readonly></div>
+      <div class="row-kv"><span>Diag</span><input id="diag" readonly></div>
+    </div>
 
-<div class="card">
-<h3>即時遙測</h3>
-<div class="row-kv"><span>RPM</span><input id="rpm" readonly></div>
-<div class="row-kv"><span>Throttle %</span><input id="th" readonly></div>
-<div class="row-kv"><span>MAP</span><input id="map" readonly></div>
-<div class="row-kv"><span>Diag</span><input id="diag" readonly></div>
-</div>
+    <div class="card">
+      <h3>控制</h3>
+      <div class="row-kv"><span>Fan %</span><input id="fan" type="number" min="0" max="100" value="30"></div>
+      <div class="row" style="margin-top:8px">
+        <button id="btnSend" disabled>下發 FAN%</button>
+        <button id="btnLedOn" disabled>LED ON</button>
+        <button id="btnLedOff" disabled>LED OFF</button>
+      </div>
+    </div>
 
+    <div class="card">
+      <h3>CFG 曲線（FFF4）</h3>
+      <div class="pts" id="pts"></div>
+      <div class="row" style="margin-top:8px">
+        <button id="btnReadCfg" disabled>讀取</button>
+        <button id="btnWriteCfg" disabled>寫入</button>
+      </div>
+    </div>
 
-<div class="card">
-<h3>控制</h3>
-<div class="row-kv"><span>Fan %</span><input id="fan" type="number" min="0" max="100" value="30"></div>
-<div class="row" style="margin-top:8px">
-<button id="btnSend">下發 FAN%</button>
-<button id="btnLedOn">LED ON</button>
-<button id="btnLedOff">LED OFF</button>
-</div>
-</div>
-
-
-<div class="card">
-<h3>CFG 曲線（FFF4）</h3>
-<div class="pts" id="pts"></div>
-<div class="row" style="margin-top:8px">
-<button id="btnReadCfg">讀取</button>
-<button id="btnWriteCfg">寫入</button>
-</div>
-</div>
-
-
-<div class="card" style="grid-column:1/-1">
-<h3>日誌</h3>
-<div class="log" id="log"></div>
-</div>
-</div>
+    <div class="card" style="grid-column:1/-1">
+      <h3>日誌</h3>
+      <div class="log" id="log"></div>
+    </div>
+  </div>
 </div>
 <script>
-const NUS_SERVICE = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
-const NUS_RX = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"; // notify
-const NUS_TX = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"; // write
-const FFF4_UUID = 0xFFF4; // readable + writable JSON
+(function(){
+  const NUS_SERVICE = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
+  const NUS_RX =      "6e400003-b5a3-f393-e0a9-e50e24dcca9e"; // notify
+  const NUS_TX =      "6e400002-b5a3-f393-e0a9-e50e24dcca9e"; // write
+  const FFF4_UUID =   0xFFF4; // readable + writable JSON
 
+  const $ = id => document.getElementById(id);
+  const ui = {
+    btnConnect: $("btnConnect"), btnDisconnect: $("btnDisconnect"),
+    btnSend: $("btnSend"), btnLedOn: $("btnLedOn"), btnLedOff: $("btnLedOff"),
+    btnReadCfg: $("btnReadCfg"), btnWriteCfg: $("btnWriteCfg"),
+    fan: $("fan"), rpm: $("rpm"), th: $("th"), map: $("map"), diag: $("diag"),
+    state: $("state"), dev: $("dev"), hb: $("hb"), env: $("env"), log: $("log"), pts: $("pts")
+  };
 
-let device, gatt, nusSvc, chTx, chRx, chCfg;
-let pingTimer, lastPong = 0;
+  function log(s){ ui.log.textContent += s+"\n"; ui.log.scrollTop = ui.log.scrollHeight; }
+  function setState(s){ ui.state.textContent = s; }
+  function enc(s){ return new TextEncoder().encode(s); }
+  function dec(b){ return new TextDecoder().decode(b); }
+  function enableConnected(v){
+    ui.btnDisconnect.disabled = !v;
+    ui.btnSend.disabled = !v; ui.btnLedOn.disabled = !v; ui.btnLedOff.disabled = !v;
+    ui.btnReadCfg.disabled = !v; ui.btnWriteCfg.disabled = !v;
+    ui.btnConnect.disabled = v;
+  }
 
+  // 環境檢查：必須 https/localhost + navigator.bluetooth
+  (function checkEnv(){
+    const secure = location.protocol === 'https:' || location.hostname === 'localhost';
+    const bt = !!navigator.bluetooth;
+    ui.env.textContent = (secure? '✅ Secure' : '⚠️ 非安全來源') + ' / ' + (bt? '✅ WebBluetooth' : '❌ 無 WebBluetooth');
+    if(!secure){ log('⚠️ 請以 https 或 localhost 方式開啟此頁（file:// 會失敗）'); }
+    if(!bt){ log('❌ 此瀏覽器不支援 Web Bluetooth'); }
+  })();
 
-function log(s){ const el=document.getElementById('log'); el.textContent += s+"\n"; el.scrollTop = el.scrollHeight; }
-function setState(s){ document.getElementById('state').textContent = s; }
-function enc(s){ return new TextEncoder().encode(s); }
-function dec(b){ return new TextDecoder().decode(b); }
+  let device, gatt, nusSvc, chTx, chRx, chCfg, pingTimer, lastPong = 0;
+
+  async function connect(){
+    try{
+      log('🔎 掃描裝置…');
+      device = await navigator.bluetooth.requestDevice({
+        filters:[{ services:[NUS_SERVICE] }],
+        optionalServices:[FFF4_UUID]
+      });
+      device.addEventListener('gattserverdisconnected', onDisc);
+      gatt = await device.gatt.connect();
+      nusSvc = await gatt.getPrimaryService(NUS_SERVICE);
+      chTx = await nusSvc.getCharacteristic(NUS_TX);
+      chRx = await nusSvc.getCharacteristic(NUS_RX);
+      await chRx.startNotifications();
+      chRx.addEventListener('characteristicvaluechanged', ev=> onNus(dec(ev.target.value.buffer)));
+
+      try{
+        const svcCfg = await gatt.getPrimaryService(FFF4_UUID);
+        const chars = await svcCfg.getCharacteristics();
+        chCfg = chars[0] || null;
+      }catch(e){ chCfg = null; log('⚠️ 找不到 FFF4（僅影響曲線讀寫）'); }
+
+      ui.dev.textContent = device.name || '(無名稱)';
+      setState('已連線'); enableConnected(true);
+      log('✅ 已連線');
+      startPing();
+    }catch(err){
+      log('❌ 連線失敗：'+ err);
+      enableConnected(false);
+    }
+  }
+
+  function onDisc(){ setState('未連線'); log('🔌 已斷線'); stopPing(); enableConnected(false); }
+
+  function startPing(){
+    stopPing(); lastPong = Date.now();
+    pingTimer = setInterval(()=>{
+      sendLine('PING');
+      const diff = Math.round((Date.now()-lastPong)/1000);
+      ui.hb.textContent = diff+' s';
+      if(diff>=3) setState('心跳逾時（UI）');
+    }, 1000);
+  }
+  function stopPing(){ if(pingTimer) clearInterval(pingTimer); }
+
+  function sendLine(s){ if(!chTx) return; log('→ '+s); return chTx.writeValue(enc(s+'\n')); }
+
+  function onNus(s){
+    s = s.trim(); if(!s) return; log('← '+s);
+    if(s.startsWith('PONG')){ lastPong = Date.now(); setState('已連線'); return; }
+    try{
+      const j = JSON.parse(s);
+      if('rpm' in j) ui.rpm.value = j.rpm;
+      if('th' in j)  ui.th.value  = j.th;
+      if('map' in j) ui.map.value = j.map;
+      if('diag' in j)ui.diag.value= j.diag;
+    }catch{}
+  }
+
+  // CFG
+  async function readCfg(){
+    if(!chCfg){ log('⚠️ 無 FFF4 特徵'); return; }
+    const v = await chCfg.readValue();
+    const txt = dec(v.buffer);
+    log('CFG ← '+txt); renderPoints(JSON.parse(txt));
+  }
+  async function writeCfg(){
+    if(!chCfg){ log('⚠️ 無 FFF4 特徵'); return; }
+    const cfg = collectPoints();
+    const txt = JSON.stringify(cfg);
+    log('CFG → '+txt);
+    await chCfg.writeValue(enc(txt));
+  }
+
+  function renderPoints(cfg){
+    ui.pts.innerHTML='';
+    const pts = cfg.points || [[0,0],[50,50],[100,100]];
+    pts.forEach((p,i)=>{
+      const x = document.createElement('input'); x.type='number'; x.min=0; x.max=100; x.value=p[0]; x.id='x'+i;
+      const y = document.createElement('input'); y.type='number'; y.min=0; y.max=100; y.value=p[1]; y.id='y'+i;
+      ui.pts.appendChild(x); ui.pts.appendChild(y);
+    });
+  }
+  function collectPoints(){
+    const inputs = [...ui.pts.querySelectorAll('input')];
+    const pts=[]; for(let i=0;i<inputs.length;i+=2){ pts.push([+inputs[i].value, +inputs[i+1].value]); }
+    pts.sort((a,b)=>a[0]-b[0]);
+    pts.forEach(p=>{ p[0]=Math.min(100,Math.max(0,p[0])); p[1]=Math.min(100,Math.max(0,p[1])); });
+    return {ver:1, points:pts, failsafe:{lost_master_secs:2.5,fallback_pwm:20}, filter:{alpha:0.3}};
+  }
+
+  // 綁定事件
+  ui.btnConnect.addEventListener('click', connect);
+  ui.btnDisconnect.addEventListener('click', ()=> device?.gatt?.disconnect());
+  ui.btnSend.addEventListener('click', ()=> sendLine('CTRL: FAN='+(+ui.fan.value|0)+'%'));
+  ui.btnLedOn.addEventListener('click', ()=> sendLine('CTRL: LED ON'));
+  ui.btnLedOff.addEventListener('click', ()=> sendLine('CTRL: LED OFF'));
+  ui.btnReadCfg.addEventListener('click', readCfg);
+  ui.btnWriteCfg.addEventListener('click', writeCfg);
+
+  // 初始渲染
+  renderPoints(collectPoints());
+})();
+</script>
+</body>
 </html>
