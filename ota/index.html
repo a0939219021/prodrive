@@ -16,10 +16,9 @@
     input,textarea{width:100%;background:#0e1422;color:var(--txt);border:1px solid #1f2b44;border-radius:10px;padding:10px}
     .badge{display:inline-block;padding:4px 8px;border-radius:999px;background:#0f2236;color:#a5d9ff;border:1px solid #1f3652}
     .row-kv{display:grid;grid-template-columns:120px 1fr;gap:8px;align-items:center}
-    .log{height:180px;overflow:auto;font-family:ui-monospace,Consolas,monospace;font-size:12px;white-space:pre-wrap}
+    .log{height:220px;overflow:auto;font-family:ui-monospace,Consolas,monospace;font-size:12px;white-space:pre-wrap}
     .pts{display:flex;gap:8px;flex-wrap:wrap}
     .pts input{width:70px}
-    .hide{display:none}
   </style>
 </head>
 <body>
@@ -70,10 +69,14 @@
 </div>
 <script>
 (function(){
+  // NUS（UART over BLE）
   const NUS_SERVICE = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
   const NUS_RX =      "6e400003-b5a3-f393-e0a9-e50e24dcca9e"; // notify
   const NUS_TX =      "6e400002-b5a3-f393-e0a9-e50e24dcca9e"; // write
-  const FFF4_UUID =   0xFFF4; // readable + writable JSON
+
+  // CFG: 服務=0xFFF0、特徵=0xFFF4（r3）
+  const CFG_SERVICE_UUID = 0xFFF0;
+  const CFG_CHAR_UUID    = 0xFFF4;
 
   const $ = id => document.getElementById(id);
   const ui = {
@@ -111,7 +114,7 @@
       log('🔎 掃描裝置…');
       device = await navigator.bluetooth.requestDevice({
         filters:[{ services:[NUS_SERVICE] }],
-        optionalServices:[FFF4_UUID]
+        optionalServices:[CFG_SERVICE_UUID]
       });
       device.addEventListener('gattserverdisconnected', onDisc);
       gatt = await device.gatt.connect();
@@ -122,9 +125,10 @@
       chRx.addEventListener('characteristicvaluechanged', ev=> onNus(dec(ev.target.value.buffer)));
 
       try{
-        const svcCfg = await gatt.getPrimaryService(FFF4_UUID);
+        const svcCfg = await gatt.getPrimaryService(CFG_SERVICE_UUID);
         const chars = await svcCfg.getCharacteristics();
-        chCfg = chars[0] || null;
+        // 找 0xFFF4；部分瀏覽器 uuid 可能是數字或字串，都兼容處理
+        chCfg = chars.find(c => (c.uuid === CFG_CHAR_UUID) || ((''+c.uuid).toLowerCase().endsWith('fff4'))) || chars[0] || null;
       }catch(e){ chCfg = null; log('⚠️ 找不到 FFF4（僅影響曲線讀寫）'); }
 
       ui.dev.textContent = device.name || '(無名稱)';
