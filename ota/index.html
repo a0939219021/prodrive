@@ -27,7 +27,7 @@
   <div class="row grid-2">
     <div class="card">
       <h3>連線</h3>
-      <button id="btnConnect">連線主控（BLE_CAN：THRUSTER）</button>
+      <button id="btnConnect">連線主控（THRUSTER）</button>
       <button id="btnDisconnect" disabled>斷線</button>
       <div class="row-kv"><span>裝置：</span><span id="dev"></span></div>
       <div class="row-kv"><span>心跳：</span><span id="hb">--</span></div>
@@ -110,13 +110,13 @@
   async function connect(){
     try{
       log('🔎 掃描裝置…');
+      // 接受所有裝置，避免被瀏覽器的廣告過濾擋掉
       device = await navigator.bluetooth.requestDevice({
-        // 依裝置名稱過濾：只列 THRUSTER
-        filters: [{ namePrefix: "THRUSTER" }],
+        acceptAllDevices: true,
         optionalServices: [NUS_SERVICE, CFG_SERVICE_UUID]
       });
       if (!device.name || !device.name.startsWith("THRUSTER")) {
-        log("⚠️ 選到的不是 THRUSTER：" + (device.name || "(無名稱)"));
+        log("⚠️ 請選 THRUSTER（目前選到："+(device.name||"(無名稱)")+"）");
         return;
       }
 
@@ -152,7 +152,7 @@
     s = s.trim(); if(!s) return; log('← '+s);
     if(s.startsWith('PONG')){ lastPong = Date.now(); setState('已連線'); return; }
     if(s.startsWith('AT:')){
-      const kv = s.slice(3).trim();               // e.g. "LED=1"
+      const kv = s.slice(3).trim();   // e.g. "LED=1"
       if(kv.startsWith('LED=')){ ui.atled.textContent = kv.endsWith('1')?'ON':'OFF'; }
       return;
     }
