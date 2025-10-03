@@ -27,7 +27,7 @@
   <div class="row grid-2">
     <div class="card">
       <h3>連線</h3>
-      <button id="btnConnect">連線主控（BLE_CAN）</button>
+      <button id="btnConnect">連線主控（BLE_CAN：THRUSTER）</button>
       <button id="btnDisconnect" disabled>斷線</button>
       <div class="row-kv"><span>裝置：</span><span id="dev"></span></div>
       <div class="row-kv"><span>心跳：</span><span id="hb">--</span></div>
@@ -45,7 +45,7 @@
     </div>
 
     <div class="card">
-      <h3>控制（透過 BLE_CAN → AT-BLE）</h3>
+      <h3>控制（透過 THRUSTER → EASY-THRUSTER）</h3>
       <div class="row-kv"><span>Fan %</span><input id="fan" type="number" min="0" max="100" value="30"></div>
       <div class="row" style="margin-top:8px">
         <button id="btnSend" disabled>下發 FAN%</button>
@@ -71,12 +71,9 @@
 </div>
 <script>
 (function(){
-  // 只連 BLE_CAN（EASY-THRUSTER），它會再去連 AT-BLE
   const NUS_SERVICE = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
-  const NUS_RX =      "6e400003-b5a3-f393-e0a9-e50e24dcca9e"; // notify (from BLE_CAN)
-  const NUS_TX =      "6e400002-b5a3-f393-e0a9-e50e24dcca9e"; // write  (to   BLE_CAN)
-
-  // CFG 服務=0xFFF0、特徵=0xFFF4
+  const NUS_RX =      "6e400003-b5a3-f393-e0a9-e50e24dcca9e"; // notify
+  const NUS_TX =      "6e400002-b5a3-f393-e0a9-e50e24dcca9e"; // write
   const CFG_SERVICE_UUID = 0xFFF0;
   const CFG_CHAR_UUID    = 0xFFF4;
 
@@ -114,12 +111,18 @@
     try{
       log('🔎 掃描裝置…');
       device = await navigator.bluetooth.requestDevice({
-        // 允許自訂名字（EASY-THRUSTER），但用服務過濾最可靠
-        filters:[{ services:[NUS_SERVICE] }],
-        optionalServices:[CFG_SERVICE_UUID]
+        // 依裝置名稱過濾：只列 THRUSTER
+        filters: [{ namePrefix: "THRUSTER" }],
+        optionalServices: [NUS_SERVICE, CFG_SERVICE_UUID]
       });
+      if (!device.name || !device.name.startsWith("THRUSTER")) {
+        log("⚠️ 選到的不是 THRUSTER：" + (device.name || "(無名稱)"));
+        return;
+      }
+
       device.addEventListener('gattserverdisconnected', onDisc);
       gatt = await device.gatt.connect();
+
       const nusSvc = await gatt.getPrimaryService(NUS_SERVICE);
       chTx = await nusSvc.getCharacteristic(NUS_TX);
       chRx = await nusSvc.getCharacteristic(NUS_RX);
@@ -148,7 +151,6 @@
   function onNus(s){
     s = s.trim(); if(!s) return; log('← '+s);
     if(s.startsWith('PONG')){ lastPong = Date.now(); setState('已連線'); return; }
-    // 來自 BLE_CAN 的上行：遙測 JSON 或 AT 狀態透傳
     if(s.startsWith('AT:')){
       const kv = s.slice(3).trim();               // e.g. "LED=1"
       if(kv.startsWith('LED=')){ ui.atled.textContent = kv.endsWith('1')?'ON':'OFF'; }
@@ -164,7 +166,6 @@
     }catch{}
   }
 
-  // CFG
   async function readCfg(){ if(!chCfg){ log('⚠️ 無 FFF4 特徵'); return; }
     const v = await chCfg.readValue(); const txt = dec(v.buffer);
     log('CFG ← '+txt); renderPoints(JSON.parse(txt)); }
@@ -173,18 +174,20 @@
 
   function renderPoints(cfg){
     ui.pts.innerHTML=''; const pts = cfg.points || [[0,0],[50,50],[100,100]];
-    pts.forEach((p,i)=>{ const x = document.createElement('input'); x.type='number'; x.min=0; x.max=100; x.value=p[0];
-                         const y = document.createElement('input'); y.type='number'; y.min=0; y.max=100; y.value=p[1];
-                         ui.pts.appendChild(x); ui.pts.appendChild(y); });
+    pts.forEach((p,i)=>{
+      const x = document.createElement('input'); x.type='number'; x.min=0; x.max=100; x.value=p[0];
+      const y = document.createElement('input'); y.type='number'; y.min=0; y.max=100; y.value=p[1];
+      ui.pts.appendChild(x); ui.pts.appendChild(y);
+    });
   }
   function collectPoints(){
     const inputs = [...ui.pts.querySelectorAll('input')], pts=[];
     for(let i=0;i<inputs.length;i+=2){ pts.push([+inputs[i].value, +inputs[i+1].value]); }
-    pts.sort((a,b)=>a[0]-b[0]); pts.forEach(p=>{ p[0]=Math.min(100,Math.max(0,p[0])); p[1]=Math.min(100,Math.max(0,p[1])); });
+    pts.sort((a,b)=>a[0]-b[0]);
+    pts.forEach(p=>{ p[0]=Math.min(100,Math.max(0,p[0])); p[1]=Math.min(100,Math.max(0,p[1])); });
     return {ver:1, points:pts, failsafe:{lost_master_secs:2.5,fallback_pwm:20}, filter:{alpha:0.3}};
   }
 
-  // 綁定事件（所有指令都發到 BLE_CAN，由它轉送到 AT-BLE）
   ui.btnConnect.addEventListener('click', connect);
   ui.btnDisconnect.addEventListener('click', ()=> device?.gatt?.disconnect());
   ui.btnSend.addEventListener('click', ()=> sendLine('CTRL: FAN='+(+ui.fan.value|0)+'%'));
