@@ -34,16 +34,11 @@
 <div id="log"></div>
 
 <script>
-const CANDIDATE_SERVICES = [
-  // Nordic UART Service
-  { svc:"6e400001-b5a3-f393-e0a9-e50e24dcca9e", rx:"6e400002-b5a3-f393-e0a9-e50e24dcca9e", tx:"6e400003-b5a3-f393-e0a9-e50e24dcca9e" },
-  // Nordic “Serial Port Service”(有些韌體使用)
-  { svc:"49535343-fe7d-4ae5-8fa9-9fafd205e455", rx:"49535343-8841-43f4-a8d4-ecbe34729bb3", tx:"49535343-1e4d-4bd9-ba61-23c647249616" },
-  // 常見 Transparent UART (如 HM-10 風格)
-  { svc:"0000ffe0-0000-1000-8000-00805f9b34fb", rx:"0000ffe1-0000-1000-8000-00805f9b34fb", tx:"0000ffe1-0000-1000-8000-00805f9b34fb" },
-];
+const NUS_SVC = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
+// 常見另一路寫入特徵（許多韌體用它當 RX）
+const NUS_ALT_RX = "6e400004-b5a3-f393-e0a9-e50e24dcca9e";
 
-let device, server, service, txChar, rxChar, selectedProfile;
+let device, server, service, txChar, rxChar;
 
 const log = (...a) => {
   const el = document.getElementById('log');
@@ -62,40 +57,37 @@ function setUI(connected){
 async function connect(){
   try{
     device = await navigator.bluetooth.requestDevice({
-      acceptAllDevices:true,
-      optionalServices: CANDIDATE_SERVICES.map(p=>p.svc)
+      acceptAllDevices: true,
+      optionalServices: [NUS_SVC]
     });
     device.addEventListener('gattserverdisconnected', onDisconnected);
-    server = await device.gatt.connect();
+    server  = await device.gatt.connect();
+    service = await server.getPrimaryService(NUS_SVC);
 
-    // 逐個 profile 嘗試取得 tx/rx
-    for (const p of CANDIDATE_SERVICES){
-      try{
-        service = await server.getPrimaryService(p.svc);
-        const chars = await service.getCharacteristics();
-        const ids = chars.map(c=>c.uuid);
-        // 先直接以 uuid 尋找
-        const tx = await service.getCharacteristic(p.tx).catch(()=>null);
-        const rx = await service.getCharacteristic(p.rx).catch(()=>null);
-        if (tx && rx){
-          txChar = tx; rxChar = rx; selectedProfile = p;
-          log('✅ 服務就緒', {svc:p.svc, tx:p.tx, rx:p.rx, chars:ids});
-          break;
-        }
-        // 若 uuid 不吻合，嘗試以 properties 猜（notify 當 tx、write 當 rx）
-        const nt = chars.find(c=>c.properties && (c.properties.notify || c.properties.indicate));
-        const wr = chars.find(c=>c.properties && (c.properties.writeWithoutResponse || c.properties.write));
-        if (nt && wr){
-          txChar = nt; rxChar = wr; selectedProfile = p;
-          log('✅ 服務推測匹配', {svc:p.svc, tx:nt.uuid, rx:wr.uuid});
-          break;
-        }
-      }catch(e){ /* 該 profile 不存在，換下一個 */ }
+    const chars = await service.getCharacteristics();
+    for (const c of chars){
+      log('char', c.uuid, c.properties);
     }
 
-    if (!txChar || !rxChar){
-      throw new Error('找不到 UART 特徵（tx/notify + rx/write）');
+    // TX：找 notify/indicate
+    txChar = chars.find(c => c.properties && (c.properties.notify || c.properties.indicate));
+
+    // RX：找 writeWithoutResponse 或 write
+    rxChar = chars.find(c => c.properties && (c.properties.writeWithoutResponse || c.properties.write));
+
+    // 若找不到可寫，就嘗試 6e400004
+    if (!rxChar){
+      try {
+        const alt = await service.getCharacteristic(NUS_ALT_RX);
+        if (alt && (alt.properties.writeWithoutResponse || alt.properties.write)){
+          rxChar = alt;
+          log('⭐ 使用 0x0004 作為 RX');
+        }
+      } catch(_) {}
     }
+
+    if (!txChar) throw new Error('找不到可通知的 TX characteristic');
+    if (!rxChar) throw new Error('找不到可寫入的 RX characteristic');
 
     await txChar.startNotifications();
     txChar.addEventListener('characteristicvaluechanged', (ev)=>{
@@ -103,13 +95,10 @@ async function connect(){
       log('←', v.replace(/\r?\n/g,'').trim());
     });
 
-    // 列出 RX 可用寫入能力
-    log('RX properties:', rxChar.properties);
-
     setUI(true);
-    log('✅ 已連線：service/tx/rx OK（profile=', selectedProfile?.svc, ')');
+    log('✅ 已連線：tx=' + txChar.uuid + ' rx=' + rxChar.uuid + ' RX props=' + JSON.stringify(rxChar.properties));
 
-    // 自動做一個回聲測試
+    // 自動做回聲 & 觀察 BOOT/STAT
     await sendLine('ECHO:HELLO');
 
   }catch(e){
@@ -124,16 +113,16 @@ async function disconnect(){
 
 function onDisconnected(){
   setUI(false);
-  txChar = rxChar = null; selectedProfile = null;
+  txChar = rxChar = null;
   log('🔌 已斷線');
 }
 
 async function sendLine(s){
   if (!rxChar){ log('⚠️ 尚未連線'); return; }
-  if (!s.endsWith('\n')) s += '\n';
+  // 多數 UART 韌體要求 CRLF
+  if (!/\r\n$/.test(s)) s = s + '\r\n';
   const data = new TextEncoder().encode(s);
 
-  // 優先嘗試無回應寫入（若支援）
   try{
     if (rxChar.properties.writeWithoutResponse && rxChar.writeValueWithoutResponse){
       await rxChar.writeValueWithoutResponse(data);
@@ -142,7 +131,7 @@ async function sendLine(s){
     }
     log('→', s.trim());
   }catch(e){
-    // 回退再試一次另一種寫法
+    // 回退再試另一種寫法
     try{
       if (rxChar.writeValueWithoutResponse) await rxChar.writeValueWithoutResponse(data);
       else await rxChar.writeValue(data);
