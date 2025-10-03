@@ -1,102 +1,105 @@
 <!doctype html>
-<meta charset="utf-8">
-<title>BLE UART — LED 控制測試面板</title>
+<meta charset="utf-8" />
+<title>BLE UART 測試面板（⚠️ 僅在未連主控時使用）</title>
 <style>
-  body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; max-width: 840px; margin: 24px auto; }
-  button { padding: 8px 14px; margin: 4px; }
-  #log { white-space: pre-wrap; background: #111; color: #eee; padding: 12px; border-radius: 8px; min-height: 220px; }
-  input[type="text"] { width: 420px; padding: 8px; }
+  :root { --bg:#0b0f14; --fg:#e7ecf2; --muted:#9fb2c8; --card:#111823; }
+  body { font-family: system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif; background: var(--bg); color: var(--fg); margin: 24px auto; max-width: 920px; }
+  h2 { margin: 0 0 12px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
+  button { padding: 8px 14px; border-radius: 10px; border: 1px solid #2c3a4a; background: #1a2330; color: var(--fg); cursor: pointer; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  input[type="text"] { flex: 1; min-width: 260px; padding: 8px 10px; border-radius: 10px; border: 1px solid #2c3a4a; background: #0f151e; color: var(--fg); }
+  #log { white-space: pre-wrap; background: var(--card); padding: 12px; border-radius: 12px; min-height: 240px; border:1px solid #223042; }
+  .tip { color: var(--muted); font-size: 14px; }
 </style>
-<h2>BLE UART — LED 控制測試面板</h2>
 
-<div>
+<h2>BLE UART 測試面板 <span class="tip">（⚠️ 僅在未連主控時使用）</span></h2>
+
+<div class="row">
   <button id="btnConnect">連線</button>
-  <button id="btnDisconnect">斷線</button>
-  <span id="devName" style="margin-left:8px; opacity:0.8"></span>
+  <button id="btnDisconnect" disabled>斷線</button>
+  <span id="status" class="tip">未連線</span>
 </div>
-<div>
-  <button data-cmd="LED ON">LED ON</button>
-  <button data-cmd="LED OFF">LED OFF</button>
+
+<div class="row">
+  <button data-cmd="LED ON" disabled>LED ON</button>
+  <button data-cmd="LED OFF" disabled>LED OFF</button>
+  <button data-cmd="LED TOGGLE" disabled>LED TOGGLE</button>
+  <button data-cmd="." disabled>心跳</button>
+  <button id="btnState" disabled>STATE?</button>
 </div>
-<div>
-  <input id="tx" type="text" placeholder="輸入文字，例如：test 或 LED ON / LED OFF">
-  <button id="btnSend">送出</button>
-  <label style="margin-left:8px"><input type="checkbox" id="hb1s"> 心跳 1s</label>
+
+<div class="row">
+  <input id="tx" type="text" placeholder="輸入：LED ON / PWM:45 / .">
+  <button id="btnSend" disabled>送出</button>
 </div>
+
 <h3>Log</h3>
-<div style="margin-bottom:6px">
-  <button id="btnClear">清除 Log</button>
-  <span style="opacity:0.7">顯示 BLE 模組回傳與狀態</span>
-  </div>
 <div id="log"></div>
 
 <script>
-const SVC_UUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
-const RX_UUID  = '6e400002-b5a3-f393-e0a9-e50e24dcca9e'; // Write
-const TX_UUID  = '6e400003-b5a3-f393-e0a9-e50e24dcca9e'; // Notify
+const SVC_UUID  = "6e400001-b5a3-f393-e0a9-e50e24dcca9e"; // NUS
+const RX_UUID   = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"; // write
+const TX_UUID   = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"; // notify
 
-let device, server, service, rxChar, txChar, hbTimer;
-const $log = document.getElementById('log');
-const $dev = document.getElementById('devName');
-const $hb  = document.getElementById('hb1s');
-const ts = () => new Date().toLocaleTimeString();
-const log = (...a) => { $log.textContent += `[${ts()}] ` + a.join(' ') + '\n'; $log.scrollTop = $log.scrollHeight; };
+let device, server, service, txChar, rxChar;
 
-function updateUI() {
-  const connected = !!txChar && device && device.gatt && device.gatt.connected;
+const log = (...a) => {
+  const el = document.getElementById('log');
+  const line = a.map(x => typeof x === 'string' ? x : JSON.stringify(x)).join(' ');
+  el.textContent += line + "\n";
+  el.scrollTop = el.scrollHeight;
+};
+
+function setUI(connected) {
   document.getElementById('btnConnect').disabled = connected;
   document.getElementById('btnDisconnect').disabled = !connected;
-  document.getElementById('btnSend').disabled = !connected;
   document.querySelectorAll('button[data-cmd]').forEach(b => b.disabled = !connected);
-  document.getElementById('tx').disabled = !connected;
-  document.getElementById('hb1s').disabled = !connected;
+  document.getElementById('btnSend').disabled = !connected;
+  document.getElementById('btnState').disabled = !connected;
+  document.getElementById('status').textContent = connected ? '已連線' : '未連線';
 }
 
 async function connect() {
   try {
-    device = await navigator.bluetooth.requestDevice({
+   device = await navigator.bluetooth.requestDevice({
       acceptAllDevices: true,
       optionalServices: [SVC_UUID]
     });
     device.addEventListener('gattserverdisconnected', onDisconnected);
-    $dev.textContent = device.name ? `裝置：${device.name}` : '裝置：(no name)';
-    log('🔎 選取裝置：', device.name || '(no name)');
-
     server = await device.gatt.connect();
-    log('🔗 GATT 已連線');
-
     service = await server.getPrimaryService(SVC_UUID);
-    rxChar  = await service.getCharacteristic(RX_UUID);
-    txChar  = await service.getCharacteristic(TX_UUID);
+    txChar = await service.getCharacteristic(TX_UUID);
+    rxChar = await service.getCharacteristic(RX_UUID);
 
     await txChar.startNotifications();
-    txChar.addEventListener('characteristicvaluechanged', (e) => {
-      const v = new TextDecoder().decode(e.target.value);
-      log('←', v.replace(/\r/g, '\\r').replace(/\n/g, '\\n\n'));
+    txChar.addEventListener('characteristicvaluechanged', (ev) => {
+      const v = new TextDecoder().decode(ev.target.value);
+      log('←', v.trim());
     });
 
-    log('✅ service/tx/rx OK，開始接收通知…');
-    updateUI();
-  } catch (err) {
-    log('❌ connect error:', err);
+    setUI(true);
+    log('✅ 已連線：service/tx/rx OK');
+    // 啟動輕量心跳
+    startHeartbeat();
+  } catch (e) {
+    log('❌ connect error:', e.message || e);
   }
-}
-
-function onDisconnected() {
-  log('🔌 已斷線');
-  if (hbTimer) { clearInterval(hbTimer); hbTimer = null; }
-  $hb.checked = false;
-  rxChar = null; txChar = null; service = null; server = null;
-  $dev.textContent = '';
-  updateUI();
 }
 
 async function disconnect() {
   try {
-    if (device && device.gatt.connected) {
-      device.gatt.disconnect();
-    }
-  } catch (e) {}
+    if (device && device.gatt.connected) device.gatt.disconnect();
+  } catch (e) {
+    log('❌ disconnect error:', e.message || e);
+  }
+}
+
+function onDisconnected() {
+  setUI(false);
+  txChar = rxChar = null;
+  log('🔌 已斷線');
+  stopHeartbeat();
 }
 
 async function sendLine(s) {
@@ -108,22 +111,22 @@ async function sendLine(s) {
 
 document.getElementById('btnConnect').onclick = connect;
 document.getElementById('btnDisconnect').onclick = disconnect;
+
 document.querySelectorAll('button[data-cmd]').forEach(btn => {
   btn.onclick = () => sendLine(btn.dataset.cmd);
 });
+
 document.getElementById('btnSend').onclick = () => {
   const v = document.getElementById('tx').value.trim();
   if (v) sendLine(v);
 };
-document.getElementById('btnClear').onclick = () => { $log.textContent = ''; };
-$hb.addEventListener('change', () => {
-  if (!$hb.checked) {
-    if (hbTimer) { clearInterval(hbTimer); hbTimer = null; }
-    return;
-  }
-  if (hbTimer) { clearInterval(hbTimer); hbTimer = null; }
-  hbTimer = setInterval(() => { if (txChar && device?.gatt?.connected) sendLine('.'); }, 1000);
-});
 
-updateUI();
+// STATE? 查詢
+document.getElementById('btnState').onclick = () => sendLine('STATE?');
+
+// 輕量心跳：每 2s 發一次 '.'，避免從機降檔（測試用）
+let hbTimer = null;
+function startHeartbeat() { stopHeartbeat(); hbTimer = setInterval(() => sendLine('.'), 2000); }
+function stopHeartbeat() { if (hbTimer) { clearInterval(hbTimer); hbTimer = null; } }
 </script>
+
