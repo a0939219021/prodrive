@@ -39,6 +39,7 @@
       <div class="row-kv"><span>RPM</span><input id="rpm" readonly></div>
       <div class="row-kv"><span>Throttle %</span><input id="th" readonly></div>
       <div class="row-kv"><span>MAP</span><input id="map" readonly></div>
+      <div class="row-kv"><span>Speed</span><input id="spd" readonly></div>
       <div class="row-kv"><span>Diag</span><input id="diag" readonly></div>
     </div>
 
@@ -82,7 +83,7 @@
     btnConnect: $("btnConnect"), btnDisconnect: $("btnDisconnect"),
     btnSend: $("btnSend"), btnLedOn: $("btnLedOn"), btnLedOff: $("btnLedOff"),
     btnReadCfg: $("btnReadCfg"), btnWriteCfg: $("btnWriteCfg"),
-    fan: $("fan"), rpm: $("rpm"), th: $("th"), map: $("map"), diag: $("diag"),
+    fan: $("fan"), rpm: $("rpm"), th: $("th"), map: $("map"), spd: $("spd"), diag: $("diag"),
     state: $("state"), dev: $("dev"), hb: $("hb"), env: $("env"), log: $("log"), pts: $("pts")
   };
 
@@ -97,7 +98,6 @@
     ui.btnConnect.disabled = v;
   }
 
-  // 環境檢查
   (function checkEnv(){
     const secure = location.protocol === 'https:' || location.hostname === 'localhost';
     const bt = !!navigator.bluetooth;
@@ -162,11 +162,11 @@
       if('rpm' in j) ui.rpm.value = j.rpm;
       if('th' in j)  ui.th.value  = j.th;
       if('map' in j) ui.map.value = j.map;
+      if('spd' in j) ui.spd.value = j.spd;
       if('diag' in j)ui.diag.value= j.diag;
     }catch{}
   }
 
-  // CFG
   async function readCfg(){
     if(!chCfg){ log('⚠️ 無 FFF4 特徵'); return; }
     const v = await chCfg.readValue();
@@ -198,7 +198,6 @@
     return {ver:1, points:pts, failsafe:{lost_master_secs:2.5,fallback_pwm:20}, filter:{alpha:0.3}};
   }
 
-  // 綁定事件
   ui.btnConnect.addEventListener('click', connect);
   ui.btnDisconnect.addEventListener('click', ()=> device?.gatt?.disconnect());
   ui.btnSend.addEventListener('click', ()=> sendLine('CTRL: FAN='+(+ui.fan.value|0)+'%'));
@@ -207,7 +206,6 @@
   ui.btnReadCfg.addEventListener('click', readCfg);
   ui.btnWriteCfg.addEventListener('click', writeCfg);
 
-  // 初始渲染
   renderPoints(collectPoints());
 })();
 </script>
