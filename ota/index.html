@@ -1,44 +1,49 @@
 <!doctype html>
 <meta charset="utf-8" />
-<title>BLE UART 測試面板（未連主控時使用）</title>
+<title>BLE UART 診斷面板（未連主控時使用）</title>
 <style>
   :root { --bg:#0b0f14; --fg:#e7ecf2; --muted:#9fb2c8; --card:#111823; }
-  body { font-family: system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif; background: var(--bg); color: var(--fg); margin: 24px auto; max-width: 920px; }
+  body { font-family: system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif; background: var(--bg); color: var(--fg); margin: 24px auto; max-width: 960px; }
   .row { display:flex; gap:8px; flex-wrap:wrap; margin:8px 0 }
   button { padding:8px 14px; border-radius:10px; border:1px solid #2c3a4a; background:#1a2330; color:var(--fg) }
   button:disabled{ opacity:.5 }
   input[type="text"]{ flex:1; min-width:260px; padding:8px 10px; border-radius:10px; border:1px solid #2c3a4a; background:#0f151e; color:var(--fg) }
-  #log{ white-space:pre-wrap; background:var(--card); padding:12px; border-radius:12px; min-height:240px; border:1px solid #223042 }
+  #log{ white-space:pre-wrap; background:var(--card); padding:12px; border-radius:12px; min-height:280px; border:1px solid #223042 }
   .tip{ color:var(--muted); font-size:14px }
+  code { background:#0f151e; padding: 0 6px; border-radius:6px; }
 </style>
 
-<h2>BLE UART 測試面板 <span class="tip">（⚠️ 僅在未連主控時使用）</span></h2>
+<h2>BLE UART 診斷面板 <span class="tip">（⚠️ 僅在未連主控時）</span></h2>
 
 <div class="row">
   <button id="btnConnect">連線</button>
   <button id="btnDisconnect" disabled>斷線</button>
+  <button id="btnSubscribeAll" disabled>訂閱全部特徵</button>
 </div>
 
 <div class="row">
   <button data-cmd="LED ON" disabled>LED ON</button>
   <button data-cmd="LED OFF" disabled>LED OFF</button>
   <button data-cmd="." disabled>心跳</button>
+  <button data-cmd="ECHO:HELLO" disabled>ECHO:HELLO</button>
 </div>
 
 <div class="row">
   <input id="tx" type="text" placeholder="輸入：LED ON / PWM:45 / . / ECHO:HELLO">
-  <button id="btnSend" disabled>送出</button>
+  <button id="btnSend" disabled>送出（打到 0x0002/0003/0004）</button>
 </div>
 
 <h3>Log</h3>
 <div id="log"></div>
 
 <script>
-const NUS_SVC = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
-// 常見另一路寫入特徵（許多韌體用它當 RX）
-const NUS_ALT_RX = "6e400004-b5a3-f393-e0a9-e50e24dcca9e";
+const SVC = "6e400001-b5a3-f393-e0a9-e50e24dcca9e"; // NUS
+const RX_0002 = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"; // 常見 write
+const TX_0003 = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"; // 常見 notify
+const ALT_0004= "6e400004-b5a3-f393-e0a9-e50e24dcca9e"; // 一些韌體拿來當 write/notify
 
-let device, server, service, txChar, rxChar;
+let device, server, service;
+let charMap = new Map(); // uuid -> characteristic
 
 const log = (...a) => {
   const el = document.getElementById('log');
@@ -50,6 +55,7 @@ const log = (...a) => {
 function setUI(connected){
   document.getElementById('btnConnect').disabled = connected;
   document.getElementById('btnDisconnect').disabled = !connected;
+  document.getElementById('btnSubscribeAll').disabled = !connected;
   document.querySelectorAll('button[data-cmd]').forEach(b => b.disabled = !connected);
   document.getElementById('btnSend').disabled = !connected;
 }
@@ -57,52 +63,67 @@ function setUI(connected){
 async function connect(){
   try{
     device = await navigator.bluetooth.requestDevice({
-      acceptAllDevices: true,
-      optionalServices: [NUS_SVC]
+      acceptAllDevices:true,
+      optionalServices:[SVC]
     });
     device.addEventListener('gattserverdisconnected', onDisconnected);
     server  = await device.gatt.connect();
-    service = await server.getPrimaryService(NUS_SVC);
+    service = await server.getPrimaryService(SVC);
 
     const chars = await service.getCharacteristics();
     for (const c of chars){
-      log('char', c.uuid, c.properties);
+      charMap.set(c.uuid.toLowerCase(), c);
+      log('char', c.uuid, c.properties || {});
     }
 
-    // TX：找 notify/indicate
-    txChar = chars.find(c => c.properties && (c.properties.notify || c.properties.indicate));
-
-    // RX：找 writeWithoutResponse 或 write
-    rxChar = chars.find(c => c.properties && (c.properties.writeWithoutResponse || c.properties.write));
-
-    // 若找不到可寫，就嘗試 6e400004
-    if (!rxChar){
-      try {
-        const alt = await service.getCharacteristic(NUS_ALT_RX);
-        if (alt && (alt.properties.writeWithoutResponse || alt.properties.write)){
-          rxChar = alt;
-          log('⭐ 使用 0x0004 作為 RX');
-        }
-      } catch(_) {}
-    }
-
-    if (!txChar) throw new Error('找不到可通知的 TX characteristic');
-    if (!rxChar) throw new Error('找不到可寫入的 RX characteristic');
-
-    await txChar.startNotifications();
-    txChar.addEventListener('characteristicvaluechanged', (ev)=>{
-      const v = new TextDecoder().decode(ev.target.value);
-      log('←', v.replace(/\r?\n/g,'').trim());
-    });
+    // 嘗試預設訂閱 0x0003/0x0004（就算 properties 顯示空也硬試）
+    await trySubscribe(TX_0003);
+    await trySubscribe(ALT_0004);
 
     setUI(true);
-    log('✅ 已連線：tx=' + txChar.uuid + ' rx=' + rxChar.uuid + ' RX props=' + JSON.stringify(rxChar.properties));
+    log('✅ 已連線；預設嘗試訂閱 0x0003 / 0x0004 完成（若失敗會在 log 顯示錯誤）。');
 
-    // 自動做回聲 & 觀察 BOOT/STAT
-    await sendLine('ECHO:HELLO');
+    // 自動做一次 ECHO 測試
+    await sendLine("ECHO:HELLO");
 
   }catch(e){
-    log('❌ connect error:', e.message || e);
+    log('❌ connect error:', e && e.message ? e.message : e);
+  }
+}
+
+async function trySubscribe(uuid){
+  const u = uuid.toLowerCase();
+  if (!charMap.has(u)) { log('ℹ️ 無此特徵可訂閱', uuid); return; }
+  const ch = charMap.get(u);
+  try{
+    await ch.startNotifications();
+    ch.addEventListener('characteristicvaluechanged', (ev)=>{
+      try{
+        const v = new TextDecoder().decode(ev.target.value);
+        log('← [' + uuid.slice(-4) + ']', v.replace(/\r?\n/g,'').trim());
+      }catch(e){
+        log('← [' + uuid.slice(-4) + '] (decode err)', e.message||e);
+      }
+    });
+    log('✅ startNotifications OK on', uuid);
+  }catch(e){
+    log('⚠️ startNotifications fail on', uuid, e && e.message ? e.message : e);
+  }
+}
+
+async function subscribeAll(){
+  if (!service) return;
+  const chars = await service.getCharacteristics();
+  for (const c of chars){
+    try{ await c.startNotifications();
+      c.addEventListener('characteristicvaluechanged', (ev)=>{
+        const v = new TextDecoder().decode(ev.target.value);
+        log('← [' + c.uuid.slice(-4) + ']', v.replace(/\r?\n/g,'').trim());
+      });
+      log('✅ SUB', c.uuid);
+    }catch(e){
+      log('⚠️ SUB fail', c.uuid, e && e.message ? e.message : e);
+    }
   }
 }
 
@@ -113,40 +134,53 @@ async function disconnect(){
 
 function onDisconnected(){
   setUI(false);
-  txChar = rxChar = null;
+  charMap.clear();
   log('🔌 已斷線');
 }
 
+async function sendOnce(uuid, data){
+  const u = uuid.toLowerCase();
+  const ch = charMap.get(u);
+  if (!ch) { log('⚠️ 無此 RX', uuid); return false; }
+  try{
+    if (ch.writeValueWithoutResponse) {
+      await ch.writeValueWithoutResponse(data);
+    } else if (ch.writeValue) {
+      await ch.writeValue(data);
+    } else {
+      log('⚠️ 不支援 write:', uuid);
+      return false;
+    }
+    log('→ [' + uuid.slice(-4) + ']', new TextDecoder().decode(data).trim());
+    return true;
+  }catch(e){
+    log('❌ write fail [' + uuid.slice(-4) + ']:', e && e.message ? e.message : e);
+    return false;
+  }
+}
+
 async function sendLine(s){
-  if (!rxChar){ log('⚠️ 尚未連線'); return; }
-  // 多數 UART 韌體要求 CRLF
+  // 多數模組要 CRLF
   if (!/\r\n$/.test(s)) s = s + '\r\n';
   const data = new TextEncoder().encode(s);
 
-  try{
-    if (rxChar.properties.writeWithoutResponse && rxChar.writeValueWithoutResponse){
-      await rxChar.writeValueWithoutResponse(data);
-    }else{
-      await rxChar.writeValue(data);
-    }
-    log('→', s.trim());
-  }catch(e){
-    // 回退再試另一種寫法
-    try{
-      if (rxChar.writeValueWithoutResponse) await rxChar.writeValueWithoutResponse(data);
-      else await rxChar.writeValue(data);
-      log('→(fallback)', s.trim());
-    }catch(e2){
-      log('❌ write error:', e2.message || e2);
-    }
-  }
+  // 依序打到 0x0002 / 0x0004 / 0x0003（有些韌體用 0004，有些甚至用 0003 當 RX）
+  let ok = false;
+  ok = (await sendOnce(RX_0002, data)) || ok;
+  ok = (await sendOnce(ALT_0004, data)) || ok;
+  ok = (await sendOnce(TX_0003, data)) || ok;
+
+  if (!ok) log('⚠️ 三路 write 都失敗，請把上面錯誤訊息貼我。');
 }
 
 document.getElementById('btnConnect').onclick = connect;
 document.getElementById('btnDisconnect').onclick = disconnect;
+document.getElementById('btnSubscribeAll').onclick = subscribeAll;
+
 document.querySelectorAll('button[data-cmd]').forEach(btn=>{
   btn.onclick = ()=> sendLine(btn.dataset.cmd);
 });
+
 document.getElementById('btnSend').onclick = ()=>{
   const v = document.getElementById('tx').value.trim();
   if (v) sendLine(v);
