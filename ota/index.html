@@ -1,207 +1,217 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-Hant">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>EASY THRUSTER 面板</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>THRUSTER WebBLE Console</title>
   <style>
-    body { font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans TC", "Heiti TC", "PingFang TC", "Microsoft JhengHei", Arial, sans-serif; margin: 16px; }
-    .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
-    button { padding: 8px 12px; border-radius: 8px; border: 1px solid #ccc; background: #fafafa; cursor: pointer; }
-    button:disabled { opacity: .5; cursor: not-allowed; }
-    #log { height: 260px; overflow: auto; background: #0b1020; color: #e6f3ff; padding: 8px; border-radius: 8px; white-space: pre-wrap; }
-    .kpi { display: grid; grid-template-columns: repeat(5, minmax(120px,1fr)); gap: 8px; margin: 8px 0 16px; }
-    .card { background: #f6f7fb; padding: 8px; border-radius: 10px; border: 1px solid #e8eaf2; }
-    .small { font-size: 12px; color: #666; }
-    input[type="range"]{ width: 220px; }
-    .cmdline { display:flex; gap:8px; align-items:center; }
-    .cmdline input{ flex:1; padding:8px; border-radius:8px; border:1px solid #ccc; }
-    .hint{ color:#555; margin:6px 0 10px; font-size:12px; }
-    .muted{ color:#8aa1b7; }
+    body { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; margin: 16px; }
+    h1 { font-size: 18px; }
+    button { margin: 4px; padding: 8px 12px; }
+    input { padding: 6px 8px; font-family: inherit; }
+    .row{ display:flex; gap:8px; flex-wrap:wrap; align-items:center }
+    #log { border:1px solid #ddd; padding:8px; height:44vh; overflow:auto; background:#fafafa; }
+    .ok{ color:#0a7; } .warn{ color:#c80; } .err{ color:#c00; }
+    .pill{ display:inline-block; border:1px solid #ddd; border-radius:12px; padding:2px 8px; margin:2px 6px 2px 0; background:#fff }
+    .small{ font-size:12px; opacity:.7 }
+    textarea { width: 360px; height: 120px; }
+    .mono { font-family: inherit; }
   </style>
 </head>
 <body>
-  <h2>EASY THRUSTER 控制臺</h2>
+  <h1>THRUSTER WebBLE Console</h1>
 
-  <div class="hint" id="hint">
-    提示：先點「連線」，選 <b>THRUSTER</b>。若要直連 AT_BLE，輸入：<code>CTRL: ATMAC=D0:18:D7:34:9A:EC</code>（Public）
-    或 <code>CTRL: ATMAC=D0:18:D7:34:9A:EC RAND</code>（Random）。
+  <div class="row">
+    <button id="btnConnect">連線</button>
+    <button id="btnDisconnect" disabled>斷線</button>
+    <span id="status" class="pill small">未連線</span>
   </div>
 
   <div class="row">
-    <button id="btnConnect">🔗 連線</button>
-    <button id="btnDisconnect" disabled>🔌 斷線</button>
-    <span id="status" class="muted">尚未連線</span>
-  </div>
-
-  <div class="kpi">
-    <div class="card"><div class="small">CAN Kbps</div><div id="k_kbps">—</div></div>
-    <div class="card"><div class="small">車速 km/h</div><div id="k_spd">—</div></div>
-    <div class="card"><div class="small">油門 %</div><div id="k_th">—</div></div>
-    <div class="card"><div class="small">轉速 rpm</div><div id="k_rpm">—</div></div>
-    <div class="card"><div class="small">MAP kPa</div><div id="k_map">—</div></div>
+    <button id="btnPing" disabled>PING</button>
+    <button id="btnLedOn" disabled>LED ON</button>
+    <button id="btnLedOff" disabled>LED OFF</button>
+    <button id="btnFan30" disabled>FAN=30%</button>
   </div>
 
   <div class="row">
-    <button id="btnPing" disabled>↔️ PING</button>
-    <button id="btnLedOn" disabled>💡 LED ON</button>
-    <button id="btnLedOff" disabled>💡 LED OFF</button>
-    <label>FAN % <input id="fan" type="range" min="0" max="100" value="30"/></label>
-    <button id="btnFan" disabled>🌀 設定 FAN</button>
+    <input id="mac" class="mono" size="24" placeholder="D0:18:D7:34:9A:EC" />
+    <button id="btnSetMacPub"  disabled>ATMAC=…（Public）</button>
+    <button id="btnSetMacRand" disabled>ATMAC=…（RAND）</button>
   </div>
 
-  <div class="cmdline">
-    <input id="cmd" placeholder="命令列（例如：CTRL: ATMAC=D0:18:D7:34:9A:EC 或加 RAND）">
+  <div class="row">
+    <input id="customCmd" class="mono" size="36" placeholder="CTRL: LED ON / 其它命令…" />
     <button id="btnSend" disabled>送出</button>
   </div>
 
-  <h4>日誌</h4>
+  <div class="row">
+    <div>
+      <div class="small">CFG 曲線（FFF4，JSON）</div>
+      <textarea id="curve" class="mono">[0,0,20,20,40,35,60,55,80,78,100,100]</textarea><br/>
+      <button id="btnCurveRead" disabled>讀取</button>
+      <button id="btnCurveWrite" disabled>寫入</button>
+    </div>
+  </div>
+
   <div id="log"></div>
 
 <script>
-const SVC_PRIMARY = 0xFFF0;              // 主要服務（自訂）
-const CHR_RX_W    = 0xFFF1;              // 往裝置寫入（Write | WriteWithoutResp）
-const CHR_TX_N    = 0xFFF2;              // 裝置回報（Notify）
-const CHR_CURVE   = 0xFFF4;              // （可選）曲線設定
+(() => {
+  // FFFx
+  const SVC_UUID = 0xFFF0;
+  const RX_UUID  = 0xFFF1; // write
+  const TX_UUID  = 0xFFF2; // notify
+  const CFG_UUID = 0xFFF4; // optional (curve)
 
-let device, server, primary, chrRx, chrTx, chrCurve;
-let notifStarted = false;
+  let device, server, svc, rxChar, txChar, cfgChar;
+  let busy = false;
 
-function log(s) {
-  const z = document.getElementById('log');
-  const ts = new Date().toTimeString().split(' ')[0];
-  z.textContent += `[${ts}] ${s}\n`;
-  z.scrollTop = z.scrollHeight;
-}
+  const el = (id) => document.getElementById(id);
+  const status = el("status");
+  const logBox = el("log");
 
-function setConnectedUI(yes) {
-  document.getElementById('btnConnect').disabled = yes;
-  document.getElementById('btnDisconnect').disabled = !yes;
-  document.getElementById('btnLedOn').disabled = !yes;
-  document.getElementById('btnLedOff').disabled = !yes;
-  document.getElementById('btnFan').disabled = !yes;
-  document.getElementById('btnPing').disabled = !yes;
-  document.getElementById('btnSend').disabled = !yes;
-  document.getElementById('status').textContent = yes ? '已連線' : '尚未連線';
-}
-
-async function writeChunks(ch, text) {
-  if (!text.endsWith("\n")) text += "\n";
-  const enc = new TextEncoder();
-  const bytes = enc.encode(text);
-  const CHUNK = 20;
-  for (let i = 0; i < bytes.length; i += CHUNK) {
-    const part = bytes.slice(i, i + CHUNK);
-    await ch.writeValue(part);
-    await new Promise(r=>setTimeout(r, 20)); // 20ms 節流，避免 GATT in progress
+  function log(msg, cls=""){
+    const t = new Date().toTimeString().slice(0,8);
+    const line = document.createElement("div");
+    line.innerHTML = `[${t}] ${msg}`;
+    if (cls) line.className = cls;
+    logBox.appendChild(line);
+    logBox.scrollTop = logBox.scrollHeight;
   }
-}
 
-function updateKpiFromJson(obj) {
-  if ('kbps' in obj) document.getElementById('k_kbps').textContent = obj.kbps;
-  if ('spd'  in obj) document.getElementById('k_spd').textContent  = obj.spd;
-  if ('th'   in obj) document.getElementById('k_th').textContent   = obj.th;
-  if ('rpm'  in obj) document.getElementById('k_rpm').textContent  = obj.rpm;
-  if ('map'  in obj) document.getElementById('k_map').textContent  = obj.map;
-}
+  function setUI(connected){
+    ["btnPing","btnLedOn","btnLedOff","btnFan30","btnSetMacPub","btnSetMacRand","btnSend","btnCurveRead","btnCurveWrite"]
+      .forEach(id => el(id).disabled = !connected);
+    el("btnDisconnect").disabled = !connected;
+    el("btnConnect").disabled = connected;
+    status.textContent = connected ? "已連線（如列表無名稱屬正常，可能在 Scan Response）" : "未連線";
+  }
 
-async function connect() {
-  try {
-    log("🔎 掃描裝置…");
-    device = await navigator.bluetooth.requestDevice({
-      filters: [{ name: 'THRUSTER' }],
-      optionalServices: [SVC_PRIMARY, 0x1800, 0x1801]
-    });
-    server  = await device.gatt.connect();
-    primary = await server.getPrimaryService(SVC_PRIMARY);
-    // TX（Notify）
+  async function connect() {
     try {
-      chrTx = await primary.getCharacteristic(CHR_TX_N);
-      await chrTx.startNotifications();
-      chrTx.addEventListener('characteristicvaluechanged', e => {
-        const v = new TextDecoder().decode(e.target.value);
-        v.split(/\r?\n/).filter(Boolean).forEach(line=>{
-          log(`📩 notif\n← ${line}`);
-          try {
-            const obj = JSON.parse(line);
-            updateKpiFromJson(obj);
-          } catch(_) {}
-        });
+      log("🔎 掃描裝置…");
+      device = await navigator.bluetooth.requestDevice({
+        filters: [{ namePrefix: "THRUSTER" }],
+        optionalServices: [SVC_UUID, CFG_UUID]
       });
-      notifStarted = true;
-      log("✅ startNotifications OK");
+      device.addEventListener("gattserverdisconnected", onDisconnect);
+
+      server = await device.gatt.connect();
+      svc = await server.getPrimaryService(SVC_UUID);
+      [rxChar, txChar] = await Promise.all([
+        svc.getCharacteristic(RX_UUID),
+        svc.getCharacteristic(TX_UUID)
+      ]);
+
+      try {
+        const cfgSvc = await server.getPrimaryService(SVC_UUID);
+        cfgChar = await cfgSvc.getCharacteristic(CFG_UUID);
+      } catch (e) { cfgChar = null; log("⚠️ 找不到 FFF4（僅影響曲線讀寫）","warn"); }
+
+      await txChar.startNotifications();
+      txChar.addEventListener("characteristicvaluechanged", onNoti);
+      log("✅ startNotifications OK","ok");
+      setUI(true);
     } catch (e) {
-      notifStarted = false;
-      log("⚠️ 無法啟用通知: " + e);
+      log(`❌ 連線失敗：${e}`, "err");
+      try { if (device?.gatt?.connected) device.gatt.disconnect(); } catch {}
+      setUI(false);
     }
-    // RX（Write）
-    chrRx = await primary.getCharacteristic(CHR_RX_W);
+  }
 
-    // 可選 FFF4
-    try {
-      chrCurve = await primary.getCharacteristic(CHR_CURVE);
-    } catch {
-      log("⚠️ 找不到 FFF4（僅影響曲線讀寫）");
-    }
+  function onDisconnect() {
+    log("🔌 已斷線");
+    setUI(false);
+  }
 
-    setConnectedUI(true);
-    log("✅ 已連線（若列表看不到名稱，這是正常的：名稱可能在 Scan Response）");
-
-    device.addEventListener('gattserverdisconnected', () => {
-      setConnectedUI(false);
-      log("🔌 已斷線");
+  function onNoti(e){
+    const v = e.target.value;
+    const s = new TextDecoder().decode(v).trim();
+    if (!s) return;
+    s.split(/\r?\n/).forEach(line => {
+      if (!line) return;
+      if (line.startsWith("{")) {
+        log(`📩 notif\n← ${line}`);
+      } else {
+        log(`📩 notif\n← ${line}`);
+      }
     });
-  } catch (e) {
-    log("❌ 連線失敗: " + e);
   }
-}
 
-async function disconnect() {
-  try {
-    if (device?.gatt?.connected) device.gatt.disconnect();
-  } catch {}
-  setConnectedUI(false);
-  log("🔌 已斷線");
-}
-
-async function sendLine(s) {
-  if (!chrRx) return;
-  log(`→ ${s}`);
-  await writeChunks(chrRx, s);
-}
-
-document.getElementById('btnConnect').addEventListener('click', connect);
-document.getElementById('btnDisconnect').addEventListener('click', disconnect);
-
-document.getElementById('btnPing').addEventListener('click', async ()=>{
-  await sendLine("PING");
-});
-
-document.getElementById('btnLedOn').addEventListener('click', async ()=>{
-  await sendLine("CTRL: LED ON");
-});
-
-document.getElementById('btnLedOff').addEventListener('click', async ()=>{
-  await sendLine("CTRL: LED OFF");
-});
-
-document.getElementById('btnFan').addEventListener('click', async ()=>{
-  const v = document.getElementById('fan').value|0;
-  await sendLine(`CTRL: FAN=${v}%`);
-});
-
-document.getElementById('btnSend').addEventListener('click', async ()=>{
-  const v = document.getElementById('cmd').value.trim();
-  if (v) await sendLine(v);
-});
-
-document.getElementById('cmd').addEventListener('keydown', async (e)=>{
-  if (e.key === 'Enter') {
-    e.preventDefault();
-    const v = e.target.value.trim();
-    if (v) await sendLine(v);
+  async function writeLine(line){
+    const enc = new TextEncoder();
+    const data = enc.encode(line.endsWith("\n") ? line : line + "\n");
+    await rxChar.writeValue(data);
+    log(`→ ${line.trim()}`);
   }
-});
+
+  async function safeSend(line){
+    if (busy) return;
+    busy = true;
+    try {
+      await writeLine(line);
+    } catch(e){
+      log(`❌ writeValue FAIL: ${e}`, "err");
+    } finally {
+      // 節流避免 GATT operation in progress
+      setTimeout(()=>busy=false, 350);
+    }
+  }
+
+  // UI 綁定
+  el("btnConnect").onclick    = connect;
+  el("btnDisconnect").onclick = () => { try { device?.gatt?.disconnect(); } catch{} };
+
+  el("btnPing").onclick   = () => safeSend("PING");
+  el("btnLedOn").onclick  = () => safeSend("CTRL: LED ON");
+  el("btnLedOff").onclick = () => safeSend("CTRL: LED OFF");
+  el("btnFan30").onclick  = () => safeSend("CTRL: FAN=30%");
+
+  el("btnSetMacPub").onclick  = () => {
+    const mac = el("mac").value.trim().toUpperCase();
+    if (!/^[0-9A-F]{2}(:[0-9A-F]{2}){5}$/.test(mac)) return log("⚠️ MAC 格式錯誤","warn");
+    safeSend(`CTRL: ATMAC=${mac}`);
+  };
+  el("btnSetMacRand").onclick = () => {
+    const mac = el("mac").value.trim().toUpperCase();
+    if (!/^[0-9A-F]{2}(:[0-9A-F]{2}){5}$/.test(mac)) return log("⚠️ MAC 格式錯誤","warn");
+    safeSend(`CTRL: ATMAC=${mac} RAND`);
+  };
+
+  el("btnSend").onclick = () => {
+    const s = el("customCmd").value.trim();
+    if (s) safeSend(s);
+  };
+
+  el("btnCurveRead").onclick = async () => {
+    if (!cfgChar) return log("⚠️ 沒有 FFF4","warn");
+    try{
+      const v = await cfgChar.readValue();
+      const s = new TextDecoder().decode(v);
+      log("CFG: 讀取成功","ok");
+      el("curve").value = s;
+    }catch(e){
+      log(`CFG: 讀取失敗 ${e}`,"err");
+    }
+  };
+
+  el("btnCurveWrite").onclick = async () => {
+    if (!cfgChar) return log("⚠️ 沒有 FFF4","warn");
+    try{
+      // 用純文字 JSON 存在 FFF4
+      const s = el("curve").value.trim();
+      JSON.parse(s); // 基本驗證
+      await cfgChar.writeValue(new TextEncoder().encode(s));
+      log("CFG: 寫入成功","ok");
+    }catch(e){
+      log(`CFG: 寫入失敗 ${e}`,"err");
+    }
+  };
+
+  // 提示
+  log("提示：先點「連線」，選 THRUSTER。若要直連 AT_BLE，輸入：CTRL: ATMAC=<MAC>（Public）或加 RAND。","small");
+})();
 </script>
 </body>
 </html>
