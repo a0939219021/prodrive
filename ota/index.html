@@ -16,7 +16,7 @@
     input,textarea{width:100%;background:#0e1422;color:#e8eefc;border:1px solid #1f2b44;border-radius:10px;padding:10px}
     .badge{display:inline-block;padding:4px 8px;border-radius:999px;background:#0f2236;color:#a5d9ff;border:1px solid #1f3652}
     .row-kv{display:grid;grid-template-columns:120px 1fr;gap:8px;align-items:center}
-    .log{height:220px;overflow:auto;font-family:ui-monospace,Consolas,monospace;font-size:12px;white-space:pre-wrap}
+    .log{height:260px;overflow:auto;font-family:ui-monospace,Consolas,monospace;font-size:12px;white-space:pre-wrap}
     .pts{display:flex;gap:8px;flex-wrap:wrap}
     .pts input{width:70px}
   </style>
@@ -90,8 +90,9 @@
 
   function log(s){ ui.log.textContent += s + "\n"; ui.log.scrollTop = ui.log.scrollHeight; }
   function setState(s){ ui.state.textContent = s; }
-  function enc(s){ return new TextEncoder().encode(s); }
-  function dec(b){ return new TextDecoder().decode(b); }
+  const enc = s => new TextEncoder().encode(s);
+  const dec = b => new TextDecoder().decode(b);
+
   function enableConnected(v){
     ui.btnDisconnect.disabled = !v;
     ui.btnSend.disabled = !v; ui.btnLedOn.disabled = !v; ui.btnLedOff.disabled = !v;
@@ -107,12 +108,13 @@
     if(!bt){ log('❌ 此瀏覽器不支援 Web Bluetooth'); }
   })();
 
+  // 連線物件
   let device, gatt, nusSvc, chTx, chRx, chCfg, pingTimer, lastPong = 0;
 
   async function connect(){
     try{
       log('🔎 掃描裝置…');
-      // 重要：接受所有裝置，避免因廣告缺少 UUID/名稱被過濾；連上後再檢查服務與名稱
+      // 接受所有裝置，避免因廣告缺少 UUID/名稱被過濾；連上後再檢查服務與名稱
       device = await navigator.bluetooth.requestDevice({
         acceptAllDevices: true,
         optionalServices: [NUS_SERVICE, CFG_SERVICE_UUID]
@@ -123,10 +125,17 @@
 
       // 只有能提供 NUS 服務的裝置才是我們的 THRUSTER
       nusSvc = await gatt.getPrimaryService(NUS_SERVICE);
+
       chTx = await nusSvc.getCharacteristic(NUS_TX);
+
       chRx = await nusSvc.getCharacteristic(NUS_RX);
-      await chRx.startNotifications();
-      chRx.addEventListener('characteristicvaluechanged', ev => onNus(dec(ev.target.value.buffer)));
+      await chRx.startNotifications()
+        .then(()=> log('✅ startNotifications OK'))
+        .catch(e => log('❌ startNotifications FAIL: ' + e));
+      chRx.addEventListener('characteristicvaluechanged', ev=>{
+        log('📩 notif');
+        onNus(dec(ev.target.value.buffer));
+      });
 
       // 讀取（若存在）FFF4
       try{
@@ -158,14 +167,23 @@
   }
   function stopPing(){ if(pingTimer) clearInterval(pingTimer); }
 
-  function sendLine(s){ if(!chTx) return; log('→ '+s); return chTx.writeValue(enc(s+'\n')); }
+  async function sendLine(s){
+    if(!chTx) return;
+    log('→ '+s);
+    try{
+      await chTx.writeValue(enc(s+'\n'));
+      log('✅ writeValue OK');
+    }catch(e){
+      log('❌ writeValue FAIL: '+e);
+    }
+  }
 
   function onNus(s){
     s = s.trim(); if(!s) return; log('← '+s);
     if(s.startsWith('PONG')){ lastPong = Date.now(); setState('已連線'); return; }
     // 來自 THRUSTER 轉傳的 AT_BLE 狀態
     if(s.startsWith('AT:')){
-      const kv = s.slice(3).trim();   // e.g. "LED=1"
+      const kv = s.slice(3).trim();     // e.g. "LED=1"
       if(kv.startsWith('LED=')){ ui.atled.textContent = kv.endsWith('1') ? 'ON' : 'OFF'; }
       return;
     }
