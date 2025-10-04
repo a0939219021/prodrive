@@ -3,8 +3,9 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>THRUSTER UNIFIED PANEL</title>
 <meta name="theme-color" content="#0b0f14" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<title>THRUSTER UNIFIED PANEL</title>
 <style>
   :root{
     --bg:#0b0f14; --card:#121923; --muted:#7d8ca1; --text:#eaf2ff; --accent:#6aa6ff;
@@ -16,167 +17,507 @@
   html,body{height:100%}
   body{
     margin:0; background:linear-gradient(160deg,#0b0f14 0%,#0e1420 40%,#0b0f14 100%);
-    color:var(--text); font-family: ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans",sans-serif;
+    color:var(--text);
+    font-family: ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans",sans-serif;
     display:grid; place-items:center; padding:24px;
   }
   .card{
     width:min(1200px,96vw); background:linear-gradient(180deg,#151f2c 0%, #101826 100%);
-    border:1px solid #263041; border-radius:var(--radius); padding:var(--space);
-    box-shadow: 0 10px 40px rgba(0,0,0,.35);
+    border:1px solid #263041; border-radius:var(--radius); box-shadow:0 10px 30px rgba(0,0,0,.35);
+    padding: clamp(14px, 2.5vw, 20px);
   }
-  h1{margin:0 0 12px 0; font-weight:700; letter-spacing:.4px}
-  .grid{display:grid; grid-template-columns:1.1fr .9fr; gap:var(--space)}
-  .group{background:#0f1722; border-radius:16px; padding:14px; border:1px solid #223047}
-  .kpi{display:grid; grid-template-columns:repeat(4,1fr); gap:12px}
-  .k{background:#101a27;border:1px solid #233149;border-radius:14px;padding:12px}
-  .k .v{font-size:28px;font-weight:800}
-  .btns{display:flex;gap:8px;align-items:center}
-  button{
-    background:#152232; color:#eaf2ff; border:1px solid #2a3a54; padding:10px 14px;
-    border-radius:12px; cursor:pointer; font-weight:700;
+  .header{
+    display:flex; gap:12px; align-items:center; justify-content:space-between; margin-bottom:6px;
   }
-  button.ok{background:#0f2a1c;border-color:#1e6142}
-  button.bad{background:#2b1515;border-color:#5b1e1e}
-  .pill{padding:6px 10px;border-radius:999px;font-weight:800;border:1px solid #2a3a54;display:inline-block}
-  .log{height:140px;overflow:auto;background:#0c111a;border:1px solid #24344f;border-radius:12px;padding:8px;font-family:ui-monospace,Consolas,monospace;font-size:12px;white-space:pre-wrap}
-  .row{display:flex;gap:8px;align-items:center;justify-content:space-between}
-  .muted{color:var(--muted)}
-  .ok{color:var(--ok)} .bad{color:var(--bad)} .warn{color:var(--warn)}
+  .title{ display:flex; align-items:center; gap:12px; }
+  .badge{
+    font-size:12px; color:#0b0f14; background:var(--accent); padding:6px 10px; border-radius:999px; font-weight:700;
+  }
+  .status{ display:flex; align-items:center; gap:10px; flex-wrap:wrap }
+  .dot{
+    width:10px; height:10px; border-radius:50%; background:#576279; box-shadow:0 0 0 2px #222c3a inset;
+  }
+  .dot.on{ background:var(--ok); box-shadow:0 0 12px 2px rgba(53,208,127,.6) }
+  .muted{ color:var(--muted); font-size:14px }
+  .btn{
+    background:#1b2737; color:var(--text); border:1px solid #2b3a51; padding:12px 16px; border-radius:12px;
+    font-weight:700; cursor:pointer; transition:.18s ease; min-height:44px; min-width:44px;
+  }
+  .btn:hover{ transform:translateY(-1px); border-color:#3d5272 }
+  .btn:active{ transform:translateY(0) }
+  .btn[disabled]{ opacity:.5; cursor:not-allowed }
+  .btn.primary{ background:linear-gradient(180deg,#2a69ff,#2256d9); border:0 }
+  .btn.success{ background:linear-gradient(180deg,#35d07f,#2bb86a); border:0 }
+  .btn.danger{ background:linear-gradient(180deg,#ff6b6b,#e55555); border:0 }
+
+  .grid{ display:grid; grid-template-columns: 1.1fr 1fr; gap:16px; margin-top:12px; }
+  .panel{ background:rgba(13,20,31,.6); border:1px solid #263041; border-radius:16px; padding:14px; }
+  .section-title{
+    font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:#a7b6cc; margin:2px 0 10px;
+  }
+  .kv{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; }
+  .metric{
+    background:linear-gradient(180deg,#122033,#0f1a2a); border:1px solid #24334a; border-radius:14px; padding:12px;
+  }
+  .metric .label{ font-size:12px; color:#9cb0c9; letter-spacing:.02em }
+  .metric .value{ font-weight:800; font-size:clamp(18px, 4.2vw, 24px); margin-top:6px; line-height:1.1 }
+  .value .unit{ font-size:12px; color:#8fa3be; margin-left:4px; font-weight:700 }
+
+  .row{ display:flex; align-items:center; gap:12px; flex-wrap:wrap }
+  .led{
+    width:64px; height:64px; border-radius:50%;
+    background:#bbb; border:1px solid #7a879a;
+    box-shadow: inset 0 0 18px rgba(255,255,255,.15), 0 4px 16px rgba(0,0,0,.45);
+    transition: background .15s ease, box-shadow .15s ease, transform .15s ease;
+  }
+  .led.on{
+    background:lime;
+    box-shadow: 0 0 16px 4px rgba(0,255,0,.65), inset 0 0 14px rgba(0,0,0,.25);
+  }
+  .mono{
+    width:100%; min-height:88px; max-height:200px; overflow:auto;
+    background:linear-gradient(180deg,#0c1420,#0a111b); border:1px solid #223049; border-radius:12px;
+    padding:10px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; color:#b9c7dd;
+  }
+  .slider{
+    -webkit-appearance:none; appearance:none; width:100%; height:8px; border-radius:999px;
+    background:linear-gradient(90deg,#2e3b52,#244f93); outline:none;
+  }
+  .slider::-webkit-slider-thumb{
+    -webkit-appearance:none; appearance:none; width:24px; height:24px; border-radius:50%;
+    background:var(--accent); border:2px solid #d7e6ff; cursor:pointer; box-shadow:0 2px 8px rgba(0,0,0,.35);
+  }
+  .pill{
+    background:#172337; border:1px solid #273756; padding:8px 12px; border-radius:999px; color:#c4d3ea; font-size:13px; font-weight:800;
+  }
+  .hint{ color:#98aac4; font-size:12px }
+
+  @media (max-width: 880px){
+    body{ padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); }
+    .grid{ grid-template-columns:1fr; gap:12px }
+    .status{ width:100%; justify-content:flex-end }
+    .kv{ grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px }
+    .led{ width:56px; height:56px }
+    .btn{ padding:13px 18px; border-radius:14px }
+    .mono{ max-height: 160px }
+  }
+  @media (max-width: 420px){
+    .kv{ grid-template-columns:1fr 1fr }
+    .title div:first-child{ transform: scale(.95) }
+    .badge{ font-size:11px; padding:6px 10px }
+  }
 </style>
 </head>
 <body>
-<div class="card">
-  <div class="row">
-    <h1>THRUSTER UNIFIED PANEL</h1>
-    <div class="row">
-      <button id="btnConnectA" class="">Connect</button>
-      <span id="lblA" class="pill muted">Disconnected</span>
+  <div class="card">
+    <div class="header">
+      <div class="title">
+        <div style="width:36px;height:36px;border-radius:12px;display:grid;place-items:center;
+            background:radial-gradient(120% 120% at 100% 0%,#2f4a6f 0%,#23344e 60%,#1a263a 100%); border:1px solid #2b3a51;">
+          🚗
+        </div>
+        <div>
+          <div style="font-size:clamp(18px,4.8vw,20px);font-weight:800;letter-spacing:.2px">THRUSTER UNIFIED PANEL</div>
+          <div class="muted">Dual BLE: THRUSTER (OBD2) + EASY-THRUSTER (LED)</div>
+        </div>
+      </div>
+      <div class="status">
+        <span class="badge" id="bleState">Disconnected</span>
+        <span class="dot" id="dot"></span>
+        <button class="btn primary" id="btnConnect">Connect All</button>
+        <button class="btn" id="btnDisconnect" disabled>Disconnect</button>
+      </div>
+    </div>
+
+    <div class="grid">
+      <!-- Left: OBD2 Data + Fuel -->
+      <div class="panel">
+        <div class="section-title">OBD2 Realtime Data</div>
+        <div class="kv">
+          <div class="metric"><div class="label">RPM</div><div class="value"><span id="rpm">0</span><span class="unit">rpm</span></div></div>
+          <div class="metric"><div class="label">Throttle</div><div class="value"><span id="thr">0</span><span class="unit">%</span></div></div>
+          <div class="metric"><div class="label">MAP</div><div class="value"><span id="map">0</span><span class="unit">kPa</span></div></div>
+          <div class="metric"><div class="label">Voltage</div><div class="value"><span id="volt">0.00</span><span class="unit">V</span></div></div>
+        </div>
+
+        <div style="height:12px"></div>
+
+        <div class="row">
+          <div style="display:flex;flex-direction:column;gap:8px;min-width:220px;flex:1">
+            <div class="section-title" style="margin:0">Threshold Setting</div>
+            <input id="thSlider" class="slider" type="range" min="0" max="255" value="40" />
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+              <div class="hint">MAP above threshold will trigger LED blinking</div>
+              <div class="pill">Threshold: <span id="thVal">40</span></div>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:14px">
+            <div id="led" class="led" title="LED"></div>
+            <div class="muted">MAP > threshold → Blink (Throttle 12–80 controls speed)</div>
+          </div>
+        </div>
+
+        <div style="height:12px"></div>
+
+        <div class="section-title">Fuel & Trip</div>
+        <div class="kv" style="grid-template-columns:repeat(4,minmax(0,1fr));gap:10px">
+          <div class="metric"><div class="label">Source</div><div class="value"><span id="src">NA</span></div></div>
+          <div class="metric"><div class="label">Fuel Rate</div><div class="value"><span id="fr">0.00</span><span class="unit">L/h</span></div></div>
+          <div class="metric"><div class="label">Instant L/100km</div><div class="value"><span id="iL100">—</span></div></div>
+          <div class="metric"><div class="label">Instant km/L</div><div class="value"><span id="iKML">—</span></div></div>
+
+          <div class="metric"><div class="label">Trip Fuel</div><div class="value"><span id="tripL">0.000</span><span class="unit">L</span></div></div>
+          <div class="metric"><div class="label">Trip Dist</div><div class="value"><span id="tripK">0.000</span><span class="unit">km</span></div></div>
+          <div class="metric"><div class="label">Avg L/100km</div><div class="value"><span id="aL100">—</span></div></div>
+          <div class="metric"><div class="label">Avg km/L</div><div class="value"><span id="aKML">—</span></div></div>
+        </div>
+
+        <div style="height:10px"></div>
+        <div class="mono" id="log" role="log" aria-live="polite"></div>
+      </div>
+
+      <!-- Right: Device Info + LED Control + Diagnostics -->
+      <div class="panel">
+        <div class="section-title">Device Status</div>
+        <div style="display:grid;gap:10px">
+          <div class="metric">
+            <div class="label">THRUSTER (OBD2)</div>
+            <div class="value" style="font-size:clamp(15px,3.8vw,18px)"><span id="devName1">—</span></div>
+          </div>
+          <div class="metric">
+            <div class="label">EASY-THRUSTER (LED)</div>
+            <div class="value" style="font-size:clamp(15px,3.8vw,18px)"><span id="devName2">—</span></div>
+          </div>
+        </div>
+
+        <div style="height:12px"></div>
+
+        <div class="section-title">Remote LED Control</div>
+        <div style="display:flex;gap:12px;align-items:center;margin-bottom:12px">
+          <button class="btn success" id="btnLedOn">LED ON</button>
+          <button class="btn danger" id="btnLedOff">LED OFF</button>
+          <button class="btn" id="btnLedStatus">STATUS</button>
+          <div class="pill" id="ledStatus">Unknown</div>
+        </div>
+        <div class="hint">LED控制指令直接發送到 EASY-THRUSTER 設備</div>
+
+        <div style="height:12px"></div>
+
+        <div class="section-title">Diagnostics</div>
+        <div class="kv" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:10px">
+          <div class="metric"><div class="label">CAN kbps</div><div class="value"><span id="d_can">—</span></div></div>
+          <div class="metric"><div class="label">PWM Hz</div><div class="value"><span id="d_pwm">—</span></div></div>
+          <div class="metric"><div class="label">Rate Hz</div><div class="value"><span id="d_rate">—</span></div></div>
+          <div class="metric"><div class="label">Loop ms</div><div class="value"><span id="d_loop">—</span></div></div>
+          <div class="metric"><div class="label">RX OK</div><div class="value"><span id="d_rxok">—</span></div></div>
+          <div class="metric"><div class="label">RX TO</div><div class="value"><span id="d_rxto">—</span></div></div>
+        </div>
+
+        <div style="height:12px"></div>
+
+        <div class="section-title">Raw Inputs</div>
+        <div class="kv" style="grid-template-columns:repeat(3,minmax(0,1fr));gap:10px">
+          <div class="metric"><div class="label">MAF</div><div class="value"><span id="maf">—</span><span class="unit">g/s</span></div></div>
+          <div class="metric"><div class="label">IAT</div><div class="value"><span id="iat">—</span><span class="unit">°C</span></div></div>
+          <div class="metric"><div class="label">AbsLoad→VE</div><div class="value"><span id="al">—</span><span class="unit">%</span></div></div>
+          <div class="metric" style="grid-column:1/-1"><div class="label">Lambda</div><div class="value"><span id="lam">—</span></div></div>
+        </div>
+      </div>
     </div>
   </div>
-
-  <div class="grid" style="margin-top:12px">
-    <div>
-      <div class="group">
-        <div class="kpi">
-          <div class="k"><div class="muted">RPM</div><div id="rpm" class="v">—</div></div>
-          <div class="k"><div class="muted">Throttle</div><div id="th" class="v">—</div></div>
-          <div class="k"><div class="muted">MAP</div><div id="map" class="v">—</div></div>
-          <div class="k"><div class="muted">Voltage</div><div id="volt" class="v">—</div></div>
-        </div>
-      </div>
-
-      <div class="group" style="margin-top:12px">
-        <div class="row"><div class="muted">Logs</div></div>
-        <div id="log" class="log"></div>
-      </div>
-    </div>
-
-    <div>
-      <div class="group">
-        <div class="muted">REMOTE LED CONTROL</div>
-        <div class="btns" style="margin-top:8px">
-          <button id="bOn"  class="ok">LED ON</button>
-          <button id="bOff" class="bad">LED OFF</button>
-          <button id="bSt">STATUS</button>
-          <span class="muted">LED:</span>
-          <span id="ledStatus" class="pill muted">…</span>
-        </div>
-      </div>
-
-      <div class="group" style="margin-top:12px">
-        <div class="muted">Diagnostics</div>
-        <div class="kpi" style="margin-top:8px">
-          <div class="k"><div class="muted">CAN kbps</div><div id="kbps" class="v">—</div></div>
-          <div class="k"><div class="muted">Rate Hz</div><div id="rate" class="v">—</div></div>
-          <div class="k"><div class="muted">Loop ms</div><div id="loop" class="v">—</div></div>
-          <div class="k"><div class="muted">Slave</div><div id="slave" class="v">—</div></div>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
 
 <script>
-const $ = s=>document.querySelector(s);
-const logEl = $('#log');
-function log(s){ const t = `[${new Date().toLocaleTimeString()}] ${s}\n`; logEl.textContent += t; logEl.scrollTop = logEl.scrollHeight; }
+const $ = (s)=>document.querySelector(s);
+const log = (m)=>{ const el=$('#log'); const t=new Date().toLocaleTimeString(); el.textContent = `[${t}] ${m}\n` + el.textContent.slice(0,4000);};
 
-let devA, srvA, chTX, chRX, chCTRL;
+const SVC_UUID  = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+const DATA_UUID = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
+const CTRL_UUID = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
 
-const UUID_SVC  = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
-const UUID_RX   = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
-const UUID_TX   = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
-const UUID_CTRL = '6e400004-b5a3-f393-e0a9-e50e24dcca9e';
+// THRUSTER (OBD2) 設備
+let device1, server1, svc1, chData1, chCtrl1;
+// EASY-THRUSTER (LED) 設備  
+let device2, server2, svc2, chData2, chCtrl2;
 
-async function connectA(){
-  $('#lblA').textContent = 'Connecting…';
-  try{
-    devA = await navigator.bluetooth.requestDevice({
-      filters:[{namePrefix:'THRUSTER'}],
-      optionalServices:[UUID_SVC]
-    });
-    const g = await devA.gatt.connect();
-    srvA = await g.getPrimaryService(UUID_SVC);
-    chTX = await srvA.getCharacteristic(UUID_TX);
-    chRX = await srvA.getCharacteristic(UUID_RX);
-    chCTRL = await srvA.getCharacteristic(UUID_CTRL);
+let connected1 = false; // THRUSTER連接狀態
+let connected2 = false; // EASY-THRUSTER連接狀態
 
-    await chTX.startNotifications();
-    chTX.addEventListener('characteristicvaluechanged', e=>{
-      const v = e.target.value;
-      try{
-        const dec = new TextDecoder().decode(v);
-        const j = JSON.parse(dec);
-        onNotify(j);
-      }catch(err){
-        log('RX parse fail: '+ err);
+let blinkTimer = null;
+let ledState = 'off';
+let currentInterval = 0;
+let remoteLedStatus = 'Unknown';
+
+function setBleState(ok1, ok2){
+  connected1 = ok1;
+  connected2 = ok2;
+  const allConnected = ok1 && ok2;
+  const anyConnected = ok1 || ok2;
+  
+  $('#bleState').textContent = allConnected ? 'All Connected' : 
+                               anyConnected ? 'Partial' : 'Disconnected';
+  $('#dot').classList.toggle('on', anyConnected);
+  $('#btnDisconnect').disabled = !anyConnected;
+  $('#btnConnect').disabled = allConnected;
+  
+  $('#devName1').textContent = ok1 ? (device1?.name || 'THRUSTER') : '—';
+  $('#devName2').textContent = ok2 ? (device2?.name || 'EASY-THRUSTER') : '—';
+}
+
+/* ----- Apply packets from firmware ----- */
+function applyPacketA(j){
+  $('#rpm').textContent  = j.rpm ?? 0;
+  $('#thr').textContent  = j.tps ?? 0;
+  $('#map').textContent  = j.map ?? 0;
+  const v = j.vol ?? 0;
+  $('#volt').textContent = (typeof v === 'number' && v.toFixed) ? v.toFixed(2) : v;
+  if (typeof j.thr === 'number'){
+    $('#thSlider').value = String(j.thr);
+    $('#thVal').textContent = String(j.thr);
+  }
+  // LED
+  const led = $('#led');
+  if (!j.fan){
+    clearInterval(blinkTimer);
+    led.classList.remove('on');
+    led.style.background = '#bbb';
+    ledState = 'off';
+    currentInterval = 0;
+  }else{
+    const newInterval = Math.max(50, parseInt(j.bl || 500, 10));
+    if (ledState !== 'blink' || newInterval !== currentInterval) {
+      clearInterval(blinkTimer);
+      let on = false;
+      blinkTimer = setInterval(()=>{
+        on = !on;
+        led.classList.toggle('on', on);
+        led.style.background = on ? 'lime' : '#bbb';
+      }, newInterval);
+      ledState = 'blink';
+      currentInterval = newInterval;
+    }
+  }
+}
+
+function applyPacketF(j){
+  $('#src').textContent   = j.src ?? 'NA';
+  $('#fr').textContent    = (j.fr ?? '—');
+  $('#iL100').textContent = (j.iL100 ?? '—');
+  $('#iKML').textContent  = (j.iKML  ?? '—');
+  $('#aL100').textContent = (j.aL100 ?? '—');
+  $('#aKML').textContent  = (j.aKML  ?? '—');
+  $('#tripL').textContent = (j.tripL ?? 0).toFixed ? j.tripL.toFixed(3) : j.tripL;
+  $('#tripK').textContent = (j.tripK ?? 0).toFixed ? j.tripK.toFixed(3) : j.tripK;
+
+  if (j.maf !== undefined && j.maf !== null) $('#maf').textContent = j.maf;
+  if (j.iat !== undefined && j.iat !== null) $('#iat').textContent = j.iat;
+  if (j.al  !== undefined && j.al  !== null) $('#al').textContent  = j.al;
+  if (j.lam !== undefined && j.lam !== null) $('#lam').textContent = j.lam;
+}
+
+function applyPacketD(j){
+  $('#d_can').textContent  = j.can ?? '—';
+  $('#d_pwm').textContent  = j.pwm ?? '—';
+  $('#d_rate').textContent = j.rate ?? '—';
+  $('#d_loop').textContent = j.loop ?? '—';
+  $('#d_rxok').textContent = j.rxok ?? '—';
+  $('#d_rxto').textContent = j.rxto ?? '—';
+}
+
+function onNotify1(ev) {
+  try {
+    const j = JSON.parse(new TextDecoder().decode(ev.target.value));
+    if (!j || !j.t) return;
+    if (j.t === 'a') applyPacketA(j);
+    else if (j.t === 'f') applyPacketF(j);
+    else if (j.t === 'd') applyPacketD(j);
+    else log('unknown pkt from THRUSTER: ' + JSON.stringify(j));
+  } catch (e) {
+    log('JSON parse error from THRUSTER: ' + e);
+  }
+}
+
+function onNotify2(ev) {
+  try {
+    const data = new TextDecoder().decode(ev.target.value);
+    log('LED response: ' + data);
+    
+    // 解析LED狀態回應
+    if (data.includes('LED STATUS:')) {
+      const status = data.split('LED STATUS:')[1]?.trim();
+      if (status) {
+        remoteLedStatus = status;
+        $('#ledStatus').textContent = status;
       }
-    });
-
-    devA.addEventListener('gattserverdisconnected', ()=>{ $('#lblA').textContent='Disconnected'; });
-
-    $('#lblA').textContent = 'Connected';
-    log('Connected to THRUSTER — service OK, tx/rx OK');
-  }catch(err){
-    $('#lblA').textContent = 'Disconnected';
-    log('Connect failed: '+err);
+    } else if (data.includes('OK LED ON')) {
+      remoteLedStatus = 'ON';
+      $('#ledStatus').textContent = 'ON';
+    } else if (data.includes('OK LED OFF')) {
+      remoteLedStatus = 'OFF';
+      $('#ledStatus').textContent = 'OFF';
+    }
+  } catch (e) {
+    log('LED response error: ' + e);
   }
 }
 
-function onNotify(j){
-  // t: 'd'（資料）, 'a'（ack）, 'l'（log）, 's'（從機文字）
-  if(j.t === 'd'){
-    $('#rpm').textContent  = (j.rpm??'—');
-    $('#th').textContent   = (j.throttle??'—') + ' %';
-    $('#map').textContent  = (j.map??'—') + ' kPa';
-    $('#volt').textContent = (j.voltage??'—') + ' V';
-    $('#kbps').textContent = (j.kbps??'—');
-    $('#rate').textContent = (j.rate??'—');
-    $('#loop').textContent = (j.loop??'—');
-    $('#slave').textContent= (j.slave ? 'Connected' : 'Disconnected');
-  }else if(j.t === 'a'){
-    log(`ACK ${j.ok?'OK':'ERR'}: ${j.echo||''}`);
-  }else if(j.t === 'l'){
-    log(`${j.tag||''}: ${j.msg||''}`);
-  }else if(j.t === 's'){
-    const txt = String(j.text||'');
-    log(txt);
-    const m = txt.match(/LED STATUS:\s*(ON|OFF)/i);
-    if(m){ $('#ledStatus').textContent = m[1].toUpperCase(); }
-  }
-}
-
-async function sendCTRL(txt){
-  if(!chCTRL){ log('No CTRL'); return; }
+async function connectDevice(namePrefix, deviceNum){
   try{
-    await chCTRL.writeValue(new TextEncoder().encode(txt));
-  }catch(err){ log('write CTRL fail: '+err); }
+    const dev = await navigator.bluetooth.requestDevice({
+      filters:[{ namePrefix }],
+      optionalServices:[SVC_UUID]
+    });
+    
+    const server = await dev.gatt.connect();
+    const svc = await server.getPrimaryService(SVC_UUID);
+    const chData = await svc.getCharacteristic(DATA_UUID);
+    const chCtrl = await svc.getCharacteristic(CTRL_UUID);
+
+    await chData.startNotifications();
+    
+    if (deviceNum === 1) {
+      device1 = dev;
+      server1 = server;
+      svc1 = svc;
+      chData1 = chData;
+      chCtrl1 = chCtrl;
+      chData1.addEventListener('characteristicvaluechanged', onNotify1);
+      dev.addEventListener('gattserverdisconnected', onDisconnected1);
+      
+      // Read control characteristic (e.g. "OK;TH:40;...")
+      const ctrlStr = new TextDecoder().decode(await chCtrl1.readValue()).trim();
+      const m = ctrlStr.match(/TH:(\d{1,3})/i);
+      if (m){
+        const th = Math.max(0, Math.min(255, parseInt(m[1],10)));
+        $('#thSlider').value = String(th);
+        $('#thVal').textContent = String(th);
+      }
+      log('Connected to THRUSTER: ' + (dev.name || 'THRUSTER'));
+    } else {
+      device2 = dev;
+      server2 = server;
+      svc2 = svc;
+      chData2 = chData;
+      chCtrl2 = chCtrl;
+      chData2.addEventListener('characteristicvaluechanged', onNotify2);
+      dev.addEventListener('gattserverdisconnected', onDisconnected2);
+      log('Connected to EASY-THRUSTER: ' + (dev.name || 'EASY-THRUSTER'));
+    }
+    
+    return true;
+  }catch(e){
+    log(`Connection to ${namePrefix} failed: ${e}`);
+    return false;
+  }
 }
 
-$('#btnConnectA').onclick = connectA;
-$('#bOn').onclick  = ()=>sendCTRL('LED ON');
-$('#bOff').onclick = ()=>sendCTRL('LED OFF');
-$('#bSt').onclick  = ()=>{ $('#ledStatus').textContent='…'; sendCTRL('LED STATUS'); };
+async function connectBLE(){
+  try{
+    setBleState(false, false);
+    log('Starting dual device connection...');
+    
+    // 連接THRUSTER (OBD2)
+    const connected1 = await connectDevice('THRUSTER', 1);
+    
+    // 連接EASY-THRUSTER (LED)
+    const connected2 = await connectDevice('EASY-THRUSTER', 2);
+    
+    setBleState(connected1, connected2);
+    
+    if (connected1 && connected2) {
+      log('All devices connected successfully!');
+    } else if (connected1 || connected2) {
+      log('Partial connection - some devices connected');
+    } else {
+      log('Failed to connect to any devices');
+    }
+  }catch(e){
+    log('Connection setup failed: ' + e);
+    setBleState(false, false);
+  }
+}
+function onDisconnected1(){
+  connected1 = false;
+  device1 = null; server1 = null; svc1 = null; chData1 = null; chCtrl1 = null;
+  setBleState(connected1, connected2);
+  log('THRUSTER disconnected');
+}
+
+function onDisconnected2(){
+  connected2 = false;
+  device2 = null; server2 = null; svc2 = null; chData2 = null; chCtrl2 = null;
+  setBleState(connected1, connected2);
+  $('#ledStatus').textContent = 'Unknown';
+  log('EASY-THRUSTER disconnected');
+}
+
+async function disconnectBLE(){
+  try{
+    if (device1?.gatt?.connected) device1.gatt.disconnect();
+    if (device2?.gatt?.connected) device2.gatt.disconnect();
+  }catch(e){
+    log('Disconnect failed: ' + e);
+  }finally{
+    setBleState(false, false);
+    device1 = null; server1 = null; svc1 = null; chData1 = null; chCtrl1 = null;
+    device2 = null; server2 = null; svc2 = null; chData2 = null; chCtrl2 = null;
+    clearInterval(blinkTimer);
+    $('#led').classList.remove('on');
+    $('#led').style.background = '#bbb';
+    ledState = 'off'; currentInterval = 0;
+    $('#ledStatus').textContent = 'Unknown';
+    log('All devices disconnected');
+  }
+}
+
+// Write threshold via control (TH:<value>)
+async function setThreshold(v){
+  if (!chCtrl1 || !connected1) return;
+  const vv = Math.max(0, Math.min(255, Math.round(v)));
+  try{
+    await chCtrl1.writeValue(new TextEncoder().encode(`TH:${vv}`));
+    log('Threshold set to ' + vv);
+  }catch(e){
+    log('Failed to set threshold: ' + e);
+  }
+}
+
+// LED control functions
+async function sendLedCommand(cmd){
+  if (!chCtrl2 || !connected2) return;
+  try{
+    // 直接發送LED指令到EASY-THRUSTER
+    const command = `LED ${cmd}`;
+    await chCtrl2.writeValue(new TextEncoder().encode(command));
+    log(`LED command sent: ${command}`);
+    if (cmd === 'STATUS') {
+      // Update status display immediately
+      setTimeout(() => {
+        $('#ledStatus').textContent = 'Checking...';
+      }, 100);
+    }
+  }catch(e){
+    log('Failed to send LED command: ' + e);
+  }
+}
+
+
+$('#btnConnect').addEventListener('click', connectBLE);
+$('#btnDisconnect').addEventListener('click', disconnectBLE);
+$('#thSlider').addEventListener('input', (e)=>{
+  const v = Math.max(0, Math.min(255, parseInt(e.target.value,10) || 0));
+  $('#thVal').textContent = String(v);
+});
+$('#thSlider').addEventListener('change', (e)=>{
+  const v = Math.max(0, Math.min(255, parseInt(e.target.value,10) || 0));
+  setThreshold(v);
+});
+
+// LED control event listeners
+$('#btnLedOn').addEventListener('click', ()=>sendLedCommand('ON'));
+$('#btnLedOff').addEventListener('click', ()=>sendLedCommand('OFF'));
+$('#btnLedStatus').addEventListener('click', ()=>sendLedCommand('STATUS'));
 </script>
 </body>
 </html>
+
+
