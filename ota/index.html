@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="theme-color" content="#0b0f14" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
-<title>THRUSTER UNIFIED PANEL</title>
+<title>THRUSTER PANEL</title>
 <style>
   :root{
     --bg:#0b0f14; --card:#121923; --muted:#7d8ca1; --text:#eaf2ff; --accent:#6aa6ff;
@@ -22,7 +22,7 @@
     display:grid; place-items:center; padding:24px;
   }
   .card{
-    width:min(1200px,96vw); background:linear-gradient(180deg,#151f2c 0%, #101826 100%);
+    width:min(1000px,96vw); background:linear-gradient(180deg,#151f2c 0%, #101826 100%);
     border:1px solid #263041; border-radius:var(--radius); box-shadow:0 10px 30px rgba(0,0,0,.35);
     padding: clamp(14px, 2.5vw, 20px);
   }
@@ -47,8 +47,6 @@
   .btn:active{ transform:translateY(0) }
   .btn[disabled]{ opacity:.5; cursor:not-allowed }
   .btn.primary{ background:linear-gradient(180deg,#2a69ff,#2256d9); border:0 }
-  .btn.success{ background:linear-gradient(180deg,#35d07f,#2bb86a); border:0 }
-  .btn.danger{ background:linear-gradient(180deg,#ff6b6b,#e55555); border:0 }
 
   .grid{ display:grid; grid-template-columns: 1.1fr 1fr; gap:16px; margin-top:12px; }
   .panel{ background:rgba(13,20,31,.6); border:1px solid #263041; border-radius:16px; padding:14px; }
@@ -63,12 +61,14 @@
   .metric .value{ font-weight:800; font-size:clamp(18px, 4.2vw, 24px); margin-top:6px; line-height:1.1 }
   .value .unit{ font-size:12px; color:#8fa3be; margin-left:4px; font-weight:700 }
 
-  .row{ display:flex; align-items:center; gap:12px; flex-wrap:wrap }
+  .pill{
+    display:inline-flex; align-items:center; gap:8px; border:1px solid #2b3a51; background:#172134; border-radius:999px; padding:6px 10px;
+    font-size:12px;
+  }
+  .hint{ color:#9cb0c9; font-size:12px; }
+
   .led{
-    width:64px; height:64px; border-radius:50%;
-    background:#bbb; border:1px solid #7a879a;
-    box-shadow: inset 0 0 18px rgba(255,255,255,.15), 0 4px 16px rgba(0,0,0,.45);
-    transition: background .15s ease, box-shadow .15s ease, transform .15s ease;
+    width:22px; height:22px; border-radius:999px; background:#bbb; border:1px solid #999; box-shadow: inset 0 0 8px rgba(0,0,0,.4);
   }
   .led.on{
     background:lime;
@@ -84,27 +84,12 @@
     background:linear-gradient(90deg,#2e3b52,#244f93); outline:none;
   }
   .slider::-webkit-slider-thumb{
-    -webkit-appearance:none; appearance:none; width:24px; height:24px; border-radius:50%;
-    background:var(--accent); border:2px solid #d7e6ff; cursor:pointer; box-shadow:0 2px 8px rgba(0,0,0,.35);
+    -webkit-appearance:none; appearance:none; width:24px; height:24px; border-radius:999px; background:#6aa6ff; border:2px solid #2a5bb7;
+    box-shadow:0 2px 8px rgba(0,0,0,.25);
   }
-  .pill{
-    background:#172337; border:1px solid #273756; padding:8px 12px; border-radius:999px; color:#c4d3ea; font-size:13px; font-weight:800;
-  }
-  .hint{ color:#98aac4; font-size:12px }
 
-  @media (max-width: 880px){
-    body{ padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); }
-    .grid{ grid-template-columns:1fr; gap:12px }
-    .status{ width:100%; justify-content:flex-end }
-    .kv{ grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px }
-    .led{ width:56px; height:56px }
-    .btn{ padding:13px 18px; border-radius:14px }
-    .mono{ max-height: 160px }
-  }
-  @media (max-width: 420px){
-    .kv{ grid-template-columns:1fr 1fr }
-    .title div:first-child{ transform: scale(.95) }
-    .badge{ font-size:11px; padding:6px 10px }
+  @media (max-width: 860px){
+    .grid{ grid-template-columns:1fr; }
   }
 </style>
 </head>
@@ -112,29 +97,32 @@
   <div class="card">
     <div class="header">
       <div class="title">
-        <div style="width:36px;height:36px;border-radius:12px;display:grid;place-items:center;
-            background:radial-gradient(120% 120% at 100% 0%,#2f4a6f 0%,#23344e 60%,#1a263a 100%); border:1px solid #2b3a51;">
-          🚗
-        </div>
+        <div style="font-weight:800; font-size:clamp(18px,5vw,22px)">THRUSTER OBD-II BLE Console</div>
+        <div class="muted">Device: <span id="devName">—</span></div>
+      </div>
+      <div>
+        <div class="muted">Status</div>
         <div>
-          <div style="font-size:clamp(18px,4.8vw,20px);font-weight:800;letter-spacing:.2px">THRUSTER UNIFIED PANEL</div>
-          <div class="muted">Dual BLE: THRUSTER (OBD2) + EASY-THRUSTER (LED)</div>
         </div>
       </div>
       <div class="status">
         <span class="badge" id="bleState">Disconnected</span>
         <span class="dot" id="dot"></span>
-        <button class="btn primary" id="btnConnect">Connect All</button>
+        <button class="btn primary" id="btnConnect">Connect</button>
         <button class="btn" id="btnDisconnect" disabled>Disconnect</button>
+        <div style="display:inline-flex; gap:8px; margin-left:8px">
+          <button class="btn" id="btnLedOn" disabled>LED ON</button>
+          <button class="btn" id="btnLedOff" disabled>LED OFF</button>
+        </div>
       </div>
     </div>
 
     <div class="grid">
-      <!-- Left: OBD2 Data + Fuel -->
+      <!-- Left: Realtime Info + Fuel -->
       <div class="panel">
-        <div class="section-title">OBD2 Realtime Data</div>
+        <div class="section-title">Realtime Info</div>
         <div class="kv">
-          <div class="metric"><div class="label">RPM</div><div class="value"><span id="rpm">0</span><span class="unit">rpm</span></div></div>
+          <div class="metric"><div class="label">RPM</div><div class="value"><span id="rpm">0</span></div></div>
           <div class="metric"><div class="label">Throttle</div><div class="value"><span id="thr">0</span><span class="unit">%</span></div></div>
           <div class="metric"><div class="label">MAP</div><div class="value"><span id="map">0</span><span class="unit">kPa</span></div></div>
           <div class="metric"><div class="label">Voltage</div><div class="value"><span id="volt">0.00</span><span class="unit">V</span></div></div>
@@ -142,8 +130,8 @@
 
         <div style="height:12px"></div>
 
-        <div class="row">
-          <div style="display:flex;flex-direction:column;gap:8px;min-width:220px;flex:1">
+        <div class="panel" style="padding:12px; display:grid; gap:10px">
+          <div style="display:grid; gap:10px; grid-template-columns:1fr; align-items:center">
             <div class="section-title" style="margin:0">Threshold Setting</div>
             <input id="thSlider" class="slider" type="range" min="0" max="255" value="40" />
             <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
@@ -172,55 +160,38 @@
           <div class="metric"><div class="label">Avg km/L</div><div class="value"><span id="aKML">—</span></div></div>
         </div>
 
-        <div style="height:10px"></div>
-        <div class="mono" id="log" role="log" aria-live="polite"></div>
+        <div style="height:12px"></div>
+
+        <div class="section-title">Raw Log</div>
+        <pre id="log" class="mono"></pre>
       </div>
 
-      <!-- Right: Device Info + LED Control + Diagnostics -->
+      <!-- Right: Extra -->
       <div class="panel">
-        <div class="section-title">Device Status</div>
-        <div style="display:grid;gap:10px">
-          <div class="metric">
-            <div class="label">THRUSTER (OBD2)</div>
-            <div class="value" style="font-size:clamp(15px,3.8vw,18px)"><span id="devName1">—</span></div>
-          </div>
-          <div class="metric">
-            <div class="label">EASY-THRUSTER (LED)</div>
-            <div class="value" style="font-size:clamp(15px,3.8vw,18px)"><span id="devName2">—</span></div>
-          </div>
-        </div>
-
-        <div style="height:12px"></div>
-
-        <div class="section-title">Remote LED Control</div>
-        <div style="display:flex;gap:12px;align-items:center;margin-bottom:12px">
-          <button class="btn success" id="btnLedOn">LED ON</button>
-          <button class="btn danger" id="btnLedOff">LED OFF</button>
-          <button class="btn" id="btnLedStatus">STATUS</button>
-          <div class="pill" id="ledStatus">Unknown</div>
-        </div>
-        <div class="hint">LED控制指令直接發送到 EASY-THRUSTER 設備</div>
-
-        <div style="height:12px"></div>
-
-        <div class="section-title">Diagnostics</div>
+        <div class="section-title">OBD-II & Env</div>
         <div class="kv" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:10px">
-          <div class="metric"><div class="label">CAN kbps</div><div class="value"><span id="d_can">—</span></div></div>
-          <div class="metric"><div class="label">PWM Hz</div><div class="value"><span id="d_pwm">—</span></div></div>
-          <div class="metric"><div class="label">Rate Hz</div><div class="value"><span id="d_rate">—</span></div></div>
-          <div class="metric"><div class="label">Loop ms</div><div class="value"><span id="d_loop">—</span></div></div>
-          <div class="metric"><div class="label">RX OK</div><div class="value"><span id="d_rxok">—</span></div></div>
-          <div class="metric"><div class="label">RX TO</div><div class="value"><span id="d_rxto">—</span></div></div>
-        </div>
-
-        <div style="height:12px"></div>
-
-        <div class="section-title">Raw Inputs</div>
-        <div class="kv" style="grid-template-columns:repeat(3,minmax(0,1fr));gap:10px">
           <div class="metric"><div class="label">MAF</div><div class="value"><span id="maf">—</span><span class="unit">g/s</span></div></div>
           <div class="metric"><div class="label">IAT</div><div class="value"><span id="iat">—</span><span class="unit">°C</span></div></div>
-          <div class="metric"><div class="label">AbsLoad→VE</div><div class="value"><span id="al">—</span><span class="unit">%</span></div></div>
-          <div class="metric" style="grid-column:1/-1"><div class="label">Lambda</div><div class="value"><span id="lam">—</span></div></div>
+          <div class="metric"><div class="label">Abs Load</div><div class="value"><span id="al">—</span><span class="unit">%</span></div></div>
+          <div class="metric"><div class="label">Lambda</div><div class="value"><span id="lam">—</span></div></div>
+        </div>
+
+        <div style="height:12px"></div>
+
+        <div class="section-title">Controls</div>
+        <div class="panel" style="display:grid; gap:10px">
+          <div style="display:flex; gap:10px; flex-wrap:wrap">
+            <button class="btn" onclick="sendCtrl('PWM:1000')">PWM 1 kHz</button>
+            <button class="btn" onclick="sendCtrl('PWM:25000')">PWM 25 kHz</button>
+            <button class="btn" onclick="sendCtrl('CAN:500')">CAN 500k</button>
+            <button class="btn" onclick="sendCtrl('CAN:250')">CAN 250k</button>
+            <button class="btn" onclick="sendCtrl('RST')">Trip Reset</button>
+          </div>
+          <div style="display:flex; gap:10px; flex-wrap:wrap">
+            <button class="btn" onclick="sendCtrl('RATE:4')">Rate 4 Hz</button>
+            <button class="btn" onclick="sendCtrl('RATE:8')">Rate 8 Hz</button>
+            <button class="btn" onclick="sendCtrl('RATE:12')">Rate 12 Hz</button>
+          </div>
         </div>
       </div>
     </div>
@@ -234,33 +205,21 @@ const SVC_UUID  = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
 const DATA_UUID = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
 const CTRL_UUID = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
 
-// THRUSTER (OBD2) 設備
-let device1, server1, svc1, chData1, chCtrl1;
-// EASY-THRUSTER (LED) 設備  
-let device2, server2, svc2, chData2, chCtrl2;
-
-let connected1 = false; // THRUSTER連接狀態
-let connected2 = false; // EASY-THRUSTER連接狀態
+let device, server, svc, chData, chCtrl;
+let connected = false;
 
 let blinkTimer = null;
 let ledState = 'off';
 let currentInterval = 0;
-let remoteLedStatus = 'Unknown';
 
-function setBleState(ok1, ok2){
-  connected1 = ok1;
-  connected2 = ok2;
-  const allConnected = ok1 && ok2;
-  const anyConnected = ok1 || ok2;
-  
-  $('#bleState').textContent = allConnected ? 'All Connected' : 
-                               anyConnected ? 'Partial' : 'Disconnected';
-  $('#dot').classList.toggle('on', anyConnected);
-  $('#btnDisconnect').disabled = !anyConnected;
-  $('#btnConnect').disabled = allConnected;
-  
-  $('#devName1').textContent = ok1 ? (device1?.name || 'THRUSTER') : '—';
-  $('#devName2').textContent = ok2 ? (device2?.name || 'EASY-THRUSTER') : '—';
+function setBleState(ok){
+  connected = ok;
+  $('#bleState').textContent = ok ? 'Connected' : 'Disconnected';
+  $('#dot').classList.toggle('on', ok);
+  $('#btnDisconnect').disabled = !ok;
+  $('#btnConnect').disabled = ok;
+  $('#btnLedOn').disabled = !ok;
+  $('#btnLedOff').disabled = !ok;
 }
 
 /* ----- Apply packets from firmware ----- */
@@ -274,26 +233,27 @@ function applyPacketA(j){
     $('#thSlider').value = String(j.thr);
     $('#thVal').textContent = String(j.thr);
   }
-  // LED
-  const led = $('#led');
-  if (!j.fan){
-    clearInterval(blinkTimer);
-    led.classList.remove('on');
-    led.style.background = '#bbb';
-    ledState = 'off';
-    currentInterval = 0;
-  }else{
-    const newInterval = Math.max(50, parseInt(j.bl || 500, 10));
-    if (ledState !== 'blink' || newInterval !== currentInterval) {
+  if (typeof j.blink === 'boolean'){
+    const led = $('#led');
+    if (j.blink === false){
       clearInterval(blinkTimer);
-      let on = false;
-      blinkTimer = setInterval(()=>{
-        on = !on;
-        led.classList.toggle('on', on);
-        led.style.background = on ? 'lime' : '#bbb';
-      }, newInterval);
-      ledState = 'blink';
-      currentInterval = newInterval;
+      led.classList.remove('on');
+      led.style.background = '#bbb';
+      ledState = 'off';
+      currentInterval = 0;
+    }else{
+      const newInterval = Math.max(90, Math.min(1200, Math.round((100 - (j.thr??0)) * 12)));
+      if (ledState !== 'blink' || newInterval !== currentInterval) {
+        clearInterval(blinkTimer);
+        let on = false;
+        blinkTimer = setInterval(()=>{
+          on = !on;
+          led.classList.toggle('on', on);
+          led.style.background = on ? 'lime' : '#bbb';
+        }, newInterval);
+        ledState = 'blink';
+        currentInterval = newInterval;
+      }
     }
   }
 }
@@ -314,192 +274,99 @@ function applyPacketF(j){
   if (j.lam !== undefined && j.lam !== null) $('#lam').textContent = j.lam;
 }
 
-function applyPacketD(j){
-  $('#d_can').textContent  = j.can ?? '—';
-  $('#d_pwm').textContent  = j.pwm ?? '—';
-  $('#d_rate').textContent = j.rate ?? '—';
-  $('#d_loop').textContent = j.loop ?? '—';
-  $('#d_rxok').textContent = j.rxok ?? '—';
-  $('#d_rxto').textContent = j.rxto ?? '—';
-}
-
-function onNotify1(ev) {
-  try {
-    const j = JSON.parse(new TextDecoder().decode(ev.target.value));
-    if (!j || !j.t) return;
-    if (j.t === 'a') applyPacketA(j);
-    else if (j.t === 'f') applyPacketF(j);
-    else if (j.t === 'd') applyPacketD(j);
-    else log('unknown pkt from THRUSTER: ' + JSON.stringify(j));
-  } catch (e) {
-    log('JSON parse error from THRUSTER: ' + e);
-  }
-}
-
-function onNotify2(ev) {
-  try {
-    const data = new TextDecoder().decode(ev.target.value);
-    log('LED response: ' + data);
-    
-    // 解析LED狀態回應
-    if (data.includes('LED STATUS:')) {
-      const status = data.split('LED STATUS:')[1]?.trim();
-      if (status) {
-        remoteLedStatus = status;
-        $('#ledStatus').textContent = status;
-      }
-    } else if (data.includes('OK LED ON')) {
-      remoteLedStatus = 'ON';
-      $('#ledStatus').textContent = 'ON';
-    } else if (data.includes('OK LED OFF')) {
-      remoteLedStatus = 'OFF';
-      $('#ledStatus').textContent = 'OFF';
-    }
-  } catch (e) {
-    log('LED response error: ' + e);
-  }
-}
-
-async function connectDevice(namePrefix, deviceNum){
+function onNotify(ev){
   try{
-    const dev = await navigator.bluetooth.requestDevice({
-      filters:[{ namePrefix }],
-      optionalServices:[SVC_UUID]
-    });
-    
-    const server = await dev.gatt.connect();
-    const svc = await server.getPrimaryService(SVC_UUID);
-    const chData = await svc.getCharacteristic(DATA_UUID);
-    const chCtrl = await svc.getCharacteristic(CTRL_UUID);
-
-    await chData.startNotifications();
-    
-    if (deviceNum === 1) {
-      device1 = dev;
-      server1 = server;
-      svc1 = svc;
-      chData1 = chData;
-      chCtrl1 = chCtrl;
-      chData1.addEventListener('characteristicvaluechanged', onNotify1);
-      dev.addEventListener('gattserverdisconnected', onDisconnected1);
-      
-      // Read control characteristic (e.g. "OK;TH:40;...")
-      const ctrlStr = new TextDecoder().decode(await chCtrl1.readValue()).trim();
-      const m = ctrlStr.match(/TH:(\d{1,3})/i);
-      if (m){
-        const th = Math.max(0, Math.min(255, parseInt(m[1],10)));
-        $('#thSlider').value = String(th);
-        $('#thVal').textContent = String(th);
-      }
-      log('Connected to THRUSTER: ' + (dev.name || 'THRUSTER'));
-    } else {
-      device2 = dev;
-      server2 = server;
-      svc2 = svc;
-      chData2 = chData;
-      chCtrl2 = chCtrl;
-      chData2.addEventListener('characteristicvaluechanged', onNotify2);
-      dev.addEventListener('gattserverdisconnected', onDisconnected2);
-      log('Connected to EASY-THRUSTER: ' + (dev.name || 'EASY-THRUSTER'));
+    const v = new TextDecoder().decode(ev.target.value);
+    if (!v) return;
+    if (v[0] === '{'){
+      const j = JSON.parse(v);
+      if (j.t === 'a') applyPacketA(j);
+      else if (j.t === 'f') applyPacketF(j);
+      else if (j.t === 'd') { /* diag */ }
+      else if (j.t === 'fan'){ log('[fan] ' + (j.msg ?? '')); }
+    }else{
+      log(v.trim());
     }
-    
-    return true;
   }catch(e){
-    log(`Connection to ${namePrefix} failed: ${e}`);
-    return false;
+    log('notify err: ' + e);
+  }
+}
+
+function onDisconnected(){
+  setBleState(false);
+  $('#devName').textContent = '—';
+  clearInterval(blinkTimer);
+  $('#led').classList.remove('on');
+  $('#led').style.background = '#bbb';
+  ledState = 'off'; currentInterval = 0;
+  log('BLE disconnected');
+}
+async function disconnectBLE(){
+  try{
+    if (device?.gatt?.connected) device.gatt.disconnect();
+  }catch(e){
+    log('Disconnect failed: ' + e);
+  }finally{
+    onDisconnected();
   }
 }
 
 async function connectBLE(){
   try{
-    setBleState(false, false);
-    log('Starting dual device connection...');
-    
-    // 連接THRUSTER (OBD2)
-    const connected1 = await connectDevice('THRUSTER', 1);
-    
-    // 連接EASY-THRUSTER (LED)
-    const connected2 = await connectDevice('EASY-THRUSTER', 2);
-    
-    setBleState(connected1, connected2);
-    
-    if (connected1 && connected2) {
-      log('All devices connected successfully!');
-    } else if (connected1 || connected2) {
-      log('Partial connection - some devices connected');
-    } else {
-      log('Failed to connect to any devices');
+    setBleState(false);
+    const dev = await navigator.bluetooth.requestDevice({
+      filters:[{ namePrefix:'THRUSTER' }],
+      optionalServices:[SVC_UUID]
+    });
+    device = dev;
+    device.addEventListener('gattserverdisconnected', onDisconnected);
+    $('#devName').textContent = device.name || '—';
+
+    server = await device.gatt.connect();
+    svc = await server.getPrimaryService(SVC_UUID);
+    chData = await svc.getCharacteristic(DATA_UUID);
+    chCtrl = await svc.getCharacteristic(CTRL_UUID);
+
+    await chData.startNotifications();
+    chData.addEventListener('characteristicvaluechanged', onNotify);
+
+    // Read control characteristic (e.g. "OK;TH:40;...")
+    const ctrlStr = new TextDecoder().decode(await chCtrl.readValue()).trim();
+    const m = ctrlStr.match(/TH:(\d{1,3})/i);
+    if (m){
+      const th = Math.max(0, Math.min(255, parseInt(m[1],10)));
+      $('#thSlider').value = String(th);
+      $('#thVal').textContent = String(th);
     }
+
+    setBleState(true);
+    log('Connected: service OK, tx/rx OK');
   }catch(e){
-    log('Connection setup failed: ' + e);
-    setBleState(false, false);
+    onDisconnected();
+    log('Connect failed: ' + e);
   }
 }
-function onDisconnected1(){
-  connected1 = false;
-  device1 = null; server1 = null; svc1 = null; chData1 = null; chCtrl1 = null;
-  setBleState(connected1, connected2);
-  log('THRUSTER disconnected');
-}
 
-function onDisconnected2(){
-  connected2 = false;
-  device2 = null; server2 = null; svc2 = null; chData2 = null; chCtrl2 = null;
-  setBleState(connected1, connected2);
-  $('#ledStatus').textContent = 'Unknown';
-  log('EASY-THRUSTER disconnected');
-}
-
-async function disconnectBLE(){
+async function sendCtrl(s){
+  if (!chCtrl || !connected) return;
   try{
-    if (device1?.gatt?.connected) device1.gatt.disconnect();
-    if (device2?.gatt?.connected) device2.gatt.disconnect();
+    await chCtrl.writeValue(new TextEncoder().encode(s));
+    log('→ ' + s);
   }catch(e){
-    log('Disconnect failed: ' + e);
-  }finally{
-    setBleState(false, false);
-    device1 = null; server1 = null; svc1 = null; chData1 = null; chCtrl1 = null;
-    device2 = null; server2 = null; svc2 = null; chData2 = null; chCtrl2 = null;
-    clearInterval(blinkTimer);
-    $('#led').classList.remove('on');
-    $('#led').style.background = '#bbb';
-    ledState = 'off'; currentInterval = 0;
-    $('#ledStatus').textContent = 'Unknown';
-    log('All devices disconnected');
+    log('ctrl failed: ' + e);
   }
 }
 
-// Write threshold via control (TH:<value>)
 async function setThreshold(v){
-  if (!chCtrl1 || !connected1) return;
+  if (!chCtrl || !connected) return;
   const vv = Math.max(0, Math.min(255, Math.round(v)));
   try{
-    await chCtrl1.writeValue(new TextEncoder().encode(`TH:${vv}`));
+    await chCtrl.writeValue(new TextEncoder().encode(`TH:${vv}`));
     log('Threshold set to ' + vv);
   }catch(e){
     log('Failed to set threshold: ' + e);
   }
 }
-
-// LED control functions
-async function sendLedCommand(cmd){
-  if (!chCtrl2 || !connected2) return;
-  try{
-    // 直接發送LED指令到EASY-THRUSTER
-    const command = `LED ${cmd}`;
-    await chCtrl2.writeValue(new TextEncoder().encode(command));
-    log(`LED command sent: ${command}`);
-    if (cmd === 'STATUS') {
-      // Update status display immediately
-      setTimeout(() => {
-        $('#ledStatus').textContent = 'Checking...';
-      }, 100);
-    }
-  }catch(e){
-    log('Failed to send LED command: ' + e);
-  }
-}
-
 
 $('#btnConnect').addEventListener('click', connectBLE);
 $('#btnDisconnect').addEventListener('click', disconnectBLE);
@@ -512,12 +379,17 @@ $('#thSlider').addEventListener('change', (e)=>{
   setThreshold(v);
 });
 
-// LED control event listeners
-$('#btnLedOn').addEventListener('click', ()=>sendLedCommand('ON'));
-$('#btnLedOff').addEventListener('click', ()=>sendLedCommand('OFF'));
-$('#btnLedStatus').addEventListener('click', ()=>sendLedCommand('STATUS'));
+// ---------- FAN LED quick controls ----------
+function fanLed(on){
+  if (!chCtrl || !connected) { log('⚠️ Not connected'); return; }
+  const cmd = on ? 'CMD:FAN:LED=ON' : 'CMD:FAN:LED=OFF';
+  chCtrl.writeValue(new TextEncoder().encode(cmd))
+    .then(()=> log('→ ' + cmd))
+    .catch(e=> log('⚠️ FAN LED failed: ' + e));
+}
+
+$('#btnLedOn').addEventListener('click', ()=> fanLed(true));
+$('#btnLedOff').addEventListener('click', ()=> fanLed(false));
 </script>
 </body>
 </html>
-
-
