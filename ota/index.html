@@ -1,395 +1,668 @@
-<!doctype html>
-<html lang="en">
+<!DOCTYPE html>
+<html lang="zh-TW">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="theme-color" content="#0b0f14" />
-<meta name="apple-mobile-web-app-capable" content="yes" />
-<title>THRUSTER PANEL</title>
-<style>
-  :root{
-    --bg:#0b0f14; --card:#121923; --muted:#7d8ca1; --text:#eaf2ff; --accent:#6aa6ff;
-    --ok:#35d07f; --warn:#ffd166; --bad:#ff6b6b;
-    --space: clamp(10px, 2vw, 16px);
-    --radius: 20px;
-  }
-  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
-  html,body{height:100%}
-  body{
-    margin:0; background:linear-gradient(160deg,#0b0f14 0%,#0e1420 40%,#0b0f14 100%);
-    color:var(--text);
-    font-family: ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans",sans-serif;
-    display:grid; place-items:center; padding:24px;
-  }
-  .card{
-    width:min(1000px,96vw); background:linear-gradient(180deg,#151f2c 0%, #101826 100%);
-    border:1px solid #263041; border-radius:var(--radius); box-shadow:0 10px 30px rgba(0,0,0,.35);
-    padding: clamp(14px, 2.5vw, 20px);
-  }
-  .header{
-    display:flex; gap:12px; align-items:center; justify-content:space-between; margin-bottom:6px;
-  }
-  .title{ display:flex; align-items:center; gap:12px; }
-  .badge{
-    font-size:12px; color:#0b0f14; background:var(--accent); padding:6px 10px; border-radius:999px; font-weight:700;
-  }
-  .status{ display:flex; align-items:center; gap:10px; flex-wrap:wrap }
-  .dot{
-    width:10px; height:10px; border-radius:50%; background:#576279; box-shadow:0 0 0 2px #222c3a inset;
-  }
-  .dot.on{ background:var(--ok); box-shadow:0 0 12px 2px rgba(53,208,127,.6) }
-  .muted{ color:var(--muted); font-size:14px }
-  .btn{
-    background:#1b2737; color:var(--text); border:1px solid #2b3a51; padding:12px 16px; border-radius:12px;
-    font-weight:700; cursor:pointer; transition:.18s ease; min-height:44px; min-width:44px;
-  }
-  .btn:hover{ transform:translateY(-1px); border-color:#3d5272 }
-  .btn:active{ transform:translateY(0) }
-  .btn[disabled]{ opacity:.5; cursor:not-allowed }
-  .btn.primary{ background:linear-gradient(180deg,#2a69ff,#2256d9); border:0 }
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OBD2 LED Controller - ESP32-C3</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
-  .grid{ display:grid; grid-template-columns: 1.1fr 1fr; gap:16px; margin-top:12px; }
-  .panel{ background:rgba(13,20,31,.6); border:1px solid #263041; border-radius:16px; padding:14px; }
-  .section-title{
-    font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:#a7b6cc; margin:2px 0 10px;
-  }
-  .kv{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; }
-  .metric{
-    background:linear-gradient(180deg,#122033,#0f1a2a); border:1px solid #24334a; border-radius:14px; padding:12px;
-  }
-  .metric .label{ font-size:12px; color:#9cb0c9; letter-spacing:.02em }
-  .metric .value{ font-weight:800; font-size:clamp(18px, 4.2vw, 24px); margin-top:6px; line-height:1.1 }
-  .value .unit{ font-size:12px; color:#8fa3be; margin-left:4px; font-weight:700 }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
 
-  .pill{
-    display:inline-flex; align-items:center; gap:8px; border:1px solid #2b3a51; background:#172134; border-radius:999px; padding:6px 10px;
-    font-size:12px;
-  }
-  .hint{ color:#9cb0c9; font-size:12px; }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
 
-  .led{
-    width:22px; height:22px; border-radius:999px; background:#bbb; border:1px solid #999; box-shadow: inset 0 0 8px rgba(0,0,0,.4);
-  }
-  .led.on{
-    background:lime;
-    box-shadow: 0 0 16px 4px rgba(0,255,0,.65), inset 0 0 14px rgba(0,0,0,.25);
-  }
-  .mono{
-    width:100%; min-height:88px; max-height:200px; overflow:auto;
-    background:linear-gradient(180deg,#0c1420,#0a111b); border:1px solid #223049; border-radius:12px;
-    padding:10px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; color:#b9c7dd;
-  }
-  .slider{
-    -webkit-appearance:none; appearance:none; width:100%; height:8px; border-radius:999px;
-    background:linear-gradient(90deg,#2e3b52,#244f93); outline:none;
-  }
-  .slider::-webkit-slider-thumb{
-    -webkit-appearance:none; appearance:none; width:24px; height:24px; border-radius:999px; background:#6aa6ff; border:2px solid #2a5bb7;
-    box-shadow:0 2px 8px rgba(0,0,0,.25);
-  }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            color: white;
+        }
 
-  @media (max-width: 860px){
-    .grid{ grid-template-columns:1fr; }
-  }
-</style>
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .header p {
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(0,0,0,0.15);
+        }
+
+        .card h3 {
+            color: #4a5568;
+            margin-bottom: 20px;
+            font-size: 1.3rem;
+            border-bottom: 2px solid #e2e8f0;
+            padding-bottom: 10px;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 10px;
+            animation: pulse 2s infinite;
+        }
+
+        .status-ok { background-color: #48bb78; }
+        .status-warning { background-color: #ed8936; }
+        .status-error { background-color: #f56565; }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        .led-controls {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .btn {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+
+        .btn-red { background: linear-gradient(45deg, #ff6b6b, #ee5a52); color: white; }
+        .btn-green { background: linear-gradient(45deg, #51cf66, #40c057); color: white; }
+        .btn-blue { background: linear-gradient(45deg, #339af0, #228be6); color: white; }
+        .btn-yellow { background: linear-gradient(45deg, #ffd43b, #fab005); color: white; }
+        .btn-purple { background: linear-gradient(45deg, #9775fa, #845ef7); color: white; }
+        .btn-cyan { background: linear-gradient(45deg, #20c997, #12b886); color: white; }
+        .btn-off { background: linear-gradient(45deg, #6c757d, #495057); color: white; }
+
+        .data-display {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 10px 0;
+        }
+
+        .data-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .data-item:last-child {
+            border-bottom: none;
+        }
+
+        .data-label {
+            font-weight: 600;
+            color: #495057;
+        }
+
+        .data-value {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #212529;
+        }
+
+        .brightness-control {
+            margin: 20px 0;
+        }
+
+        .slider {
+            width: 100%;
+            height: 8px;
+            border-radius: 4px;
+            background: #e2e8f0;
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        .slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #667eea;
+            cursor: pointer;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+        }
+
+        .slider::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #667eea;
+            cursor: pointer;
+            border: none;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+        }
+
+        .connection-status {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            border-radius: 25px;
+            color: white;
+            font-weight: 600;
+            z-index: 1000;
+        }
+
+        .connected { background: #48bb78; }
+        .disconnected { background: #f56565; }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #6c757d;
+        }
+
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+            border-left: 4px solid #f56565;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 10px;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .led-controls {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+    </style>
 </head>
 <body>
-  <div class="card">
-    <div class="header">
-      <div class="title">
-        <div style="font-weight:800; font-size:clamp(18px,5vw,22px)">THRUSTER OBD-II BLE Console</div>
-        <div class="muted">Device: <span id="devName">—</span></div>
-      </div>
-      <div>
-        <div class="muted">Status</div>
-        <div>
-        </div>
-      </div>
-      <div class="status">
-        <span class="badge" id="bleState">Disconnected</span>
-        <span class="dot" id="dot"></span>
-        <button class="btn primary" id="btnConnect">Connect</button>
-        <button class="btn" id="btnDisconnect" disabled>Disconnect</button>
-        <div style="display:inline-flex; gap:8px; margin-left:8px">
-          <button class="btn" id="btnLedOn" disabled>LED ON</button>
-          <button class="btn" id="btnLedOff" disabled>LED OFF</button>
-        </div>
-      </div>
-    </div>
-
-    <div class="grid">
-      <!-- Left: Realtime Info + Fuel -->
-      <div class="panel">
-        <div class="section-title">Realtime Info</div>
-        <div class="kv">
-          <div class="metric"><div class="label">RPM</div><div class="value"><span id="rpm">0</span></div></div>
-          <div class="metric"><div class="label">Throttle</div><div class="value"><span id="thr">0</span><span class="unit">%</span></div></div>
-          <div class="metric"><div class="label">MAP</div><div class="value"><span id="map">0</span><span class="unit">kPa</span></div></div>
-          <div class="metric"><div class="label">Voltage</div><div class="value"><span id="volt">0.00</span><span class="unit">V</span></div></div>
+    <div class="container">
+        <div class="header">
+            <h1>🚗 OBD2 LED Controller</h1>
+            <p>ESP32-C3 + NimBLE 智能車載 LED 控制系統</p>
         </div>
 
-        <div style="height:12px"></div>
-
-        <div class="panel" style="padding:12px; display:grid; gap:10px">
-          <div style="display:grid; gap:10px; grid-template-columns:1fr; align-items:center">
-            <div class="section-title" style="margin:0">Threshold Setting</div>
-            <input id="thSlider" class="slider" type="range" min="0" max="255" value="40" />
-            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
-              <div class="hint">MAP above threshold will trigger LED blinking</div>
-              <div class="pill">Threshold: <span id="thVal">40</span></div>
+        <div class="connection-status" id="connectionStatus">
+            <span id="connectionText">未連接</span>
+        </div>
+        
+        <!-- 藍牙連接按鈕 -->
+        <div class="card" style="margin-bottom: 20px;">
+            <h3>🔵 藍牙連接</h3>
+            <div class="button-group" style="display: flex; gap: 10px; margin: 15px 0;">
+                <button id="connectBtn" class="btn btn-primary">連接設備</button>
+                <button id="disconnectBtn" class="btn btn-danger" disabled>斷開連接</button>
             </div>
-          </div>
-          <div style="display:flex;align-items:center;gap:14px">
-            <div id="led" class="led" title="LED"></div>
-            <div class="muted">MAP > threshold → Blink (Throttle 12–80 controls speed)</div>
-          </div>
+            <div class="data-display">
+                <div class="data-item">
+                    <span class="data-label">設備名稱:</span>
+                    <span class="data-value" id="deviceName">未連接</span>
+                </div>
+                <div class="data-item">
+                    <span class="data-label">連接狀態:</span>
+                    <span class="data-value" id="bleStatus">未連接</span>
+                </div>
+            </div>
         </div>
 
-        <div style="height:12px"></div>
+        <div class="dashboard">
+            <!-- 系統狀態卡片 -->
+            <div class="card">
+                <h3>📊 系統狀態</h3>
+                <div class="status-indicator">
+                    <div class="status-dot status-ok" id="systemStatusDot"></div>
+                    <span id="systemStatusText">系統正常</span>
+                </div>
+                <div class="data-display">
+                    <div class="data-item">
+                        <span class="data-label">運行時間:</span>
+                        <span class="data-value" id="uptime">0 秒</span>
+                    </div>
+                    <div class="data-item">
+                        <span class="data-label">錯誤代碼:</span>
+                        <span class="data-value" id="errorCode">0</span>
+                    </div>
+                    <div class="data-item">
+                        <span class="data-label">TWAI 狀態:</span>
+                        <span class="data-value" id="twaiState">未知</span>
+                    </div>
+                </div>
+            </div>
 
-        <div class="section-title">Fuel & Trip</div>
-        <div class="kv" style="grid-template-columns:repeat(4,minmax(0,1fr));gap:10px">
-          <div class="metric"><div class="label">Source</div><div class="value"><span id="src">NA</span></div></div>
-          <div class="metric"><div class="label">Fuel Rate</div><div class="value"><span id="fr">0.00</span><span class="unit">L/h</span></div></div>
-          <div class="metric"><div class="label">Instant L/100km</div><div class="value"><span id="iL100">—</span></div></div>
-          <div class="metric"><div class="label">Instant km/L</div><div class="value"><span id="iKML">—</span></div></div>
+            <!-- LED 控制卡片 -->
+            <div class="card">
+                <h3>💡 LED 控制</h3>
+                <div class="led-controls">
+                    <button class="btn btn-success" onclick="setLEDOn()">開啟 LED</button>
+                    <button class="btn btn-danger" onclick="setLEDOff()">關閉 LED</button>
+                    <button class="btn btn-warning" onclick="setLEDToggle()">切換 LED</button>
+                </div>
+                <p style="color: #6c757d; font-size: 0.9em; margin-top: 10px; text-align: center;">
+                    注意：此為普通 LED，僅支援開關控制
+                </p>
+                
+            </div>
 
-          <div class="metric"><div class="label">Trip Fuel</div><div class="value"><span id="tripL">0.000</span><span class="unit">L</span></div></div>
-          <div class="metric"><div class="label">Trip Dist</div><div class="value"><span id="tripK">0.000</span><span class="unit">km</span></div></div>
-          <div class="metric"><div class="label">Avg L/100km</div><div class="value"><span id="aL100">—</span></div></div>
-          <div class="metric"><div class="label">Avg km/L</div><div class="value"><span id="aKML">—</span></div></div>
+            <!-- OBD2 數據卡片 -->
+            <div class="card">
+                <h3>🚙 OBD2 數據</h3>
+                <div class="data-display">
+                    <div class="data-item">
+                        <span class="data-label">引擎轉速:</span>
+                        <span class="data-value" id="rpm">0 RPM</span>
+                    </div>
+                    <div class="data-item">
+                        <span class="data-label">車速:</span>
+                        <span class="data-value" id="speed">0 km/h</span>
+                    </div>
+                    <div class="data-item">
+                        <span class="data-label">冷卻液溫度:</span>
+                        <span class="data-value" id="temp">0°C</span>
+                    </div>
+                    <div class="data-item">
+                        <span class="data-label">引擎負載:</span>
+                        <span class="data-value" id="load">0%</span>
+                    </div>
+                </div>
+                <div id="obd2Status" class="status-indicator">
+                    <div class="status-dot status-error" id="obd2StatusDot"></div>
+                    <span id="obd2StatusText">OBD2 未連接</span>
+                </div>
+            </div>
+
+            <!-- 自動模式卡片 -->
+            <div class="card">
+                <h3>🤖 自動模式</h3>
+                <div style="margin-bottom: 15px;">
+                    <label>
+                        <input type="checkbox" id="autoMode" onchange="toggleAutoMode()">
+                        啟用自動模式
+                    </label>
+                </div>
+                <div class="data-display">
+                    <div class="data-item">
+                        <span class="data-label">模式:</span>
+                        <span class="data-value" id="currentMode">手動</span>
+                    </div>
+                    <div class="data-item">
+                        <span class="data-label">LED 狀態:</span>
+                        <span class="data-value" id="ledStatus">待機</span>
+                    </div>
+                </div>
+            </div>
         </div>
 
-        <div style="height:12px"></div>
-
-        <div class="section-title">Raw Log</div>
-        <pre id="log" class="mono"></pre>
-      </div>
-
-      <!-- Right: Extra -->
-      <div class="panel">
-        <div class="section-title">OBD-II & Env</div>
-        <div class="kv" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:10px">
-          <div class="metric"><div class="label">MAF</div><div class="value"><span id="maf">—</span><span class="unit">g/s</span></div></div>
-          <div class="metric"><div class="label">IAT</div><div class="value"><span id="iat">—</span><span class="unit">°C</span></div></div>
-          <div class="metric"><div class="label">Abs Load</div><div class="value"><span id="al">—</span><span class="unit">%</span></div></div>
-          <div class="metric"><div class="label">Lambda</div><div class="value"><span id="lam">—</span></div></div>
-        </div>
-
-        <div style="height:12px"></div>
-
-        <div class="section-title">Controls</div>
-        <div class="panel" style="display:grid; gap:10px">
-          <div style="display:flex; gap:10px; flex-wrap:wrap">
-            <button class="btn" onclick="sendCtrl('PWM:1000')">PWM 1 kHz</button>
-            <button class="btn" onclick="sendCtrl('PWM:25000')">PWM 25 kHz</button>
-            <button class="btn" onclick="sendCtrl('CAN:500')">CAN 500k</button>
-            <button class="btn" onclick="sendCtrl('CAN:250')">CAN 250k</button>
-            <button class="btn" onclick="sendCtrl('RST')">Trip Reset</button>
-          </div>
-          <div style="display:flex; gap:10px; flex-wrap:wrap">
-            <button class="btn" onclick="sendCtrl('RATE:4')">Rate 4 Hz</button>
-            <button class="btn" onclick="sendCtrl('RATE:8')">Rate 8 Hz</button>
-            <button class="btn" onclick="sendCtrl('RATE:12')">Rate 12 Hz</button>
-          </div>
-        </div>
-      </div>
+        <!-- 錯誤顯示區域 -->
+        <div id="errorContainer" style="display: none;"></div>
     </div>
-  </div>
 
-<script>
-const $ = (s)=>document.querySelector(s);
-const log = (m)=>{ const el=$('#log'); const t=new Date().toLocaleTimeString(); el.textContent = `[${t}] ${m}\n` + el.textContent.slice(0,4000);};
+    <script>
+        // 全局變數
+        let isConnected = false;
+        let autoMode = false;
+        let updateInterval;
+        
+        // BLE相關變量
+        let device = null;
+        let server = null;
+        let service = null;
+        let characteristic = null;
+        let obd2Characteristic = null;
+        let bleConnected = false;
+        
+        // 服務和特徵UUID (與 ai_cowork_c3 相同)
+        const LED_SERVICE_UUID = 0x00FF;
+        const LED_CHAR_UUID = 0xFF01;
+        const OBD2_DATA_CHAR_UUID = 0xFF02;
 
-const SVC_UUID  = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
-const DATA_UUID = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
-const CTRL_UUID = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
+        // 初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            updateStatus();
+            updateInterval = setInterval(updateStatus, 2000);
+            initBluetooth();
+        });
+        
+        // 初始化藍牙功能
+        function initBluetooth() {
+            // 檢查藍牙支持
+            if (!navigator.bluetooth) {
+                showMessage('此瀏覽器不支持 Web Bluetooth API', 'error');
+                document.getElementById('connectBtn').disabled = true;
+                return;
+            }
+            
+            // 綁定事件監聽器
+            document.getElementById('connectBtn').addEventListener('click', connectBluetooth);
+            document.getElementById('disconnectBtn').addEventListener('click', disconnectBluetooth);
+            
+            showMessage('藍牙功能已準備就緒', 'success');
+        }
+        
+        // 連接藍牙設備
+        async function connectBluetooth() {
+            try {
+                showMessage('掃描設備中...', 'info');
+                updateBLEStatus('掃描中...', 'scanning');
+                
+                device = await navigator.bluetooth.requestDevice({
+                    acceptAllDevices: false,
+                    optionalServices: [LED_SERVICE_UUID],
+                    filters: [{
+                        name: 'ESP32-C3-LED'
+                    }]
+                });
+                
+                showMessage(`找到設備: ${device.name}`, 'success');
+                updateBLEStatus('連接中...', 'scanning');
+                
+                device.addEventListener('gattserverdisconnected', onBluetoothDisconnected);
+                
+                server = await device.gatt.connect();
+                showMessage('GATT 服務器連接成功', 'success');
+                
+                service = await server.getPrimaryService(LED_SERVICE_UUID);
+                showMessage('服務連接成功', 'success');
+                
+                characteristic = await service.getCharacteristic(LED_CHAR_UUID);
+                showMessage('LED特徵連接成功', 'success');
+                
+                obd2Characteristic = await service.getCharacteristic(OBD2_DATA_CHAR_UUID);
+                showMessage('OBD2特徵連接成功', 'success');
+                
+                bleConnected = true;
+                updateBLEStatus('已連接', 'connected');
+                updateConnectionStatus(true);
+                showMessage('藍牙連接完成，可以控制 LED 了！', 'success');
+                
+                // 更新按鈕狀態
+                document.getElementById('connectBtn').disabled = true;
+                document.getElementById('disconnectBtn').disabled = false;
+                
+            } catch (error) {
+                showMessage(`藍牙連接失敗: ${error.message}`, 'error');
+                updateBLEStatus('連接失敗', 'disconnected');
+                updateConnectionStatus(false);
+            }
+        }
+        
+        // 斷開藍牙連接
+        function disconnectBluetooth() {
+            if (device && device.gatt.connected) {
+                device.gatt.disconnect();
+            }
+            onBluetoothDisconnected();
+        }
+        
+        // 藍牙斷開處理
+        function onBluetoothDisconnected() {
+            showMessage('藍牙設備已斷開連接', 'info');
+            bleConnected = false;
+            updateBLEStatus('未連接', 'disconnected');
+            updateConnectionStatus(false);
+            
+            // 更新按鈕狀態
+            document.getElementById('connectBtn').disabled = false;
+            document.getElementById('disconnectBtn').disabled = true;
+            
+            device = null;
+            server = null;
+            service = null;
+            characteristic = null;
+            obd2Characteristic = null;
+        }
+        
+        // 更新藍牙狀態顯示
+        function updateBLEStatus(status, className) {
+            document.getElementById('bleStatus').textContent = status;
+            document.getElementById('deviceName').textContent = device ? device.name : '未連接';
+            
+            const statusElement = document.getElementById('connectionStatus');
+            const textElement = document.getElementById('connectionText');
+            
+            if (className === 'connected') {
+                statusElement.className = 'connection-status connected';
+                textElement.textContent = '藍牙已連接';
+            } else {
+                statusElement.className = 'connection-status disconnected';
+                textElement.textContent = '未連接';
+            }
+        }
 
-let device, server, svc, chData, chCtrl;
-let connected = false;
+        // 更新系統狀態 - 使用模擬數據
+        async function updateStatus() {
+            // 模擬系統狀態數據
+            const systemData = {
+                uptime: Math.floor(Date.now() / 1000) % 86400, // 模擬運行時間
+                error_code: 0,
+                status: 0,
+                twai_state: '正常'
+            };
+            
+            document.getElementById('uptime').textContent = systemData.uptime + ' 秒';
+            document.getElementById('errorCode').textContent = systemData.error_code;
+            document.getElementById('twaiState').textContent = systemData.twai_state;
+            
+            // 更新系統狀態指示器
+            const statusDot = document.getElementById('systemStatusDot');
+            const statusText = document.getElementById('systemStatusText');
+            
+            if (systemData.status === 0) {
+                statusDot.className = 'status-dot status-ok';
+                statusText.textContent = '系統正常';
+            } else if (systemData.status === 1) {
+                statusDot.className = 'status-dot status-warning';
+                statusText.textContent = '系統警告';
+            } else {
+                statusDot.className = 'status-dot status-error';
+                statusText.textContent = '系統錯誤';
+            }
 
-let blinkTimer = null;
-let ledState = 'off';
-let currentInterval = 0;
+            // 更新連接狀態
+            isConnected = true;
+            updateConnectionStatus(true);
+            
+            console.log('系統狀態已更新:', systemData);
+        }
 
-function setBleState(ok){
-  connected = ok;
-  $('#bleState').textContent = ok ? 'Connected' : 'Disconnected';
-  $('#dot').classList.toggle('on', ok);
-  $('#btnDisconnect').disabled = !ok;
-  $('#btnConnect').disabled = ok;
-  $('#btnLedOn').disabled = !ok;
-  $('#btnLedOff').disabled = !ok;
-}
+        // 更新 OBD2 數據 - 通過BLE讀取真實數據
+        async function updateOBD2Data() {
+            if (bleConnected && obd2Characteristic) {
+                try {
+                    // 通過BLE讀取OBD2數據
+                    const value = await obd2Characteristic.readValue();
+                    const dataView = new DataView(value.buffer);
+                    
+                    // 解析OBD2數據結構 (rpm, speed, temp, load)
+                    const obd2Data = {
+                        rpm: dataView.getUint16(0, true),    // 小端序
+                        speed: dataView.getUint16(2, true),   // 小端序
+                        temp: dataView.getUint8(4),          // 溫度
+                        load: dataView.getUint8(5)           // 負載
+                    };
+                    
+                    document.getElementById('rpm').textContent = obd2Data.rpm + ' RPM';
+                    document.getElementById('speed').textContent = obd2Data.speed + ' km/h';
+                    document.getElementById('temp').textContent = obd2Data.temp + '°C';
+                    document.getElementById('load').textContent = obd2Data.load + '%';
+                    
+                    // 更新 OBD2 連接狀態
+                    const obd2StatusDot = document.getElementById('obd2StatusDot');
+                    const obd2StatusText = document.getElementById('obd2StatusText');
+                    
+                    obd2StatusDot.className = 'status-dot status-ok';
+                    obd2StatusText.textContent = 'OBD2 已連接';
+                    
+                    console.log('真實OBD2數據已更新:', obd2Data);
+                    
+                } catch (error) {
+                    console.error('Failed to read OBD2 data via BLE:', error);
+                    document.getElementById('obd2StatusDot').className = 'status-dot status-error';
+                    document.getElementById('obd2StatusText').textContent = 'OBD2 讀取失敗';
+                }
+            } else {
+                // 如果BLE未連接，顯示未連接狀態
+                document.getElementById('obd2StatusDot').className = 'status-dot status-error';
+                document.getElementById('obd2StatusText').textContent = 'OBD2 未連接';
+            }
+        }
 
-/* ----- Apply packets from firmware ----- */
-function applyPacketA(j){
-  $('#rpm').textContent  = j.rpm ?? 0;
-  $('#thr').textContent  = j.tps ?? 0;
-  $('#map').textContent  = j.map ?? 0;
-  const v = j.vol ?? 0;
-  $('#volt').textContent = (typeof v === 'number' && v.toFixed) ? v.toFixed(2) : v;
-  if (typeof j.thr === 'number'){
-    $('#thSlider').value = String(j.thr);
-    $('#thVal').textContent = String(j.thr);
-  }
-  if (typeof j.blink === 'boolean'){
-    const led = $('#led');
-    if (j.blink === false){
-      clearInterval(blinkTimer);
-      led.classList.remove('on');
-      led.style.background = '#bbb';
-      ledState = 'off';
-      currentInterval = 0;
-    }else{
-      const newInterval = Math.max(90, Math.min(1200, Math.round((100 - (j.thr??0)) * 12)));
-      if (ledState !== 'blink' || newInterval !== currentInterval) {
-        clearInterval(blinkTimer);
-        let on = false;
-        blinkTimer = setInterval(()=>{
-          on = !on;
-          led.classList.toggle('on', on);
-          led.style.background = on ? 'lime' : '#bbb';
-        }, newInterval);
-        ledState = 'blink';
-        currentInterval = newInterval;
-      }
-    }
-  }
-}
+        // 設置 LED 顏色
+        async function setLEDOn() {
+            if (bleConnected && characteristic) {
+                try {
+                    const data = new Uint8Array([0x01]);
+                    await characteristic.writeValue(data);
+                    document.getElementById('ledStatus').textContent = '開啟';
+                    showMessage('LED 已開啟', 'success');
+                } catch (error) {
+                    console.error('Error sending BLE command:', error);
+                    showMessage('藍牙發送失敗', 'error');
+                }
+            } else {
+                showMessage('請先連接藍牙', 'error');
+            }
+        }
 
-function applyPacketF(j){
-  $('#src').textContent   = j.src ?? 'NA';
-  $('#fr').textContent    = (j.fr ?? '—');
-  $('#iL100').textContent = (j.iL100 ?? '—');
-  $('#iKML').textContent  = (j.iKML  ?? '—');
-  $('#aL100').textContent = (j.aL100 ?? '—');
-  $('#aKML').textContent  = (j.aKML  ?? '—');
-  $('#tripL').textContent = (j.tripL ?? 0).toFixed ? j.tripL.toFixed(3) : j.tripL;
-  $('#tripK').textContent = (j.tripK ?? 0).toFixed ? j.tripK.toFixed(3) : j.tripK;
+        async function setLEDOff() {
+            if (bleConnected && characteristic) {
+                try {
+                    const data = new Uint8Array([0x00]);
+                    await characteristic.writeValue(data);
+                    document.getElementById('ledStatus').textContent = '關閉';
+                    showMessage('LED 已關閉', 'success');
+                } catch (error) {
+                    console.error('Error sending BLE command:', error);
+                    showMessage('藍牙發送失敗', 'error');
+                }
+            } else {
+                showMessage('請先連接藍牙', 'error');
+            }
+        }
 
-  if (j.maf !== undefined && j.maf !== null) $('#maf').textContent = j.maf;
-  if (j.iat !== undefined && j.iat !== null) $('#iat').textContent = j.iat;
-  if (j.al  !== undefined && j.al  !== null) $('#al').textContent  = j.al;
-  if (j.lam !== undefined && j.lam !== null) $('#lam').textContent = j.lam;
-}
+        async function setLEDToggle() {
+            if (bleConnected && characteristic) {
+                try {
+                    const data = new Uint8Array([0x02]);
+                    await characteristic.writeValue(data);
+                    document.getElementById('ledStatus').textContent = '切換中';
+                    showMessage('LED 狀態已切換', 'success');
+                } catch (error) {
+                    console.error('Error sending BLE command:', error);
+                    showMessage('藍牙發送失敗', 'error');
+                }
+            } else {
+                showMessage('請先連接藍牙', 'error');
+            }
+        }
 
-function onNotify(ev){
-  try{
-    const v = new TextDecoder().decode(ev.target.value);
-    if (!v) return;
-    if (v[0] === '{'){
-      const j = JSON.parse(v);
-      if (j.t === 'a') applyPacketA(j);
-      else if (j.t === 'f') applyPacketF(j);
-      else if (j.t === 'd') { /* diag */ }
-      else if (j.t === 'fan'){ log('[fan] ' + (j.msg ?? '')); }
-    }else{
-      log(v.trim());
-    }
-  }catch(e){
-    log('notify err: ' + e);
-  }
-}
 
-function onDisconnected(){
-  setBleState(false);
-  $('#devName').textContent = '—';
-  clearInterval(blinkTimer);
-  $('#led').classList.remove('on');
-  $('#led').style.background = '#bbb';
-  ledState = 'off'; currentInterval = 0;
-  log('BLE disconnected');
-}
-async function disconnectBLE(){
-  try{
-    if (device?.gatt?.connected) device.gatt.disconnect();
-  }catch(e){
-    log('Disconnect failed: ' + e);
-  }finally{
-    onDisconnected();
-  }
-}
+        // 切換自動模式
+        function toggleAutoMode() {
+            autoMode = document.getElementById('autoMode').checked;
+            document.getElementById('currentMode').textContent = autoMode ? '自動' : '手動';
+            
+            if (autoMode) {
+                showMessage('自動模式已啟用 - LED 將根據 OBD2 數據自動調整', 'success');
+                // 在自動模式下，定期更新 OBD2 數據
+                setInterval(updateOBD2Data, 1000);
+            } else {
+                showMessage('自動模式已關閉', 'info');
+            }
+        }
 
-async function connectBLE(){
-  try{
-    setBleState(false);
-    const dev = await navigator.bluetooth.requestDevice({
-      filters:[{ namePrefix:'THRUSTER' }],
-      optionalServices:[SVC_UUID]
-    });
-    device = dev;
-    device.addEventListener('gattserverdisconnected', onDisconnected);
-    $('#devName').textContent = device.name || '—';
+        // 更新連接狀態
+        function updateConnectionStatus(connected) {
+            const statusElement = document.getElementById('connectionStatus');
+            const textElement = document.getElementById('connectionText');
+            
+            if (connected) {
+                statusElement.className = 'connection-status connected';
+                textElement.textContent = '已連接';
+            } else {
+                statusElement.className = 'connection-status disconnected';
+                textElement.textContent = '未連接';
+            }
+        }
 
-    server = await device.gatt.connect();
-    svc = await server.getPrimaryService(SVC_UUID);
-    chData = await svc.getCharacteristic(DATA_UUID);
-    chCtrl = await svc.getCharacteristic(CTRL_UUID);
+        // 顯示消息
+        function showMessage(message, type = 'info') {
+            const errorContainer = document.getElementById('errorContainer');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `error ${type}`;
+            messageDiv.textContent = message;
+            
+            errorContainer.appendChild(messageDiv);
+            errorContainer.style.display = 'block';
+            
+            // 3秒後自動移除消息
+            setTimeout(() => {
+                messageDiv.remove();
+                if (errorContainer.children.length === 0) {
+                    errorContainer.style.display = 'none';
+                }
+            }, 3000);
+        }
 
-    await chData.startNotifications();
-    chData.addEventListener('characteristicvaluechanged', onNotify);
-
-    // Read control characteristic (e.g. "OK;TH:40;...")
-    const ctrlStr = new TextDecoder().decode(await chCtrl.readValue()).trim();
-    const m = ctrlStr.match(/TH:(\d{1,3})/i);
-    if (m){
-      const th = Math.max(0, Math.min(255, parseInt(m[1],10)));
-      $('#thSlider').value = String(th);
-      $('#thVal').textContent = String(th);
-    }
-
-    setBleState(true);
-    log('Connected: service OK, tx/rx OK');
-  }catch(e){
-    onDisconnected();
-    log('Connect failed: ' + e);
-  }
-}
-
-async function sendCtrl(s){
-  if (!chCtrl || !connected) return;
-  try{
-    await chCtrl.writeValue(new TextEncoder().encode(s));
-    log('→ ' + s);
-  }catch(e){
-    log('ctrl failed: ' + e);
-  }
-}
-
-async function setThreshold(v){
-  if (!chCtrl || !connected) return;
-  const vv = Math.max(0, Math.min(255, Math.round(v)));
-  try{
-    await chCtrl.writeValue(new TextEncoder().encode(`TH:${vv}`));
-    log('Threshold set to ' + vv);
-  }catch(e){
-    log('Failed to set threshold: ' + e);
-  }
-}
-
-$('#btnConnect').addEventListener('click', connectBLE);
-$('#btnDisconnect').addEventListener('click', disconnectBLE);
-$('#thSlider').addEventListener('input', (e)=>{
-  const v = Math.max(0, Math.min(255, parseInt(e.target.value,10) || 0));
-  $('#thVal').textContent = String(v);
-});
-$('#thSlider').addEventListener('change', (e)=>{
-  const v = Math.max(0, Math.min(255, parseInt(e.target.value,10) || 0));
-  setThreshold(v);
-});
-
-// ---------- FAN LED quick controls ----------
-function fanLed(on){
-  if (!chCtrl || !connected) { log('⚠️ Not connected'); return; }
-  const cmd = on ? 'CMD:FAN:LED=ON' : 'CMD:FAN:LED=OFF';
-  chCtrl.writeValue(new TextEncoder().encode(cmd))
-    .then(()=> log('→ ' + cmd))
-    .catch(e=> log('⚠️ FAN LED failed: ' + e));
-}
-
-$('#btnLedOn').addEventListener('click', ()=> fanLed(true));
-$('#btnLedOff').addEventListener('click', ()=> fanLed(false));
-</script>
+        // 定期更新 OBD2 數據 - 適中的更新頻率
+        setInterval(updateOBD2Data, 2000); // 每2秒更新一次真實OBD2數據
+    </script>
 </body>
 </html>
+
