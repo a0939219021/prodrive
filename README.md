@@ -36,3 +36,98 @@ Sample Device Twin Change
          }
        }
   }
+
+
+
+
+
+
+Telemetry: (60s/time)
+
+{
+  "body": {
+    "power": true,
+    "childLock": false,
+    "sleepMode": false,
+    "autoMode": true,
+    "fanSpeed": null,
+    "timerMinutes": 0,
+    "pm25": 26,
+    "voc": 0.48,
+    "hcho": 0.01,
+    "aqi": 36,
+    "filterLife": 40,
+    "errorFlags": 0,
+    "timestamp": 1765159099
+  }
+}
+
+Device Twin
+
+
+1. Filter
+   {
+  "reported": {
+    "filter": {
+      "life": 40,
+      "model": 12345,
+      "serialNumber": 67890,
+      "installDate": 1764036551
+    }
+  }
+}
+
+2. Status
+   {
+  "reported": {
+    "status": {
+      "power": true,
+      "autoMode": true,
+      "fanSpeed": null,
+      "childLock": false,
+      "sleepMode": false,
+      "timerMinutes": 0,
+      "lastStatusUpdate": 1764036551
+    }
+  }
+}
+3. Error
+{
+  "reported": {
+    "errors": {
+      "errorFlags": 0,
+      "pm25SensorError": false,
+      "vocSensorError": false,
+      "hchoError": false,
+      "wifiError": false,
+      "lastErrorTime": null
+    }
+  }
+}
+
+4.Capabilities
+{
+  "reported": {
+    "capabilities": {
+      "supportsHCHO": true,
+      "supportsVOC": true,
+      "supportsPM25": true,
+      "maxFanSpeed": 3,
+      "maxTimerMinutes": 720,
+      "supportedModes": ["auto", "manual", "sleep"]
+    }
+  }
+}
+
+5.Connectivity
+{
+  "reported": {
+    "connectivity": {
+      "wifiConnected": true,
+      "iotHubConnected": true,
+      "signalStrength": -65,
+      "lastConnectedTime": 1764036551
+    }
+  }
+}
+
