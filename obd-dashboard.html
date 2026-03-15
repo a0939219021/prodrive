@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>OBD-II Dashboard (BLE)</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #12121e;
+      color: #eee;
+      min-height: 100vh;
+      padding: 12px;
+      -webkit-tap-highlight-color: transparent;
+    }
+    h1 {
+      font-size: 1.25rem;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .header-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    #connectBtn {
+      background: #4ECDC4;
+      color: #12121e;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-weight: bold;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    #connectBtn:disabled {
+      background: #555;
+      cursor: not-allowed;
+      color: #888;
+    }
+    #connectBtn.connected {
+      background: #4CAF50;
+      color: #fff;
+    }
+    .status {
+      font-size: 0.9rem;
+      color: #888;
+    }
+    .status.connected { color: #4ECDC4; }
+    .status.error { color: #FF6B6B; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+    }
+    @media (min-width: 600px) {
+      .grid { grid-template-columns: repeat(3, 1fr); }
+    }
+    @media (min-width: 900px) {
+      .grid { grid-template-columns: repeat(4, 1fr); }
+    }
+    .gauge {
+      background: #1e1e2e;
+      border: 1px solid #333355;
+      border-radius: 12px;
+      padding: 12px;
+      min-height: 100px;
+    }
+    .gauge-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.85rem;
+      color: #888;
+      margin-bottom: 4px;
+    }
+    .gauge-value {
+      font-size: 1.75rem;
+      font-weight: bold;
+      font-family: 'Consolas', monospace;
+      color: #eee;
+    }
+    .gauge-unit {
+      font-size: 0.8rem;
+      color: #666;
+    }
+    .gauge-bar {
+      height: 4px;
+      background: #2a2a3e;
+      border-radius: 2px;
+      margin-top: 6px;
+      overflow: hidden;
+    }
+    .gauge-bar-fill {
+      height: 100%;
+      border-radius: 2px;
+      transition: width 0.2s;
+    }
+    .hint {
+      margin-top: 16px;
+      padding: 12px;
+      background: #1a1a28;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      color: #888;
+      line-height: 1.5;
+    }
+    .hint a { color: #4ECDC4; }
+  </style>
+</head>
+<body>
+  <h1>&#9881; OBD-II Dashboard (BLE)</h1>
+  <div class="header-row">
+    <button id="connectBtn" onclick="toggleConnect()">Connect BLE</button>
+    <span id="status" class="status">Disconnected</span>
+  </div>
+  <div class="grid" id="gauges"></div>
+  <div class="hint">
+    Connect to <b>ESP32-C3-OBD</b> via Web Bluetooth. Requires Chrome/Edge or Bluefy on iOS.<br>
+    <a href="https://a0939219021.github.io/prodrive/">prodrive</a>
+  </div>
+
+  <script>
+    const NUS_SVC = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+    const NUS_TX  = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
+
+    const GAUGES = [
+      { id: 'rpm',           label: 'RPM',        unit: 'rpm',  color: '#FF6B6B', min: 0, max: 8000 },
+      { id: 'speed',         label: 'Speed',      unit: 'km/h', color: '#4ECDC4', min: 0, max: 260 },
+      { id: 'throttle',      label: 'Throttle',   unit: '%',    color: '#FFE66D', min: 0, max: 100 },
+      { id: 'coolant_temp',  label: 'Coolant',    unit: '°C',   color: '#FF8A5C', min: -40, max: 200 },
+      { id: 'intake_temp',   label: 'Intake',     unit: '°C',   color: '#A8E6CF', min: -40, max: 100 },
+      { id: 'intake_pressure', label: 'MAP',      unit: 'kPa', color: '#88D8B0', min: 0, max: 255 },
+      { id: 'maf_flow',      label: 'MAF',        unit: 'g/s',  color: '#B8A9C9', min: 0, max: 600 },
+      { id: 'fuel_level',    label: 'Fuel',       unit: '%',    color: '#F7DC6F', min: 0, max: 100 },
+      { id: 'timing_advance', label: 'Timing',    unit: '°',    color: '#AED6F1', min: -64, max: 64 },
+      { id: 'baro_pressure',  label: 'Baro',       unit: 'kPa', color: '#D5DBDB', min: 0, max: 110 },
+      { id: 'ambient_temp',   label: 'Ambient',   unit: '°C',   color: '#F5B041', min: -40, max: 60 },
+      { id: 'runtime',       label: 'Runtime',    unit: 'sec',  color: '#85C1E9', min: 0, max: 65535 },
+    ];
+
+    let device = null;
+    let server = null;
+    let char = null;
+    let buffer = '';
+
+    function initGauges() {
+      const grid = document.getElementById('gauges');
+      grid.innerHTML = GAUGES.map(g => `
+        <div class="gauge" data-id="${g.id}">
+          <div class="gauge-header">${g.label}</div>
+          <div class="gauge-value">---</div>
+          <div class="gauge-unit">${g.unit}</div>
+          <div class="gauge-bar"><div class="gauge-bar-fill" style="width:0;background:${g.color}"></div></div>
+        </div>
+      `).join('');
+    }
+
+    function updateGauge(id, value, config) {
+      const el = document.querySelector(`.gauge[data-id="${id}"]`);
+      if (!el) return;
+      const valEl = el.querySelector('.gauge-value');
+      const fillEl = el.querySelector('.gauge-bar-fill');
+      valEl.textContent = value;
+      const r = (config.max - config.min);
+      const pct = r > 0 ? Math.max(0, Math.min(1, (value - config.min) / r)) : 0;
+      fillEl.style.width = (pct * 100) + '%';
+      fillEl.style.background = config.color;
+    }
+
+    function onData(data) {
+      buffer += new TextDecoder().decode(data);
+      let idx;
+      while ((idx = buffer.indexOf('\n')) >= 0) {
+        const line = buffer.slice(0, idx).trim();
+        buffer = buffer.slice(idx + 1);
+        if (!line.startsWith('{')) continue;
+        try {
+          const j = JSON.parse(line);
+          if (j.name && j.value !== undefined) {
+            const cfg = GAUGES.find(g => g.id === j.name);
+            if (cfg) updateGauge(j.name, j.value, cfg);
+          }
+        } catch (e) {}
+      }
+    }
+
+    async function connect() {
+      if (device && device.gatt && device.gatt.connected) return;
+      try {
+        setStatus('Scanning...', false);
+        device = await navigator.bluetooth.requestDevice({
+          filters: [{ services: [NUS_SVC] }],
+          optionalServices: [NUS_SVC]
+        });
+        setStatus('Connecting...', false);
+        server = await device.gatt.connect();
+        const svc = await server.getPrimaryService(NUS_SVC);
+        char = await svc.getCharacteristic(NUS_TX);
+        await char.startNotifications();
+        char.addEventListener('characteristicvaluechanged', e => onData(e.target.value));
+        setStatus('Connected', true);
+        document.getElementById('connectBtn').textContent = 'Disconnect';
+        document.getElementById('connectBtn').classList.add('connected');
+      } catch (err) {
+        setStatus('Error: ' + err.message, true);
+        console.error(err);
+      }
+    }
+
+    function disconnect() {
+      if (device && device.gatt) device.gatt.disconnect();
+      device = null;
+      server = null;
+      char = null;
+      buffer = '';
+      setStatus('Disconnected', false);
+      document.getElementById('connectBtn').textContent = 'Connect BLE';
+      document.getElementById('connectBtn').classList.remove('connected');
+      document.getElementById('connectBtn').disabled = false;
+    }
+
+    function toggleConnect() {
+      if (device && device.gatt && device.gatt.connected) {
+        disconnect();
+      } else {
+        document.getElementById('connectBtn').disabled = true;
+        connect().finally(() => {
+          document.getElementById('connectBtn').disabled = false;
+        });
+      }
+    }
+
+    function setStatus(msg, ok) {
+      const s = document.getElementById('status');
+      s.textContent = msg;
+      s.className = 'status' + (ok ? ' connected' : msg.indexOf('Error') >= 0 ? ' error' : '');
+    }
+
+    initGauges();
+  </script>
+</body>
+</html>
