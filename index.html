@@ -333,7 +333,8 @@ input[type="range"]::-webkit-slider-thumb {
 </header>
 
 <div class="status-bar">
-  <span><span class="dot" id="dotBle"></span>BLE <span id="lblBle">Disconnected</span></span>
+  <span><span class="dot" id="dotBle"></span>OBA <span id="lblBle">Disconnected</span></span>
+  <span><span class="dot" id="dotPai"></span>PAI <span id="lblPai">—</span></span>
   <span><span class="dot" id="dotCan"></span>CAN <span id="lblCan">—</span></span>
   <span>Uptime <span id="lblUptime">—</span></span>
   <span>Cycle <span id="lblCycle">—</span></span>
@@ -593,6 +594,8 @@ function onNotify(event) {
   }
 
   else if (msg.t === 'hb') {
+    document.getElementById('dotPai').classList.toggle('on', !!msg.ble);
+    document.getElementById('lblPai').textContent = msg.ble ? 'Connected' : 'Disconnected';
     document.getElementById('dotCan').classList.toggle('on', !!msg.can);
     document.getElementById('lblCan').textContent = msg.can ? 'OK' : 'Error';
     document.getElementById('lblUptime').textContent = formatUptime(msg.up);
