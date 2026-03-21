@@ -470,9 +470,9 @@ input[type="range"]::-webkit-slider-thumb {
 </main>
 
 <script>
-const SVC_UUID    = 0xFFE0;
-const CHAR_DATA   = 0xFFE1;
-const CHAR_CMD    = 0xFFE2;
+const SVC_UUID    = '0000ffe0-0000-1000-8000-00805f9b34fb';
+const CHAR_DATA   = '0000ffe1-0000-1000-8000-00805f9b34fb';
+const CHAR_CMD    = '0000ffe2-0000-1000-8000-00805f9b34fb';
 
 const PID_MAP = {
   0x05: { el: 'valCoolant',   unit: '°C',  bar: 'barCoolant',  barMax: 150 },
@@ -494,10 +494,19 @@ let motorDir = 0;
 
 /* ─── BLE Connect / Disconnect ─── */
 async function toggleConnect() {
-  if (device && device.gatt.connected) {
+  if (!navigator.bluetooth) {
+    alert('Web Bluetooth is not supported in this browser.\nUse Bluefy (iOS) or Chrome (Android/Desktop).');
+    return;
+  }
+
+  if (device && device.gatt && device.gatt.connected) {
     device.gatt.disconnect();
     return;
   }
+
+  const btn = document.getElementById('btnConnect');
+  btn.textContent = 'SCANNING...';
+
   try {
     addLog('Scanning for OBD_GW...', 'tx');
     device = await navigator.bluetooth.requestDevice({
@@ -506,8 +515,11 @@ async function toggleConnect() {
     });
     device.addEventListener('gattserverdisconnected', onDisconnect);
 
-    addLog('Connecting...', 'tx');
+    btn.textContent = 'CONNECTING...';
+    addLog('Connecting to ' + device.name + '...', 'tx');
     server = await device.gatt.connect();
+
+    addLog('Discovering services...', 'tx');
     const svc = await server.getPrimaryService(SVC_UUID);
 
     charData = await svc.getCharacteristic(CHAR_DATA);
@@ -517,9 +529,13 @@ async function toggleConnect() {
     charData.addEventListener('characteristicvaluechanged', onNotify);
 
     onConnect();
-    addLog('Connected to ' + device.name, 'rx');
+    addLog('Connected! Receiving data...', 'rx');
   } catch (e) {
+    btn.textContent = 'CONNECT';
     addLog('Error: ' + e.message, 'err');
+    if (e.name !== 'NotFoundError') {
+      alert('BLE Error: ' + e.message);
+    }
   }
 }
 
