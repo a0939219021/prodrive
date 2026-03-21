@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>ProDrive OBD Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Barlow:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #0a0e17;
+  --surface: #111827;
+  --border: #1e293b;
+  --text: #e2e8f0;
+  --text-dim: #64748b;
+  --cyan: #06b6d4;
+  --cyan-glow: rgba(6, 182, 212, 0.3);
+  --amber: #f59e0b;
+  --amber-glow: rgba(245, 158, 11, 0.3);
+  --green: #10b981;
+  --green-glow: rgba(16, 185, 129, 0.3);
+  --red: #ef4444;
+  --red-glow: rgba(239, 68, 68, 0.3);
+  --purple: #a78bfa;
+}
+
+html { font-size: 14px; }
+body {
+  font-family: 'Barlow', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ─── Header ─── */
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(17,24,39,0.95), var(--bg));
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  backdrop-filter: blur(12px);
+}
+.logo {
+  font-family: 'Orbitron', sans-serif;
+  font-weight: 900;
+  font-size: 1.4rem;
+  letter-spacing: 0.15em;
+  background: linear-gradient(135deg, var(--cyan), var(--purple));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.logo span { font-weight: 400; opacity: 0.7; font-size: 0.75em; }
+
+#btnConnect {
+  font-family: 'Barlow', sans-serif;
+  font-weight: 600;
+  font-size: 0.9rem;
+  padding: 0.6rem 1.6rem;
+  border: 2px solid var(--cyan);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--cyan);
+  cursor: pointer;
+  transition: all 0.2s;
+  letter-spacing: 0.05em;
+}
+#btnConnect:hover { background: var(--cyan); color: var(--bg); }
+#btnConnect.connected { border-color: var(--green); color: var(--green); }
+#btnConnect.connected:hover { background: var(--green); color: var(--bg); }
+
+/* ─── Status bar ─── */
+.status-bar {
+  display: flex;
+  gap: 1.5rem;
+  padding: 0.5rem 1.5rem;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.status-bar .dot {
+  display: inline-block;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+  background: var(--red);
+  vertical-align: middle;
+}
+.status-bar .dot.on { background: var(--green); box-shadow: 0 0 8px var(--green-glow); }
+
+/* ─── Main grid ─── */
+main {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 1rem;
+  padding: 1rem 1.5rem 2rem;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+@media (max-width: 900px) {
+  main { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 560px) {
+  main { grid-template-columns: 1fr; padding: 0.75rem; gap: 0.75rem; }
+  header { padding: 0.75rem 1rem; }
+}
+
+/* ─── Gauge cards ─── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.25rem;
+  position: relative;
+  overflow: hidden;
+  transition: border-color 0.3s;
+}
+.card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: var(--cyan);
+  opacity: 0.5;
+}
+.card.amber::before { background: var(--amber); }
+.card.green::before { background: var(--green); }
+.card.purple::before { background: var(--purple); }
+.card.red::before { background: var(--red); }
+.card.wide { grid-column: span 2; }
+@media (max-width: 560px) { .card.wide { grid-column: span 1; } }
+
+.card-label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 0.5rem;
+}
+.card-value {
+  font-family: 'Orbitron', sans-serif;
+  font-weight: 700;
+  font-size: 2.2rem;
+  line-height: 1;
+  color: var(--cyan);
+}
+.card.amber .card-value { color: var(--amber); }
+.card.green .card-value { color: var(--green); }
+.card.purple .card-value { color: var(--purple); }
+.card.red .card-value { color: var(--red); }
+
+.card-unit {
+  font-family: 'Barlow', sans-serif;
+  font-weight: 300;
+  font-size: 0.9rem;
+  color: var(--text-dim);
+  margin-left: 0.3rem;
+}
+
+/* ─── Gauge arc ─── */
+.gauge-container { display: flex; align-items: center; gap: 1.5rem; }
+.gauge-svg { width: 110px; height: 70px; flex-shrink: 0; }
+.gauge-track { fill: none; stroke: var(--border); stroke-width: 8; }
+.gauge-fill {
+  fill: none;
+  stroke: var(--cyan);
+  stroke-width: 8;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.4s ease;
+}
+.card.amber .gauge-fill { stroke: var(--amber); }
+.card.green .gauge-fill { stroke: var(--green); }
+
+/* ─── Progress bar ─── */
+.bar-track {
+  width: 100%;
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  margin-top: 0.75rem;
+  overflow: hidden;
+}
+.bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--cyan);
+  transition: width 0.4s ease;
+  width: 0%;
+}
+.card.amber .bar-fill { background: var(--amber); }
+.card.green .bar-fill { background: var(--green); }
+.card.purple .bar-fill { background: var(--purple); }
+
+/* ─── Motor control panel ─── */
+.motor-panel {
+  grid-column: span 3;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+@media (max-width: 900px) { .motor-panel { grid-column: span 2; } }
+@media (max-width: 560px) { .motor-panel { grid-column: span 1; grid-template-columns: 1fr; } }
+
+.motor-status {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+.motor-state-badge {
+  display: inline-block;
+  padding: 0.3rem 0.8rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.motor-state-badge.stopped { background: rgba(100,116,139,0.2); color: var(--text-dim); border: 1px solid var(--text-dim); }
+.motor-state-badge.running { background: var(--green-glow); color: var(--green); border: 1px solid var(--green); }
+.motor-state-badge.fault   { background: var(--red-glow); color: var(--red); border: 1px solid var(--red); }
+
+.ctrl-btn {
+  font-family: 'Barlow', sans-serif;
+  font-weight: 600;
+  font-size: 0.95rem;
+  padding: 0.7rem 1.2rem;
+  border-radius: 8px;
+  border: 1.5px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  transition: all 0.2s;
+  width: 100%;
+}
+.ctrl-btn:active { transform: scale(0.97); }
+.ctrl-btn.start { border-color: var(--green); color: var(--green); }
+.ctrl-btn.start:hover { background: var(--green); color: var(--bg); }
+.ctrl-btn.stop { border-color: var(--red); color: var(--red); }
+.ctrl-btn.stop:hover { background: var(--red); color: #fff; }
+
+.slider-group { margin-top: 0.75rem; }
+.slider-group label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  margin-bottom: 0.3rem;
+}
+input[type="range"] {
+  -webkit-appearance: none;
+  width: 100%;
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  outline: none;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  background: var(--cyan);
+  cursor: pointer;
+  border: 2px solid var(--bg);
+}
+
+.dir-toggle {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+.dir-btn {
+  flex: 1;
+  padding: 0.5rem;
+  border: 1.5px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text-dim);
+  font-family: 'Barlow', sans-serif;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: center;
+}
+.dir-btn.active { border-color: var(--cyan); color: var(--cyan); background: rgba(6,182,212,0.1); }
+
+/* ─── Log ─── */
+.log-card {
+  grid-column: span 3;
+}
+@media (max-width: 900px) { .log-card { grid-column: span 2; } }
+@media (max-width: 560px) { .log-card { grid-column: span 1; } }
+
+#log {
+  font-family: 'Courier New', monospace;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  max-height: 150px;
+  overflow-y: auto;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+#log .ts { color: var(--text-dim); opacity: 0.5; }
+#log .rx { color: var(--green); }
+#log .tx { color: var(--amber); }
+#log .err { color: var(--red); }
+
+/* ─── Animations ─── */
+@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.card { animation: fadeIn 0.4s ease both; }
+.card:nth-child(2) { animation-delay: 0.05s; }
+.card:nth-child(3) { animation-delay: 0.1s; }
+.card:nth-child(4) { animation-delay: 0.15s; }
+.card:nth-child(5) { animation-delay: 0.2s; }
+.card:nth-child(6) { animation-delay: 0.25s; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">PRODRIVE <span>OBD</span></div>
+  <button id="btnConnect" onclick="toggleConnect()">CONNECT</button>
+</header>
+
+<div class="status-bar">
+  <span><span class="dot" id="dotBle"></span>BLE <span id="lblBle">Disconnected</span></span>
+  <span><span class="dot" id="dotCan"></span>CAN <span id="lblCan">—</span></span>
+  <span>Uptime <span id="lblUptime">—</span></span>
+  <span>Cycle <span id="lblCycle">—</span></span>
+</div>
+
+<main>
+
+  <!-- RPM gauge -->
+  <div class="card" id="cardRpm">
+    <div class="card-label">Engine RPM</div>
+    <div class="gauge-container">
+      <svg class="gauge-svg" viewBox="0 0 110 70">
+        <path class="gauge-track" d="M10,65 A50,50 0 0,1 100,65"/>
+        <path class="gauge-fill" id="gaugeRpm" d="M10,65 A50,50 0 0,1 100,65"
+              stroke-dasharray="157" stroke-dashoffset="157"/>
+      </svg>
+      <div>
+        <span class="card-value" id="valRpm">0</span>
+        <span class="card-unit">rpm</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Speed gauge -->
+  <div class="card" id="cardSpeed">
+    <div class="card-label">Vehicle Speed</div>
+    <div class="gauge-container">
+      <svg class="gauge-svg" viewBox="0 0 110 70">
+        <path class="gauge-track" d="M10,65 A50,50 0 0,1 100,65"/>
+        <path class="gauge-fill" id="gaugeSpeed" d="M10,65 A50,50 0 0,1 100,65"
+              stroke-dasharray="157" stroke-dashoffset="157"/>
+      </svg>
+      <div>
+        <span class="card-value" id="valSpeed">0</span>
+        <span class="card-unit">km/h</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Throttle -->
+  <div class="card green" id="cardThrottle">
+    <div class="card-label">Throttle</div>
+    <span class="card-value" id="valThrottle">0</span><span class="card-unit">%</span>
+    <div class="bar-track"><div class="bar-fill" id="barThrottle"></div></div>
+  </div>
+
+  <!-- Coolant temp -->
+  <div class="card amber" id="cardCoolant">
+    <div class="card-label">Coolant Temp</div>
+    <span class="card-value" id="valCoolant">—</span><span class="card-unit">°C</span>
+    <div class="bar-track"><div class="bar-fill" id="barCoolant"></div></div>
+  </div>
+
+  <!-- Intake pressure -->
+  <div class="card purple" id="cardIntake">
+    <div class="card-label">Intake Pressure</div>
+    <span class="card-value" id="valIntake">—</span><span class="card-unit">kPa</span>
+  </div>
+
+  <!-- MAF -->
+  <div class="card" id="cardMaf">
+    <div class="card-label">MAF Flow</div>
+    <span class="card-value" id="valMaf">—</span><span class="card-unit">g/s</span>
+  </div>
+
+  <!-- Secondary data row -->
+  <div class="card" id="cardIntakeTemp">
+    <div class="card-label">Intake Temp</div>
+    <span class="card-value" id="valIntakeTemp">—</span><span class="card-unit">°C</span>
+  </div>
+
+  <div class="card" id="cardAmbient">
+    <div class="card-label">Ambient Temp</div>
+    <span class="card-value" id="valAmbient">—</span><span class="card-unit">°C</span>
+  </div>
+
+  <div class="card" id="cardBaro">
+    <div class="card-label">Baro Pressure</div>
+    <span class="card-value" id="valBaro">—</span><span class="card-unit">kPa</span>
+  </div>
+
+  <div class="card green" id="cardFuel">
+    <div class="card-label">Fuel Level</div>
+    <span class="card-value" id="valFuel">—</span><span class="card-unit">%</span>
+    <div class="bar-track"><div class="bar-fill" id="barFuel"></div></div>
+  </div>
+
+  <div class="card" id="cardTiming">
+    <div class="card-label">Timing Advance</div>
+    <span class="card-value" id="valTiming">—</span><span class="card-unit">°</span>
+  </div>
+
+  <div class="card purple" id="cardRuntime">
+    <div class="card-label">Engine Runtime</div>
+    <span class="card-value" id="valRuntime">—</span><span class="card-unit">sec</span>
+  </div>
+
+  <!-- Motor control -->
+  <div class="motor-panel">
+    <div class="card green">
+      <div class="card-label">Motor Control</div>
+      <div class="motor-status">
+        <span class="motor-state-badge stopped" id="motorBadge">STOPPED</span>
+        <span style="color:var(--text-dim); font-size:0.85rem;">
+          Speed: <strong id="motorSpeedVal">0</strong>%
+          &nbsp;|&nbsp; Fault: <span id="motorFaultVal">None</span>
+        </span>
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem;">
+        <button class="ctrl-btn start" onclick="sendMotor(0x01)">START</button>
+        <button class="ctrl-btn stop" onclick="sendMotor(0x02)">STOP</button>
+      </div>
+      <div class="slider-group">
+        <label>Speed <span id="lblSliderSpeed">50</span>%</label>
+        <input type="range" id="sliderSpeed" min="0" max="100" value="50"
+               oninput="document.getElementById('lblSliderSpeed').textContent=this.value">
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem; margin-top:0.75rem;">
+        <button class="ctrl-btn" onclick="sendMotor(0x03)">SET SPEED</button>
+        <button class="ctrl-btn" onclick="sendMotor(0x04)">SET DIR</button>
+      </div>
+      <div class="dir-toggle">
+        <div class="dir-btn active" id="dirFwd" onclick="setDir(0)">FWD</div>
+        <div class="dir-btn" id="dirRev" onclick="setDir(1)">REV</div>
+      </div>
+    </div>
+
+    <div class="card log-card" style="grid-column:span 1;">
+      <div class="card-label">Event Log</div>
+      <div id="log"></div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+const SVC_UUID    = 0xFFE0;
+const CHAR_DATA   = 0xFFE1;
+const CHAR_CMD    = 0xFFE2;
+
+const PID_MAP = {
+  0x05: { el: 'valCoolant',   unit: '°C',  bar: 'barCoolant',  barMax: 150 },
+  0x0B: { el: 'valIntake',    unit: 'kPa' },
+  0x0C: { el: 'valRpm',       unit: 'rpm', gauge: 'gaugeRpm', gaugeMax: 8000 },
+  0x0D: { el: 'valSpeed',     unit: 'km/h', gauge: 'gaugeSpeed', gaugeMax: 240 },
+  0x0E: { el: 'valTiming',    unit: '°' },
+  0x0F: { el: 'valIntakeTemp', unit: '°C' },
+  0x10: { el: 'valMaf',       unit: 'g/s' },
+  0x11: { el: 'valThrottle',  unit: '%',   bar: 'barThrottle', barMax: 100 },
+  0x1F: { el: 'valRuntime',   unit: 'sec' },
+  0x2F: { el: 'valFuel',      unit: '%',   bar: 'barFuel', barMax: 100 },
+  0x33: { el: 'valBaro',      unit: 'kPa' },
+  0x46: { el: 'valAmbient',   unit: '°C' },
+};
+
+let device = null, server = null, charData = null, charCmd = null;
+let motorDir = 0;
+
+/* ─── BLE Connect / Disconnect ─── */
+async function toggleConnect() {
+  if (device && device.gatt.connected) {
+    device.gatt.disconnect();
+    return;
+  }
+  try {
+    addLog('Scanning for OBD_GW...', 'tx');
+    device = await navigator.bluetooth.requestDevice({
+      filters: [{ name: 'OBD_GW' }],
+      optionalServices: [SVC_UUID]
+    });
+    device.addEventListener('gattserverdisconnected', onDisconnect);
+
+    addLog('Connecting...', 'tx');
+    server = await device.gatt.connect();
+    const svc = await server.getPrimaryService(SVC_UUID);
+
+    charData = await svc.getCharacteristic(CHAR_DATA);
+    charCmd  = await svc.getCharacteristic(CHAR_CMD);
+
+    await charData.startNotifications();
+    charData.addEventListener('characteristicvaluechanged', onNotify);
+
+    onConnect();
+    addLog('Connected to ' + device.name, 'rx');
+  } catch (e) {
+    addLog('Error: ' + e.message, 'err');
+  }
+}
+
+function onConnect() {
+  document.getElementById('btnConnect').textContent = 'DISCONNECT';
+  document.getElementById('btnConnect').classList.add('connected');
+  document.getElementById('dotBle').classList.add('on');
+  document.getElementById('lblBle').textContent = 'Connected';
+}
+
+function onDisconnect() {
+  document.getElementById('btnConnect').textContent = 'CONNECT';
+  document.getElementById('btnConnect').classList.remove('connected');
+  document.getElementById('dotBle').classList.remove('on');
+  document.getElementById('lblBle').textContent = 'Disconnected';
+  document.getElementById('dotCan').classList.remove('on');
+  charData = null; charCmd = null;
+  addLog('Disconnected', 'err');
+}
+
+/* ─── BLE Notify handler ─── */
+function onNotify(event) {
+  const raw = new TextDecoder().decode(event.target.value);
+  let msg;
+  try { msg = JSON.parse(raw); } catch { return; }
+
+  if (msg.t === 'obd') {
+    const pid = msg.p;
+    const val = msg.v;
+    const info = PID_MAP[pid];
+    if (!info) return;
+
+    const el = document.getElementById(info.el);
+    if (el) el.textContent = val;
+
+    if (info.bar) {
+      const pct = Math.min(100, Math.max(0, (val / info.barMax) * 100));
+      document.getElementById(info.bar).style.width = pct + '%';
+    }
+    if (info.gauge) {
+      const pct = Math.min(1, Math.max(0, val / info.gaugeMax));
+      const offset = 157 * (1 - pct);
+      document.getElementById(info.gauge).style.strokeDashoffset = offset;
+    }
+  }
+
+  else if (msg.t === 'mtr') {
+    const badge = document.getElementById('motorBadge');
+    const states = { 0: ['STOPPED','stopped'], 1: ['RUNNING','running'], 255: ['FAULT','fault'] };
+    const [text, cls] = states[msg.s] || ['UNKNOWN','stopped'];
+    badge.textContent = text;
+    badge.className = 'motor-state-badge ' + cls;
+    document.getElementById('motorSpeedVal').textContent = msg.sp;
+    document.getElementById('motorFaultVal').textContent = msg.f ? ('0x'+msg.f.toString(16).toUpperCase()) : 'None';
+  }
+
+  else if (msg.t === 'hb') {
+    document.getElementById('dotCan').classList.toggle('on', !!msg.can);
+    document.getElementById('lblCan').textContent = msg.can ? 'OK' : 'Error';
+    document.getElementById('lblUptime').textContent = formatUptime(msg.up);
+    document.getElementById('lblCycle').textContent = '#' + msg.cyc;
+  }
+}
+
+/* ─── Motor commands ─── */
+async function sendMotor(cmd) {
+  if (!charCmd) { addLog('Not connected', 'err'); return; }
+  const speed = parseInt(document.getElementById('sliderSpeed').value);
+  const buf = new Uint8Array([cmd, speed, motorDir, 0x00]);
+  try {
+    await charCmd.writeValue(buf);
+    const names = { 1:'START', 2:'STOP', 3:'SET_SPEED', 4:'SET_DIR' };
+    addLog('TX Motor: ' + (names[cmd]||'?') + ' spd=' + speed + ' dir=' + motorDir, 'tx');
+  } catch (e) {
+    addLog('Write error: ' + e.message, 'err');
+  }
+}
+
+function setDir(d) {
+  motorDir = d;
+  document.getElementById('dirFwd').classList.toggle('active', d === 0);
+  document.getElementById('dirRev').classList.toggle('active', d === 1);
+}
+
+/* ─── Log ─── */
+function addLog(text, cls) {
+  const log = document.getElementById('log');
+  const ts = new Date().toLocaleTimeString('en-GB');
+  log.innerHTML += '<span class="ts">[' + ts + ']</span> <span class="' + (cls||'') + '">' + text + '</span>\n';
+  log.scrollTop = log.scrollHeight;
+  const lines = log.children;
+  while (lines.length > 200) lines[0].remove();
+}
+
+function formatUptime(sec) {
+  if (sec == null) return '—';
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  return (h ? h + 'h ' : '') + (m ? m + 'm ' : '') + s + 's';
+}
+</script>
+</body>
+</html>
