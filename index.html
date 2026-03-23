@@ -333,7 +333,9 @@ input[type="range"]::-webkit-slider-thumb {
 </header>
 
 <div class="status-bar">
-  <span><span class="dot" id="dotBle"></span>BLE <span id="lblBle">Disconnected</span></span>
+  <span><span class="dot" id="dotOba"></span>OBA <span id="lblOba">—</span></span>
+  <span><span class="dot" id="dotObm"></span>OBM <span id="lblObm">—</span></span>
+  <span><span class="dot" id="dotPai"></span>PAI <span id="lblPai">—</span></span>
   <span><span class="dot" id="dotCan"></span>CAN <span id="lblCan">—</span></span>
   <span>Uptime <span id="lblUptime">—</span></span>
   <span>Cycle <span id="lblCycle">—</span></span>
@@ -546,19 +548,24 @@ async function toggleConnect() {
   }
 }
 
+function setLinkDot(dotId, lblId, ok, okText, badText) {
+  document.getElementById(dotId).classList.toggle('on', !!ok);
+  document.getElementById(lblId).textContent = ok ? (okText || 'OK') : (badText || '—');
+}
+
 function onConnect() {
   document.getElementById('btnConnect').textContent = 'DISCONNECT';
   document.getElementById('btnConnect').classList.add('connected');
-  document.getElementById('dotBle').classList.add('on');
-  document.getElementById('lblBle').textContent = 'Connected';
+  setLinkDot('dotOba', 'lblOba', true, 'OK', '—');
 }
 
 function onDisconnect() {
   document.getElementById('btnConnect').textContent = 'CONNECT';
   document.getElementById('btnConnect').classList.remove('connected');
-  document.getElementById('dotBle').classList.remove('on');
-  document.getElementById('lblBle').textContent = 'Disconnected';
-  document.getElementById('dotCan').classList.remove('on');
+  setLinkDot('dotOba', 'lblOba', false, 'OK', '—');
+  setLinkDot('dotObm', 'lblObm', false, 'OK', '—');
+  setLinkDot('dotPai', 'lblPai', false, 'OK', '—');
+  setLinkDot('dotCan', 'lblCan', false, 'OK', '—');
   charData = null; charCmd = null;
   addLog('Disconnected', 'err');
 }
@@ -597,8 +604,18 @@ function onNotify(event) {
     badge.className = 'motor-state-badge ' + cls;
     document.getElementById('motorSpeedVal').textContent = msg.sp;
     document.getElementById('motorFaultVal').textContent = msg.f ? ('0x'+Number(msg.f).toString(16).toUpperCase()) : 'None';
-    const hx = (n) => (n !== undefined && n !== null) ? ('0x' + (Number(n) >>> 0).toString(16).toUpperCase().padStart(8,'0')) : '—';
     document.getElementById('motorI2cAddr').textContent = (msg.a !== undefined) ? ('0x' + Number(msg.a).toString(16).toUpperCase().padStart(2,'0')) : '—';
+    if (msg.ss2 !== undefined || msg.fgd !== undefined) {
+      const hx = (n) => (n !== undefined && n !== null) ? ('0x' + (Number(n) >>> 0).toString(16).toUpperCase().padStart(8,'0')) : '—';
+      document.getElementById('mtrSs2').textContent = hx(msg.ss2);
+      document.getElementById('mtrFgd').textContent = hx(msg.fgd);
+      document.getElementById('mtrFctrl').textContent = hx(msg.fc);
+      document.getElementById('mtrS3').textContent = hx(msg.s3);
+    }
+  }
+
+  else if (msg.t === 'mtrx') {
+    const hx = (n) => (n !== undefined && n !== null) ? ('0x' + (Number(n) >>> 0).toString(16).toUpperCase().padStart(8,'0')) : '—';
     document.getElementById('mtrSs2').textContent = hx(msg.ss2);
     document.getElementById('mtrFgd').textContent = hx(msg.fgd);
     document.getElementById('mtrFctrl').textContent = hx(msg.fc);
@@ -606,8 +623,13 @@ function onNotify(event) {
   }
 
   else if (msg.t === 'hb') {
-    document.getElementById('dotCan').classList.toggle('on', !!msg.can);
-    document.getElementById('lblCan').textContent = msg.can ? 'OK' : 'Error';
+    var pai = (msg.pai !== undefined) ? msg.pai : msg.ble;
+    var oba = (msg.oba !== undefined) ? msg.oba : document.getElementById('btnConnect').classList.contains('connected');
+    var obm = (msg.obm !== undefined) ? msg.obm : 1;
+    setLinkDot('dotOba', 'lblOba', !!oba, 'OK', '—');
+    setLinkDot('dotObm', 'lblObm', !!obm, 'OK', '—');
+    setLinkDot('dotPai', 'lblPai', !!pai, 'OK', '—');
+    setLinkDot('dotCan', 'lblCan', !!msg.can, 'OK', 'Err');
     document.getElementById('lblUptime').textContent = formatUptime(msg.up);
     document.getElementById('lblCycle').textContent = '#' + msg.cyc;
   }
