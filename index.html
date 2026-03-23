@@ -328,13 +328,12 @@ input[type="range"]::-webkit-slider-thumb {
 <body>
 
 <header>
-  <div class="logo">ForJeeper <span>OBD</span></div>
+  <div class="logo">FORJEEPER <span>OBD</span></div>
   <button id="btnConnect" onclick="toggleConnect()">CONNECT</button>
 </header>
 
 <div class="status-bar">
-  <span><span class="dot" id="dotBle"></span>OBA <span id="lblBle">Disconnected</span></span>
-  <span><span class="dot" id="dotPai"></span>PAI <span id="lblPai">—</span></span>
+  <span><span class="dot" id="dotBle"></span>BLE <span id="lblBle">Disconnected</span></span>
   <span><span class="dot" id="dotCan"></span>CAN <span id="lblCan">—</span></span>
   <span>Uptime <span id="lblUptime">—</span></span>
   <span>Cycle <span id="lblCycle">—</span></span>
@@ -441,7 +440,13 @@ input[type="range"]::-webkit-slider-thumb {
         <span style="color:var(--text-dim); font-size:0.85rem;">
           Speed: <strong id="motorSpeedVal">0</strong>%
           &nbsp;|&nbsp; Fault: <span id="motorFaultVal">None</span>
+          &nbsp;|&nbsp; I2C: <span id="motorI2cAddr">—</span>
         </span>
+      </div>
+      <div class="mct-regs" style="margin-top:0.5rem; font-size:0.72rem; font-family:ui-monospace,monospace; color:var(--text-dim); line-height:1.35;">
+        <div>SYS_STATUS2 <span id="mtrSs2">—</span></div>
+        <div>FAULT_GD <span id="mtrFgd">—</span> &nbsp; FAULT_CTRL <span id="mtrFctrl">—</span></div>
+        <div>SYS_STATUS3 <span id="mtrS3">—</span></div>
       </div>
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem;">
         <button class="ctrl-btn start" onclick="sendMotor(0x01)">START</button>
@@ -471,9 +476,9 @@ input[type="range"]::-webkit-slider-thumb {
 </main>
 
 <script>
-const SVC_UUID    = '0000ffe0-0000-1000-8000-00805f9b34fb';
-const CHAR_DATA   = '0000ffe1-0000-1000-8000-00805f9b34fb';
-const CHAR_CMD    = '0000ffe2-0000-1000-8000-00805f9b34fb';
+const SVC_UUID    = 0xFFE0;
+const CHAR_DATA   = 0xFFE1;
+const CHAR_CMD    = 0xFFE2;
 
 const PID_MAP = {
   0x05: { el: 'valCoolant',   unit: '°C',  bar: 'barCoolant',  barMax: 150 },
@@ -495,19 +500,10 @@ let motorDir = 0;
 
 /* ─── BLE Connect / Disconnect ─── */
 async function toggleConnect() {
-  if (!navigator.bluetooth) {
-    alert('Web Bluetooth is not supported in this browser.\nUse Bluefy (iOS) or Chrome (Android/Desktop).');
-    return;
-  }
-
-  if (device && device.gatt && device.gatt.connected) {
+  if (device && device.gatt.connected) {
     device.gatt.disconnect();
     return;
   }
-
-  const btn = document.getElementById('btnConnect');
-  btn.textContent = 'SCANNING...';
-
   try {
     addLog('Scanning for OBD_GW...', 'tx');
     device = await navigator.bluetooth.requestDevice({
@@ -516,11 +512,8 @@ async function toggleConnect() {
     });
     device.addEventListener('gattserverdisconnected', onDisconnect);
 
-    btn.textContent = 'CONNECTING...';
-    addLog('Connecting to ' + device.name + '...', 'tx');
+    addLog('Connecting...', 'tx');
     server = await device.gatt.connect();
-
-    addLog('Discovering services...', 'tx');
     const svc = await server.getPrimaryService(SVC_UUID);
 
     charData = await svc.getCharacteristic(CHAR_DATA);
@@ -530,13 +523,9 @@ async function toggleConnect() {
     charData.addEventListener('characteristicvaluechanged', onNotify);
 
     onConnect();
-    addLog('Connected! Receiving data...', 'rx');
+    addLog('Connected to ' + device.name, 'rx');
   } catch (e) {
-    btn.textContent = 'CONNECT';
     addLog('Error: ' + e.message, 'err');
-    if (e.name !== 'NotFoundError') {
-      alert('BLE Error: ' + e.message);
-    }
   }
 }
 
@@ -590,12 +579,16 @@ function onNotify(event) {
     badge.textContent = text;
     badge.className = 'motor-state-badge ' + cls;
     document.getElementById('motorSpeedVal').textContent = msg.sp;
-    document.getElementById('motorFaultVal').textContent = msg.f ? ('0x'+msg.f.toString(16).toUpperCase()) : 'None';
+    document.getElementById('motorFaultVal').textContent = msg.f ? ('0x'+Number(msg.f).toString(16).toUpperCase()) : 'None';
+    const hx = (n) => (n !== undefined && n !== null) ? ('0x' + (Number(n) >>> 0).toString(16).toUpperCase().padStart(8,'0')) : '—';
+    document.getElementById('motorI2cAddr').textContent = (msg.a !== undefined) ? ('0x' + Number(msg.a).toString(16).toUpperCase().padStart(2,'0')) : '—';
+    document.getElementById('mtrSs2').textContent = hx(msg.ss2);
+    document.getElementById('mtrFgd').textContent = hx(msg.fgd);
+    document.getElementById('mtrFctrl').textContent = hx(msg.fc);
+    document.getElementById('mtrS3').textContent = hx(msg.s3);
   }
 
   else if (msg.t === 'hb') {
-    document.getElementById('dotPai').classList.toggle('on', !!msg.ble);
-    document.getElementById('lblPai').textContent = msg.ble ? 'Connected' : 'Disconnected';
     document.getElementById('dotCan').classList.toggle('on', !!msg.can);
     document.getElementById('lblCan').textContent = msg.can ? 'OK' : 'Error';
     document.getElementById('lblUptime').textContent = formatUptime(msg.up);
