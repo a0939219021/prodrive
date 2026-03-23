@@ -329,7 +329,7 @@ input[type="range"]::-webkit-slider-thumb {
 
 <header>
   <div class="logo">FORJEEPER <span>OBD</span></div>
-  <button id="btnConnect" onclick="toggleConnect()">CONNECT</button>
+  <button type="button" id="btnConnect" onclick="toggleConnect()">CONNECT</button>
 </header>
 
 <div class="status-bar">
@@ -476,9 +476,9 @@ input[type="range"]::-webkit-slider-thumb {
 </main>
 
 <script>
-const SVC_UUID    = 0xFFE0;
-const CHAR_DATA   = 0xFFE1;
-const CHAR_CMD    = 0xFFE2;
+const SVC_UUID    = '0000ffe0-0000-1000-8000-00805f9b34fb';
+const CHAR_DATA   = '0000ffe1-0000-1000-8000-00805f9b34fb';
+const CHAR_CMD    = '0000ffe2-0000-1000-8000-00805f9b34fb';
 
 const PID_MAP = {
   0x05: { el: 'valCoolant',   unit: '°C',  bar: 'barCoolant',  barMax: 150 },
@@ -500,10 +500,20 @@ let motorDir = 0;
 
 /* ─── BLE Connect / Disconnect ─── */
 async function toggleConnect() {
-  if (device && device.gatt.connected) {
+  if (!navigator.bluetooth) {
+    alert('此瀏覽器不支援 Web Bluetooth。\n請使用 Chrome 或 Edge（電腦／Android）；iPhone 請用 Bluefy 等 App。');
+    addLog('Web Bluetooth not available', 'err');
+    return;
+  }
+
+  if (device && device.gatt && device.gatt.connected) {
     device.gatt.disconnect();
     return;
   }
+
+  const btn = document.getElementById('btnConnect');
+  btn.textContent = 'SCANNING...';
+
   try {
     addLog('Scanning for OBD_GW...', 'tx');
     device = await navigator.bluetooth.requestDevice({
@@ -512,8 +522,11 @@ async function toggleConnect() {
     });
     device.addEventListener('gattserverdisconnected', onDisconnect);
 
-    addLog('Connecting...', 'tx');
+    btn.textContent = 'CONNECTING...';
+    addLog('Connecting to ' + (device.name || '(no name)') + '...', 'tx');
     server = await device.gatt.connect();
+
+    addLog('Discovering services...', 'tx');
     const svc = await server.getPrimaryService(SVC_UUID);
 
     charData = await svc.getCharacteristic(CHAR_DATA);
@@ -523,9 +536,13 @@ async function toggleConnect() {
     charData.addEventListener('characteristicvaluechanged', onNotify);
 
     onConnect();
-    addLog('Connected to ' + device.name, 'rx');
+    addLog('Connected! Receiving data...', 'rx');
   } catch (e) {
-    addLog('Error: ' + e.message, 'err');
+    btn.textContent = 'CONNECT';
+    addLog('Error: ' + (e && e.message ? e.message : String(e)), 'err');
+    if (e && e.name !== 'NotFoundError') {
+      alert('BLE: ' + (e.message || String(e)));
+    }
   }
 }
 
@@ -550,7 +567,7 @@ function onDisconnect() {
 function onNotify(event) {
   const raw = new TextDecoder().decode(event.target.value);
   let msg;
-  try { msg = JSON.parse(raw); } catch { return; }
+  try { msg = JSON.parse(raw); } catch (_x) { return; }
 
   if (msg.t === 'obd') {
     const pid = msg.p;
