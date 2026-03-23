@@ -6,7 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>ForJeeper OBD Dashboard</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Barlow:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Orbitron:wght@400;700;900&family=Barlow:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -250,6 +250,103 @@ main {
   background: rgba(245, 158, 11, 0.08);
   line-height: 1.35;
 }
+
+/* ─── MCT8329A register console (engineering layout) ─── */
+.mct-reg-panel {
+  margin: 0.75rem 0 1rem;
+  border-radius: 10px;
+  border: 1px solid rgba(6, 182, 212, 0.22);
+  background: linear-gradient(165deg, rgba(15, 23, 42, 0.95) 0%, rgba(17, 24, 39, 0.88) 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 4px 20px rgba(0,0,0,0.35);
+  overflow: hidden;
+}
+.mct-reg-panel::before {
+  content: '';
+  display: block;
+  height: 3px;
+  background: linear-gradient(90deg, var(--cyan), var(--purple));
+  opacity: 0.85;
+}
+.mct-reg-panel-hd {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.35rem 1rem;
+  padding: 0.55rem 0.75rem 0.35rem;
+  border-bottom: 1px solid rgba(30, 41, 59, 0.9);
+}
+.mct-reg-title {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: var(--cyan);
+}
+.mct-reg-sub {
+  font-size: 0.65rem;
+  color: var(--text-dim);
+  letter-spacing: 0.06em;
+  font-family: 'JetBrains Mono', monospace;
+}
+.mct-reg-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.mct-reg-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.72rem;
+}
+.mct-reg-table thead th {
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-dim);
+  padding: 0.4rem 0.65rem;
+  background: rgba(0,0,0,0.25);
+  border-bottom: 1px solid var(--border);
+}
+.mct-reg-table tbody tr:nth-child(odd)  { background: rgba(255,255,255,0.02); }
+.mct-reg-table tbody tr:nth-child(even) { background: rgba(6, 182, 212, 0.04); }
+.mct-reg-table tbody tr:hover {
+  background: rgba(6, 182, 212, 0.09);
+}
+.mct-reg-table td {
+  padding: 0.38rem 0.65rem;
+  vertical-align: middle;
+  border-bottom: 1px solid rgba(30, 41, 59, 0.65);
+}
+.mct-reg-table td:first-child {
+  font-weight: 500;
+  color: var(--text-dim);
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+.mct-addr {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.68rem;
+  color: var(--purple);
+  opacity: 0.9;
+  white-space: nowrap;
+}
+.mct-val {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.74rem;
+  font-weight: 500;
+  color: var(--cyan);
+  letter-spacing: 0.03em;
+  text-align: right;
+  text-shadow: 0 0 24px rgba(6, 182, 212, 0.15);
+}
+.mct-val.mct-val-zero {
+  color: var(--text-dim);
+  font-weight: 400;
+}
+
 .motor-state-badge {
   display: inline-block;
   padding: 0.3rem 0.8rem;
@@ -484,13 +581,64 @@ input[type="range"]::-webkit-slider-thumb {
           &nbsp;|&nbsp; I2C: <span id="motorI2cAddr">—</span>
         </span>
       </div>
-      <div class="mct-regs" style="margin-top:0.5rem; font-size:0.72rem; font-family:ui-monospace,monospace; color:var(--text-dim); line-height:1.35;">
-        <div>SYS_STATUS1 <span id="mtrSs1">—</span></div>
-        <div>SYS_STATUS2 <span id="mtrSs2">—</span></div>
-        <div>FAULT_GD <span id="mtrFgd">—</span> &nbsp; FAULT_CTRL <span id="mtrFctrl">—</span></div>
-        <div>SYS_STATUS3 <span id="mtrS3">—</span></div>
-        <div>INPUT_DUTY <span id="mtrInd">—</span> &nbsp; CURRENT_DUTY <span id="mtrCud">—</span></div>
-        <div>SET_DUTY <span id="mtrSed">—</span></div>
+      <div class="mct-reg-panel" aria-label="MCT8329A live registers">
+        <div class="mct-reg-panel-hd">
+          <span class="mct-reg-title">MCT8329A · LIVE</span>
+          <span class="mct-reg-sub">RAM · uint32 LE · I²C 7-bit</span>
+        </div>
+        <div class="mct-reg-scroll">
+          <table class="mct-reg-table">
+            <thead>
+              <tr>
+                <th>Register</th>
+                <th>Addr</th>
+                <th>Value</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>SYS_STATUS1</td>
+                <td class="mct-addr">0x0E4</td>
+                <td class="mct-val" id="mtrSs1">—</td>
+              </tr>
+              <tr>
+                <td>SYS_STATUS2</td>
+                <td class="mct-addr">0x0EA</td>
+                <td class="mct-val" id="mtrSs2">—</td>
+              </tr>
+              <tr>
+                <td>GATE_DRIVER_FAULT</td>
+                <td class="mct-addr">0x0E0</td>
+                <td class="mct-val" id="mtrFgd">—</td>
+              </tr>
+              <tr>
+                <td>CONTROLLER_FAULT</td>
+                <td class="mct-addr">0x0E2</td>
+                <td class="mct-val" id="mtrFctrl">—</td>
+              </tr>
+              <tr>
+                <td>SYS_STATUS3</td>
+                <td class="mct-addr">0x0EC</td>
+                <td class="mct-val" id="mtrS3">—</td>
+              </tr>
+              <tr>
+                <td>INPUT_DUTY</td>
+                <td class="mct-addr">0x40C</td>
+                <td class="mct-val" id="mtrInd">—</td>
+              </tr>
+              <tr>
+                <td>CURRENT_DUTY</td>
+                <td class="mct-addr">0x512</td>
+                <td class="mct-val" id="mtrCud">—</td>
+              </tr>
+              <tr>
+                <td>SET_DUTY</td>
+                <td class="mct-addr">0x522</td>
+                <td class="mct-val" id="mtrSed">—</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem;">
         <button class="ctrl-btn start" onclick="sendMotor(0x01)">START</button>
@@ -541,6 +689,16 @@ const PID_MAP = {
 
 let device = null, server = null, charData = null, charCmd = null;
 let motorDir = 0;
+
+function hex32(n) {
+  return (n !== undefined && n !== null) ? ('0x' + (Number(n) >>> 0).toString(16).toUpperCase().padStart(8, '0')) : '—';
+}
+function setRegHex(elId, s) {
+  var el = document.getElementById(elId);
+  if (!el) return;
+  el.textContent = s;
+  el.classList.toggle('mct-val-zero', s === '—' || s === '0x00000000');
+}
 
 /* ─── BLE Connect / Disconnect ─── */
 async function toggleConnect() {
@@ -657,29 +815,26 @@ function onNotify(event) {
     document.getElementById('motorFaultVal').textContent = msg.f ? ('0x'+Number(msg.f).toString(16).toUpperCase()) : 'None';
     document.getElementById('motorI2cAddr').textContent = (msg.a !== undefined) ? ('0x' + Number(msg.a).toString(16).toUpperCase().padStart(2,'0')) : '—';
     if (msg.ss2 !== undefined || msg.fgd !== undefined) {
-      const hx = (n) => (n !== undefined && n !== null) ? ('0x' + (Number(n) >>> 0).toString(16).toUpperCase().padStart(8,'0')) : '—';
-      if (msg.ss1 !== undefined) document.getElementById('mtrSs1').textContent = hx(msg.ss1);
-      document.getElementById('mtrSs2').textContent = hx(msg.ss2);
-      document.getElementById('mtrFgd').textContent = hx(msg.fgd);
-      document.getElementById('mtrFctrl').textContent = hx(msg.fc);
-      document.getElementById('mtrS3').textContent = hx(msg.s3);
+      if (msg.ss1 !== undefined) setRegHex('mtrSs1', hex32(msg.ss1));
+      setRegHex('mtrSs2', hex32(msg.ss2));
+      setRegHex('mtrFgd', hex32(msg.fgd));
+      setRegHex('mtrFctrl', hex32(msg.fc));
+      setRegHex('mtrS3', hex32(msg.s3));
     }
   }
 
   else if (msg.t === 'mtrx') {
-    const hx = (n) => (n !== undefined && n !== null) ? ('0x' + (Number(n) >>> 0).toString(16).toUpperCase().padStart(8,'0')) : '—';
-    if (msg.ss1 !== undefined) document.getElementById('mtrSs1').textContent = hx(msg.ss1);
-    document.getElementById('mtrSs2').textContent = hx(msg.ss2);
-    document.getElementById('mtrFgd').textContent = hx(msg.fgd);
-    document.getElementById('mtrFctrl').textContent = hx(msg.fc);
-    document.getElementById('mtrS3').textContent = hx(msg.s3);
+    if (msg.ss1 !== undefined) setRegHex('mtrSs1', hex32(msg.ss1));
+    setRegHex('mtrSs2', hex32(msg.ss2));
+    setRegHex('mtrFgd', hex32(msg.fgd));
+    setRegHex('mtrFctrl', hex32(msg.fc));
+    setRegHex('mtrS3', hex32(msg.s3));
   }
 
   else if (msg.t === 'mtrd') {
-    const hx = (n) => (n !== undefined && n !== null) ? ('0x' + (Number(n) >>> 0).toString(16).toUpperCase().padStart(8,'0')) : '—';
-    document.getElementById('mtrInd').textContent = hx(msg.ind);
-    document.getElementById('mtrCud').textContent = hx(msg.cud);
-    document.getElementById('mtrSed').textContent = hx(msg.sed);
+    setRegHex('mtrInd', hex32(msg.ind));
+    setRegHex('mtrCud', hex32(msg.cud));
+    setRegHex('mtrSed', hex32(msg.sed));
   }
 
   else if (msg.t === 'hb') {
