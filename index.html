@@ -484,9 +484,12 @@ input[type="range"]::-webkit-slider-thumb {
         </span>
       </div>
       <div class="mct-regs" style="margin-top:0.5rem; font-size:0.72rem; font-family:ui-monospace,monospace; color:var(--text-dim); line-height:1.35;">
+        <div>SYS_STATUS1 <span id="mtrSs1">—</span></div>
         <div>SYS_STATUS2 <span id="mtrSs2">—</span></div>
         <div>FAULT_GD <span id="mtrFgd">—</span> &nbsp; FAULT_CTRL <span id="mtrFctrl">—</span></div>
         <div>SYS_STATUS3 <span id="mtrS3">—</span></div>
+        <div>INPUT_DUTY <span id="mtrInd">—</span> &nbsp; CURRENT_DUTY <span id="mtrCud">—</span></div>
+        <div>SET_DUTY <span id="mtrSed">—</span></div>
       </div>
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem;">
         <button class="ctrl-btn start" onclick="sendMotor(0x01)">START</button>
@@ -654,6 +657,7 @@ function onNotify(event) {
     document.getElementById('motorI2cAddr').textContent = (msg.a !== undefined) ? ('0x' + Number(msg.a).toString(16).toUpperCase().padStart(2,'0')) : '—';
     if (msg.ss2 !== undefined || msg.fgd !== undefined) {
       const hx = (n) => (n !== undefined && n !== null) ? ('0x' + (Number(n) >>> 0).toString(16).toUpperCase().padStart(8,'0')) : '—';
+      if (msg.ss1 !== undefined) document.getElementById('mtrSs1').textContent = hx(msg.ss1);
       document.getElementById('mtrSs2').textContent = hx(msg.ss2);
       document.getElementById('mtrFgd').textContent = hx(msg.fgd);
       document.getElementById('mtrFctrl').textContent = hx(msg.fc);
@@ -663,10 +667,18 @@ function onNotify(event) {
 
   else if (msg.t === 'mtrx') {
     const hx = (n) => (n !== undefined && n !== null) ? ('0x' + (Number(n) >>> 0).toString(16).toUpperCase().padStart(8,'0')) : '—';
+    if (msg.ss1 !== undefined) document.getElementById('mtrSs1').textContent = hx(msg.ss1);
     document.getElementById('mtrSs2').textContent = hx(msg.ss2);
     document.getElementById('mtrFgd').textContent = hx(msg.fgd);
     document.getElementById('mtrFctrl').textContent = hx(msg.fc);
     document.getElementById('mtrS3').textContent = hx(msg.s3);
+  }
+
+  else if (msg.t === 'mtrd') {
+    const hx = (n) => (n !== undefined && n !== null) ? ('0x' + (Number(n) >>> 0).toString(16).toUpperCase().padStart(8,'0')) : '—';
+    document.getElementById('mtrInd').textContent = hx(msg.ind);
+    document.getElementById('mtrCud').textContent = hx(msg.cud);
+    document.getElementById('mtrSed').textContent = hx(msg.sed);
   }
 
   else if (msg.t === 'hb') {
