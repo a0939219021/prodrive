@@ -1,5 +1,5 @@
-<!DOCTYPE html>
-<!-- ForJeeper / prodrive: motor GATT 36B (mtr+mtrx+mtrd), synced 2025-03-21 -->
+﻿<!DOCTYPE html>
+<!-- ForJeeper / prodrive: motor GATT 36B (mtr+mtrx+mtrd), DEVICE_CTRL note, synced 2025-03-24 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -309,6 +309,15 @@ main {
   background: rgba(0,0,0,0.25);
   border-bottom: 1px solid var(--border);
 }
+.mct-reg-table thead th.mct-reg-sub {
+  text-transform: none;
+  letter-spacing: 0.03em;
+  font-size: 0.58rem;
+  font-weight: 500;
+  color: var(--amber);
+  padding: 0.28rem 0.65rem 0.4rem;
+  border-bottom: 1px solid rgba(245, 158, 11, 0.25);
+}
 .mct-reg-table tbody tr:nth-child(odd)  { background: rgba(255,255,255,0.02); }
 .mct-reg-table tbody tr:nth-child(even) { background: rgba(6, 182, 212, 0.04); }
 .mct-reg-table tbody tr:hover {
@@ -606,6 +615,9 @@ input[type="range"]::-webkit-slider-thumb {
                 <th>Addr</th>
                 <th>Value</th>
               </tr>
+              <tr>
+                <th colspan="3" class="mct-reg-sub">Duty 列：手冊為唯讀回讀（SLLSFQ3 §7.8.5）；非滑桿寫入目標</th>
+              </tr>
             </thead>
             <tbody>
               <tr>
@@ -662,8 +674,9 @@ input[type="range"]::-webkit-slider-thumb {
                oninput="document.getElementById('lblSliderSpeed').textContent=this.value">
       </div>
       <p class="motor-tech-note">
-        <strong>韌體對應：</strong>滑桿與「SET SPEED」經 BLE 送 <code>MOTOR_CMD_SET_SPEED (0x03)</code>，PAI 的 <code>MCT8329A_setSpeed()</code> 寫入 <strong>DEVICE_CTRL（0xE8）</strong>：OVERRIDE=1，SPEED_CTRL 將 0–100% 映射到晶片內部範圍（見 PAI <code>mct8329a_i2c.c</code>）。<br>
-        <strong>並未寫入</strong> SET_DUTY（0x522）或 INPUT_DUTY（0x40C）；兩者於目前版本僅由 I²C 讀回顯示於上表。若要以 duty 暫存器下達命令，須在 <strong>PAI</strong> 新增／修改寫入邏輯，並依 TI 手冊對 0x522／0x40C 的資料格式（PU、控制模式）實作，與 DEVICE_CTRL 路徑不同。
+        <strong>韌體對應（指令）：</strong>滑桿與「SET SPEED」經 BLE 送 <code>MOTOR_CMD_SET_SPEED (0x03)</code> → PAI <code>MCT8329A_setSpeed()</code> → 寫入 <strong>DEVICE_CTRL（0xE8）</strong>：<code>OVERRIDE=1</code>，<code>SPEED_CTRL[30:16]</code> 以 0–32767 對應 0–100%（TI SLLSFQ3 Table 7-56；見 PAI <code>mct8329a_i2c.c</code>）。<br>
+        <strong>上表 duty 暫存器（手冊唯讀）：</strong><code>INPUT_DUTY</code>／<code>CURRENT_DUTY</code>／<code>SET_DUTY</code> 屬 Algorithm_Variables <strong>讀回</strong>（Table 7-59〜7-61），由 I²C 讀取顯示；例如 SET_DUTY 百分比 ≈ <code>(raw / 2<sup>30</sup>) × 100</code>。主機<strong>不能</strong>靠寫入 0x522 下達轉速。PAI 另提供 <code>MCT8329A_expectedSetDutyRaw()</code> 供對照 notify 除錯（不寫入晶片）。<br>
+        <strong>前提：</strong>EEPROM／<code>PIN_CONFIG1</code> 須為 <code>SPD_CTRL_MODE = 2</code>（I²C 速度來源），<code>DEVICE_CTRL</code> 數位指令才會生效（啟動時 UART 會列印）。
       </p>
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem; margin-top:0.75rem;">
         <button class="ctrl-btn" onclick="sendMotor(0x03)">SET SPEED</button>
