@@ -683,6 +683,24 @@ input[type="range"]::-webkit-slider-thumb {
         <button class="ctrl-btn" onclick="sendMotor(0x03)">SET SPEED</button>
         <button class="ctrl-btn" onclick="sendMotor(0x04)">SET DIR</button>
       </div>
+      <div style="border-top:1px solid rgba(255,255,255,0.1); margin-top:0.75rem; padding-top:0.75rem;">
+        <div style="font-size:0.7rem; color:var(--text-dim); margin-bottom:0.5rem;">
+          ⚙ EEPROM 工具（僅需執行一次）
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem;">
+          <button class="ctrl-btn" style="background:rgba(251,191,36,0.15); border-color:rgba(251,191,36,0.4); color:#fbbf24;"
+                  onclick="sendEEPROMCmd(0xF0)" title="寫入 PIN_CONFIG1 shadow→I2C mode（立即生效，斷電後消失）">
+            APPLY SPD CONFIG
+          </button>
+          <button class="ctrl-btn" style="background:rgba(239,68,68,0.15); border-color:rgba(239,68,68,0.4); color:#ef4444;"
+                  onclick="sendEEPROMCmd(0xF1)" title="寫入 PIN_CONFIG1 並燒錄 EEPROM（永久保存，需約 500 ms）">
+            BURN EEPROM
+          </button>
+        </div>
+        <div style="font-size:0.65rem; color:var(--text-dim); margin-top:0.4rem;">
+          APPLY：立即測試（斷電後失效）　BURN：永久燒錄（需 ~500 ms，燒後斷電重開）
+        </div>
+      </div>
       <div class="dir-toggle">
         <div class="dir-btn active" id="dirFwd" onclick="setDir(0)">FWD</div>
         <div class="dir-btn" id="dirRev" onclick="setDir(1)">REV</div>
@@ -893,6 +911,22 @@ async function sendMotor(cmd) {
     addLog('TX Motor: ' + (names[cmd]||'?') + ' spd=' + speed + ' dir=' + motorDir, 'tx');
     if (cmd === 0x01) setMotorCmdLed(true);
     if (cmd === 0x02) setMotorCmdLed(false);
+  } catch (e) {
+    addLog('Write error: ' + e.message, 'err');
+  }
+}
+
+async function sendEEPROMCmd(cmd) {
+  if (!charCmd) { addLog('Not connected', 'err'); return; }
+  const names = { 0xF0:'APPLY_SPD_CONFIG', 0xF1:'BURN_EEPROM' };
+  const label = names[cmd] || ('CMD_0x'+cmd.toString(16).toUpperCase());
+  if (cmd === 0xF1) {
+    if (!confirm('BURN EEPROM: 將永久寫入 MCT8329A EEPROM (SPD_CTRL_MODE=2)。\n確定執行？')) return;
+  }
+  const buf = new Uint8Array([cmd, 0x00, 0x00, 0x00]);
+  try {
+    await charCmd.writeValue(buf);
+    addLog('TX EEPROM: ' + label + ' sent — watch PAI CCS console for result', 'tx');
   } catch (e) {
     addLog('Write error: ' + e.message, 'err');
   }
