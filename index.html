@@ -1186,8 +1186,12 @@ function otaSetUi(active) {
   if (!active) otaSetProgress(0);
 }
 
+/* Promise-based wait for OTA ready/fail notification from OBA */
+var otaReadyResolve = null;
+
 function otaOnReady(tgt) {
   otaSetStatus('Flashing ' + tgt + '...');
+  if (otaReadyResolve) { otaReadyResolve(true); otaReadyResolve = null; }
 }
 function otaOnDone(tgt) {
   otaSetStatus('Done ' + tgt + ' ✓');
@@ -1199,6 +1203,7 @@ function otaOnFail(reason) {
   otaSetStatus('Failed: ' + reason);
   otaSetUi(false);
   addLog('OTA FAILED: ' + reason, 'err');
+  if (otaReadyResolve) { otaReadyResolve(false); otaReadyResolve = null; }
 }
 
 async function sha256Bytes(arrayBuffer) {
@@ -1252,10 +1257,22 @@ async function startOta() {
     return;
   }
 
-  /* For OBA self-update, the "ready" notify comes almost immediately.
-     For OBM/PAI, OBA must wait for UART ACK (~2-3ms round trip).
-     We wait up to 5s for the ready notify via OTA status handler.
-     Meanwhile, stream chunks. */
+  /* Wait for OBA to respond with 'ready' (OBM erases flash — up to ~4 seconds).
+     If OBA replies 'fail', abort.  Timeout after 20 seconds. */
+  otaSetStatus('Erasing flash...');
+  addLog('Waiting for device ready (flash erase)...', 'tx');
+
+  const readyOk = await Promise.race([
+    new Promise(resolve => { otaReadyResolve = resolve; }),
+    new Promise(resolve => setTimeout(() => resolve(false), 20000))
+  ]);
+  otaReadyResolve = null;
+
+  if (!readyOk) {
+    otaOnFail('Device not ready (BEGIN timeout)');
+    return;
+  }
+
   otaSetStatus('Transferring ' + tgtName + '...');
 
   const fileArr = new Uint8Array(fileBuffer);
