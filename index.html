@@ -1308,9 +1308,9 @@ async function startOta() {
       otaSetStatus(tgtName + ' ' + Math.round(pct) + '%  (' + chunkNum + '/' + totalChunks + ')');
     }
 
-    /* Delay per chunk: OBA self-update = 10ms; OBM/PAI = 100ms
-     * (UART ACK at 460800 baud ~30ms + margin for FreeRTOS scheduling) */
-    await new Promise(r => setTimeout(r, target === 3 ? 10 : 100));
+    /* Delay per chunk: OBA self-update = 10ms; OBM/PAI = 150ms
+     * (UART round-trip ~30ms + flash write + margin for scheduling) */
+    await new Promise(r => setTimeout(r, target === 3 ? 10 : 150));
   }
 
   /* Send END — wait 2s first to let BLE/UART buffers drain after bulk transfer,
