@@ -396,18 +396,65 @@ main {
   color: var(--text-dim);
   margin-bottom: 0.3rem;
 }
-.motor-tech-note {
+/* Motor live status panel */
+.motor-live-panel {
   margin-top: 0.5rem;
-  padding: 0.5rem 0.55rem;
-  font-size: 0.68rem;
-  line-height: 1.45;
-  color: var(--text-dim);
-  border-left: 3px solid rgba(6, 182, 212, 0.45);
-  background: rgba(6, 182, 212, 0.06);
-  border-radius: 0 6px 6px 0;
+  padding: 0.5rem 0.6rem;
+  background: rgba(6, 182, 212, 0.05);
+  border: 1px solid rgba(6, 182, 212, 0.18);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
 }
-.motor-tech-note code { font-family: 'JetBrains Mono', monospace; font-size: 0.65rem; color: var(--cyan); }
-.motor-tech-note strong { color: var(--text); font-weight: 600; }
+.mlp-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.mlp-label { font-size: 0.72rem; color: var(--text-dim); white-space: nowrap; }
+.mlp-sep { margin-left: 0.5rem; }
+.mlp-duty {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--cyan);
+  min-width: 3.5rem;
+}
+.mlp-fault-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+.mlp-fault-label { font-size: 0.72rem; color: #fbbf24; }
+.mlp-fault-val {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.78rem;
+  color: #ef4444;
+  font-weight: 600;
+}
+/* MCT state pill */
+.mct-state-pill {
+  display: inline-block;
+  padding: 0.18rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  font-family: 'JetBrains Mono', monospace;
+  background: rgba(100,116,139,0.2);
+  color: #94a3b8;
+  border: 1px solid rgba(100,116,139,0.3);
+  transition: background 0.25s, color 0.25s;
+}
+.mct-state-pill.idle     { background: rgba(100,116,139,0.2); color: #94a3b8; border-color: rgba(100,116,139,0.3); }
+.mct-state-pill.starting { background: rgba(245,158,11,0.15); color: #f59e0b; border-color: rgba(245,158,11,0.4); }
+.mct-state-pill.running  { background: rgba(16,185,129,0.15); color: #10b981; border-color: rgba(16,185,129,0.4); }
+.mct-state-pill.init     { background: rgba(167,139,250,0.15); color: #a78bfa; border-color: rgba(167,139,250,0.4); }
+.mct-state-pill.stopping { background: rgba(245,158,11,0.12); color: #fbbf24; border-color: rgba(245,158,11,0.3); }
+.mct-state-pill.fault    { background: rgba(239,68,68,0.18); color: #ef4444; border-color: rgba(239,68,68,0.5); }
 input[type="range"] {
   -webkit-appearance: none;
   width: 100%;
@@ -629,9 +676,9 @@ input[type="range"]::-webkit-slider-thumb {
   <div class="motor-panel">
     <div class="card green">
       <div class="card-label">Motor Control</div>
-      <p id="motorPaiHint" class="motor-hint" style="display:none;">PAI（CC2340）未連線：指令無法送到 MCT8329A，亦無法收到馬達狀態。請確認 OBM 與 PAI 的 BLE 已連線。</p>
+      <p id="motorPaiHint" class="motor-hint" style="display:none;">PAI (CC2340) not connected: commands cannot reach MCT8329A and motor status is unavailable. Ensure OBM↔PAI BLE is active.</p>
       <div class="motor-status">
-        <div class="motor-led-row" title="指令 LED：START 亮／STOP 滅；若收到韌體狀態會同步">
+        <div class="motor-led-row" title="Command LED: ON when motor started">
           <span class="motor-led" id="motorCmdLed"></span>
           <span>CMD</span>
         </div>
@@ -656,7 +703,7 @@ input[type="range"]::-webkit-slider-thumb {
                 <th>Value</th>
               </tr>
               <tr>
-                <th colspan="3" class="mct-reg-sub">Duty 列：手冊為唯讀回讀（SLLSFQ3 §7.8.5）；非滑桿寫入目標</th>
+                <th colspan="3" class="mct-reg-sub">Duty registers: read-only readback (SLLSFQ3 §7.8.5) — not write targets</th>
               </tr>
             </thead>
             <tbody>
@@ -713,32 +760,41 @@ input[type="range"]::-webkit-slider-thumb {
         <input type="range" id="sliderSpeed" min="0" max="100" value="50"
                oninput="document.getElementById('lblSliderSpeed').textContent=this.value">
       </div>
-      <p class="motor-tech-note">
-        <strong>資料鏈（與 OBM／OBA／PAI 韌體一致）：</strong> 本頁連線 <strong>OBA</strong>（服務 <code>0xFFE0</code>）以 <code>0xFFE2</code> 寫入 4B 指令 → UART <code>CMD_MOTOR_OVERRIDE (0x85)</code> → <strong>OBM</strong> → BLE 寫 PAI <code>0xFFF1</code>。狀態回傳為 <code>mtr</code> + <code>mtrx</code> + <code>mtrd</code>（對應 OBM→OBA 的 36B <code>DATA_MOTOR_STATUS</code>，佈局同 PAI <code>0xFFF2</code>）。<br>
-        <strong>韌體對應（指令）：</strong>滑桿與「SET SPEED」送出 <code>MOTOR_CMD_SET_SPEED (0x03)</code> → PAI <code>MCT8329A_setSpeed()</code> → 寫入 <strong>DEVICE_CTRL（0xE8）</strong>：<code>OVERRIDE=1</code>，<code>SPEED_CTRL[30:16]</code> 以 0–32767 對應 0–100%（TI SLLSFQ3 Table 7-56；見 PAI <code>mct8329a_i2c.c</code>）。<br>
-        <strong>上表 duty 暫存器（手冊唯讀）：</strong><code>INPUT_DUTY</code>／<code>CURRENT_DUTY</code>／<code>SET_DUTY</code> 屬 Algorithm_Variables <strong>讀回</strong>（Table 7-59〜7-61），由 I²C 讀取顯示；例如 SET_DUTY 百分比 ≈ <code>(raw / 2<sup>30</sup>) × 100</code>。主機<strong>不能</strong>靠寫入 0x522 下達轉速。PAI 另提供 <code>MCT8329A_expectedSetDutyRaw()</code> 供對照 notify 除錯（不寫入晶片）。<br>
-        <strong>前提：</strong>EEPROM／<code>PIN_CONFIG1</code> 須為 <code>SPD_CTRL_MODE = 2</code>（I²C 速度來源），<code>DEVICE_CTRL</code> 數位指令才會生效（啟動時 UART 會列印）。
-      </p>
+      <!-- Motor Live Status Panel -->
+      <div class="motor-live-panel">
+        <div class="mlp-row">
+          <span class="mlp-label">MCT State</span>
+          <span class="mct-state-pill" id="mctStateBadge">—</span>
+          <span class="mlp-label mlp-sep">Current Duty</span>
+          <span class="mlp-duty" id="mctCurDuty">—%</span>
+        </div>
+        <div class="mlp-fault-row" id="mctFaultRow" style="display:none;">
+          <span class="mlp-fault-label">⚠ GD Fault:</span>
+          <span class="mlp-fault-val" id="mctFaultGd">—</span>
+          <span class="mlp-fault-label">CTRL Fault:</span>
+          <span class="mlp-fault-val" id="mctFaultCtrl">—</span>
+        </div>
+      </div>
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem; margin-top:0.75rem;">
         <button class="ctrl-btn" onclick="sendMotor(0x03)">SET SPEED</button>
         <button class="ctrl-btn" onclick="sendMotor(0x04)">SET DIR</button>
       </div>
       <div style="border-top:1px solid rgba(255,255,255,0.1); margin-top:0.75rem; padding-top:0.75rem;">
         <div style="font-size:0.7rem; color:var(--text-dim); margin-bottom:0.5rem;">
-          ⚙ EEPROM 工具（僅需執行一次）
+          ⚙ EEPROM Tools (one-time setup)
         </div>
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem;">
           <button class="ctrl-btn" style="background:rgba(251,191,36,0.15); border-color:rgba(251,191,36,0.4); color:#fbbf24;"
-                  onclick="sendEEPROMCmd(0xF0)" title="寫入 PIN_CONFIG1 shadow→I2C mode（立即生效，斷電後消失）">
+                  onclick="sendEEPROMCmd(0xF0)" title="Write PIN_CONFIG1 shadow → I2C mode (effective immediately, lost on power-off)">
             APPLY SPD CONFIG
           </button>
           <button class="ctrl-btn" style="background:rgba(239,68,68,0.15); border-color:rgba(239,68,68,0.4); color:#ef4444;"
-                  onclick="sendEEPROMCmd(0xF1)" title="寫入 PIN_CONFIG1 並燒錄 EEPROM（永久保存，需約 500 ms）">
+                  onclick="sendEEPROMCmd(0xF1)" title="Write PIN_CONFIG1 and burn EEPROM (permanent, ~500 ms)">
             BURN EEPROM
           </button>
         </div>
         <div style="font-size:0.65rem; color:var(--text-dim); margin-top:0.4rem;">
-          APPLY：立即測試（斷電後失效）　BURN：永久燒錄（需 ~500 ms，燒後斷電重開）
+          APPLY: test immediately (lost on power-off)　BURN: permanent (~500 ms, power-cycle after)
         </div>
       </div>
       <div class="dir-toggle">
@@ -826,7 +882,7 @@ function setRegHex(elId, s) {
 /* ─── BLE Connect / Disconnect ─── */
 async function toggleConnect() {
   if (!navigator.bluetooth) {
-    alert('此瀏覽器不支援 Web Bluetooth。\n請使用 Chrome 或 Edge（電腦／Android）；iPhone 請用 Bluefy 等 App。');
+    alert('Web Bluetooth is not supported in this browser.\nUse Chrome or Edge (desktop/Android); on iPhone use the Bluefy app.');
     addLog('Web Bluetooth not available', 'err');
     return;
   }
@@ -904,6 +960,52 @@ function onDisconnect() {
 }
 
 /* ─── BLE Notify handler ─── */
+/* ─── MCT8329A Live Status Panel ─── */
+const MCT_STATES = {
+  0: { label: 'IDLE',     cls: 'idle'     },
+  1: { label: 'STARTING', cls: 'starting' },
+  2: { label: 'RUNNING',  cls: 'running'  },
+  4: { label: 'INIT',     cls: 'init'     },
+  5: { label: 'STOPPING', cls: 'stopping' },
+  7: { label: 'FAULT',    cls: 'fault'    },
+};
+
+function updateMctLivePanel(ss2, fgd, fc, cud) {
+  /* MCT state from SYS_STATUS2 bits[2:0] */
+  if (ss2 !== undefined && ss2 !== null) {
+    const stateNum = Number(ss2) & 0x7;
+    const st = MCT_STATES[stateNum] || { label: 'UNKNOWN', cls: '' };
+    const pill = document.getElementById('mctStateBadge');
+    if (pill) {
+      pill.textContent = st.label;
+      pill.className = 'mct-state-pill' + (st.cls ? ' ' + st.cls : '');
+    }
+  }
+  /* Current Duty: bits[31:16] of CURRENT_DUTY / 2^15 * 100 % */
+  if (cud !== undefined && cud !== null) {
+    const raw = Number(cud) >>> 0;
+    const pct = ((raw >>> 16) / 32768 * 100).toFixed(1);
+    const el = document.getElementById('mctCurDuty');
+    if (el) el.textContent = pct + '%';
+  }
+  /* Fault row */
+  const fgdVal = (fgd !== undefined && fgd !== null) ? (Number(fgd) >>> 0) : null;
+  const fcVal  = (fc  !== undefined && fc  !== null) ? (Number(fc)  >>> 0) : null;
+  const hasFault = (fgdVal !== null && fgdVal !== 0) || (fcVal !== null && fcVal !== 0);
+  const faultRow = document.getElementById('mctFaultRow');
+  if (faultRow && (fgdVal !== null || fcVal !== null)) {
+    faultRow.style.display = hasFault ? 'flex' : 'none';
+    if (fgdVal !== null) {
+      const gd = document.getElementById('mctFaultGd');
+      if (gd) gd.textContent = '⚠ 0x' + fgdVal.toString(16).toUpperCase().padStart(8,'0');
+    }
+    if (fcVal !== null) {
+      const ct = document.getElementById('mctFaultCtrl');
+      if (ct) ct.textContent = '⚠ 0x' + fcVal.toString(16).toUpperCase().padStart(8,'0');
+    }
+  }
+}
+
 function onNotify(event) {
   const raw = new TextDecoder().decode(event.target.value);
   let msg;
@@ -945,6 +1047,7 @@ function onNotify(event) {
       setRegHex('mtrFgd', hex32(msg.fgd));
       setRegHex('mtrFctrl', hex32(msg.fc));
       setRegHex('mtrS3', hex32(msg.s3));
+      updateMctLivePanel(msg.ss2, msg.fgd, msg.fc, null);
     }
   }
 
@@ -954,12 +1057,24 @@ function onNotify(event) {
     setRegHex('mtrFgd', hex32(msg.fgd));
     setRegHex('mtrFctrl', hex32(msg.fc));
     setRegHex('mtrS3', hex32(msg.s3));
+    updateMctLivePanel(msg.ss2, msg.fgd, msg.fc, null);
   }
 
   else if (msg.t === 'mtrd') {
     setRegHex('mtrInd', hex32(msg.ind));
     setRegHex('mtrCud', hex32(msg.cud));
     setRegHex('mtrSed', hex32(msg.sed));
+    updateMctLivePanel(null, null, null, msg.cud);
+  }
+
+  else if (msg.t === 'ota') {
+    const tgt = msg.tgt !== undefined ? (['','OBM','PAI','OBA'][msg.tgt] || '?') : '';
+    if (msg.s === 'ready')      otaOnReady(tgt);
+    else if (msg.s === 'done')  otaOnDone(tgt);
+    else if (msg.s === 'fail')  otaOnFail('Server: fail ' + tgt);
+    else if (msg.s === 'chunk_fail') otaOnFail('Chunk fail @ ' + msg.off);
+    else if (msg.s === 'abort') { otaSetStatus('Aborted'); otaSetUi(false); }
+    addLog('OTA[' + tgt + '] ' + msg.s + (msg.off !== undefined ? ' off='+msg.off : ''), msg.s === 'done' ? 'rx' : (msg.s.includes('fail') ? 'err' : 'tx'));
   }
 
   else if (msg.t === 'ota') {
@@ -1008,7 +1123,7 @@ async function sendEEPROMCmd(cmd) {
   const names = { 0xF0:'APPLY_SPD_CONFIG', 0xF1:'BURN_EEPROM' };
   const label = names[cmd] || ('CMD_0x'+cmd.toString(16).toUpperCase());
   if (cmd === 0xF1) {
-    if (!confirm('BURN EEPROM: 將永久寫入 MCT8329A EEPROM (SPD_CTRL_MODE=2)。\n確定執行？')) return;
+    if (!confirm('BURN EEPROM: This will permanently write MCT8329A EEPROM (SPD_CTRL_MODE=2).\nProceed?')) return;
   }
   const buf = new Uint8Array([cmd, 0x00, 0x00, 0x00]);
   try {
