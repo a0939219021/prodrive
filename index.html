@@ -475,6 +475,46 @@ input[type="range"]::-webkit-slider-thumb {
 .card:nth-child(4) { animation-delay: 0.15s; }
 .card:nth-child(5) { animation-delay: 0.2s; }
 .card:nth-child(6) { animation-delay: 0.25s; }
+
+/* ─── OTA Panel ─── */
+.ota-card { grid-column: span 3; }
+@media (max-width: 900px) { .ota-card { grid-column: span 2; } }
+@media (max-width: 560px) { .ota-card { grid-column: span 1; } }
+.ota-row { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; margin-bottom: 0.75rem; }
+.ota-label { color: var(--text-dim); font-size: 0.8rem; min-width: 4.5rem; }
+.ota-select {
+  font-family: 'Barlow', sans-serif; font-size: 0.85rem; background: var(--bg);
+  color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 0.3rem 0.6rem; cursor: pointer;
+}
+.ota-file-btn {
+  font-family: 'Barlow', sans-serif; font-size: 0.8rem; font-weight: 500;
+  padding: 0.3rem 0.8rem; border: 1px solid var(--border); border-radius: 6px;
+  background: transparent; color: var(--text); cursor: pointer; transition: all 0.2s;
+}
+.ota-file-btn:hover { border-color: var(--cyan); color: var(--cyan); }
+#otaFileName { color: var(--text-dim); font-size: 0.8rem; font-family: 'JetBrains Mono', monospace; }
+.ota-start-btn {
+  font-family: 'Barlow', sans-serif; font-weight: 600; font-size: 0.85rem;
+  padding: 0.45rem 1.4rem; border: 2px solid var(--amber); border-radius: 8px;
+  background: transparent; color: var(--amber); cursor: pointer; transition: all 0.2s; letter-spacing: 0.05em;
+}
+.ota-start-btn:hover:not(:disabled) { background: var(--amber); color: var(--bg); }
+.ota-start-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.ota-cancel-btn {
+  font-family: 'Barlow', sans-serif; font-weight: 500; font-size: 0.85rem;
+  padding: 0.4rem 1rem; border: 1px solid var(--red); border-radius: 8px;
+  background: transparent; color: var(--red); cursor: pointer; transition: all 0.2s; display: none;
+}
+.ota-cancel-btn:hover { background: var(--red); color: var(--bg); }
+.ota-progress-wrap {
+  background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+  height: 14px; overflow: hidden; margin-top: 0.1rem; flex: 1; min-width: 120px;
+}
+.ota-progress-bar {
+  height: 100%; width: 0%; background: linear-gradient(90deg, var(--amber), var(--cyan));
+  border-radius: 8px; transition: width 0.2s;
+}
+#otaStatus { font-size: 0.8rem; font-family: 'JetBrains Mono', monospace; color: var(--text-dim); min-width: 5rem; }
 </style>
 </head>
 <body>
@@ -711,14 +751,47 @@ input[type="range"]::-webkit-slider-thumb {
       <div class="card-label">Event Log</div>
       <div id="log"></div>
     </div>
+
+    <!-- OTA Firmware Update -->
+    <div class="card ota-card">
+      <div class="card-label">OTA Firmware Update</div>
+
+      <div class="ota-row">
+        <span class="ota-label">Target</span>
+        <select id="otaTarget" class="ota-select">
+          <option value="3">OBA  (ESP32-C6 Gateway, 0x03)</option>
+          <option value="1">OBM  (ESP32-C6 OBD Central, 0x01)</option>
+          <option value="2">PAI  (CC2340R5 Motor, 0x02)</option>
+        </select>
+      </div>
+
+      <div class="ota-row">
+        <span class="ota-label">File</span>
+        <button class="ota-file-btn" onclick="document.getElementById('otaFileInput').click()">Choose .bin</button>
+        <input type="file" id="otaFileInput" accept=".bin" style="display:none" onchange="onOtaFileSelected(this)">
+        <span id="otaFileName">No file selected</span>
+      </div>
+
+      <div class="ota-row" style="align-items:center; gap:1rem;">
+        <button class="ota-start-btn" id="otaStartBtn" onclick="startOta()" disabled>FLASH</button>
+        <button class="ota-cancel-btn" id="otaCancelBtn" onclick="cancelOta()">CANCEL</button>
+        <div class="ota-progress-wrap">
+          <div class="ota-progress-bar" id="otaProgressBar"></div>
+        </div>
+        <span id="otaStatus">—</span>
+      </div>
+    </div>
+
   </div>
 
 </main>
 
 <script>
-const SVC_UUID    = '0000ffe0-0000-1000-8000-00805f9b34fb';
-const CHAR_DATA   = '0000ffe1-0000-1000-8000-00805f9b34fb';
-const CHAR_CMD    = '0000ffe2-0000-1000-8000-00805f9b34fb';
+const SVC_UUID        = '0000ffe0-0000-1000-8000-00805f9b34fb';
+const CHAR_DATA       = '0000ffe1-0000-1000-8000-00805f9b34fb';
+const CHAR_CMD        = '0000ffe2-0000-1000-8000-00805f9b34fb';
+const CHAR_OTA_CTRL   = '0000ffe3-0000-1000-8000-00805f9b34fb';
+const CHAR_OTA_DATA   = '0000ffe4-0000-1000-8000-00805f9b34fb';
 
 const PID_MAP = {
   0x05: { el: 'valCoolant',   unit: '°C',  bar: 'barCoolant',  barMax: 150 },
@@ -736,7 +809,9 @@ const PID_MAP = {
 };
 
 let device = null, server = null, charData = null, charCmd = null;
+let charOtaCtrl = null, charOtaData = null;
 let motorDir = 0;
+let otaFile = null, otaAbortFlag = false;
 
 function hex32(n) {
   return (n !== undefined && n !== null) ? ('0x' + (Number(n) >>> 0).toString(16).toUpperCase().padStart(8, '0')) : '—';
@@ -768,7 +843,7 @@ async function toggleConnect() {
     addLog('Scanning for OBD_GW...', 'tx');
     device = await navigator.bluetooth.requestDevice({
       filters: [{ name: 'OBD_GW' }],
-      optionalServices: [SVC_UUID]
+      optionalServices: [SVC_UUID]   /* all chars are under same service */
     });
     device.addEventListener('gattserverdisconnected', onDisconnect);
 
@@ -781,6 +856,12 @@ async function toggleConnect() {
 
     charData = await svc.getCharacteristic(CHAR_DATA);
     charCmd  = await svc.getCharacteristic(CHAR_CMD);
+    try {
+      charOtaCtrl = await svc.getCharacteristic(CHAR_OTA_CTRL);
+      charOtaData = await svc.getCharacteristic(CHAR_OTA_DATA);
+    } catch (_) {
+      addLog('OTA chars not found (older OBA firmware?)', 'err');
+    }
 
     await charData.startNotifications();
     charData.addEventListener('characteristicvaluechanged', onNotify);
@@ -822,7 +903,9 @@ function onDisconnect() {
   setMotorCmdLed(false);
   var mh = document.getElementById('motorPaiHint');
   if (mh) mh.style.display = 'none';
-  charData = null; charCmd = null;
+  charData = null; charCmd = null; charOtaCtrl = null; charOtaData = null;
+  otaAbortFlag = true;
+  otaSetUi(false);
   addLog('Disconnected', 'err');
 }
 
@@ -883,6 +966,16 @@ function onNotify(event) {
     setRegHex('mtrInd', hex32(msg.ind));
     setRegHex('mtrCud', hex32(msg.cud));
     setRegHex('mtrSed', hex32(msg.sed));
+  }
+
+  else if (msg.t === 'ota') {
+    const tgt = msg.tgt !== undefined ? (['','OBM','PAI','OBA'][msg.tgt] || '?') : '';
+    if (msg.s === 'ready')      otaOnReady(tgt);
+    else if (msg.s === 'done')  otaOnDone(tgt);
+    else if (msg.s === 'fail')  otaOnFail('Server: fail ' + tgt);
+    else if (msg.s === 'chunk_fail') otaOnFail('Chunk fail @ ' + msg.off);
+    else if (msg.s === 'abort') { otaSetStatus('Aborted'); otaSetUi(false); }
+    addLog('OTA[' + tgt + '] ' + msg.s + (msg.off !== undefined ? ' off='+msg.off : ''), msg.s === 'done' ? 'rx' : (msg.s.includes('fail') ? 'err' : 'tx'));
   }
 
   else if (msg.t === 'hb') {
@@ -954,6 +1047,168 @@ function formatUptime(sec) {
   const m = Math.floor((sec % 3600) / 60);
   const s = sec % 60;
   return (h ? h + 'h ' : '') + (m ? m + 'm ' : '') + s + 's';
+}
+
+/* ─── OTA Firmware Update ─── */
+function onOtaFileSelected(input) {
+  otaFile = input.files[0] || null;
+  const nameEl = document.getElementById('otaFileName');
+  const startBtn = document.getElementById('otaStartBtn');
+  if (otaFile) {
+    const kb = (otaFile.size / 1024).toFixed(1);
+    nameEl.textContent = otaFile.name + ' (' + kb + ' KB)';
+    startBtn.disabled = !charOtaCtrl;
+  } else {
+    nameEl.textContent = 'No file selected';
+    startBtn.disabled = true;
+  }
+}
+
+function onConnect() {
+  document.getElementById('btnConnect').textContent = 'DISCONNECT';
+  document.getElementById('btnConnect').classList.add('connected');
+  setLinkDot('dotOba', 'lblOba', true, 'OK', '—');
+  /* Re-enable OTA start if a file is already selected */
+  if (otaFile && charOtaCtrl) {
+    document.getElementById('otaStartBtn').disabled = false;
+  }
+}
+
+function otaSetStatus(msg) {
+  document.getElementById('otaStatus').textContent = msg;
+}
+function otaSetProgress(pct) {
+  document.getElementById('otaProgressBar').style.width = Math.round(pct) + '%';
+}
+function otaSetUi(active) {
+  document.getElementById('otaStartBtn').style.display  = active ? 'none'  : '';
+  document.getElementById('otaCancelBtn').style.display = active ? 'inline-block' : 'none';
+  document.getElementById('otaTarget').disabled = active;
+  if (!active) otaSetProgress(0);
+}
+
+function otaOnReady(tgt) {
+  otaSetStatus('Flashing ' + tgt + '...');
+}
+function otaOnDone(tgt) {
+  otaSetStatus('Done ' + tgt + ' ✓');
+  otaSetUi(false);
+  otaSetProgress(100);
+  addLog('OTA complete — device rebooting', 'rx');
+}
+function otaOnFail(reason) {
+  otaSetStatus('Failed: ' + reason);
+  otaSetUi(false);
+  addLog('OTA FAILED: ' + reason, 'err');
+}
+
+async function sha256Bytes(arrayBuffer) {
+  const hash = await crypto.subtle.digest('SHA-256', arrayBuffer);
+  return new Uint8Array(hash);
+}
+
+async function startOta() {
+  if (!charOtaCtrl || !charOtaData || !otaFile) {
+    addLog('OTA: not connected or no file', 'err');
+    return;
+  }
+  const target = parseInt(document.getElementById('otaTarget').value);
+  const targetNames = { 1: 'OBM', 2: 'PAI', 3: 'OBA' };
+  const tgtName = targetNames[target] || '?';
+
+  if (!confirm('Flash ' + tgtName + ' with "' + otaFile.name + '"?\n\nThe device will reboot after update.')) return;
+
+  otaAbortFlag = false;
+  otaSetUi(true);
+  otaSetStatus('Hashing...');
+  otaSetProgress(0);
+  addLog('OTA start → ' + tgtName + '  ' + otaFile.name, 'tx');
+
+  let fileBuffer;
+  try {
+    fileBuffer = await otaFile.arrayBuffer();
+  } catch (e) {
+    otaOnFail('File read: ' + e.message);
+    return;
+  }
+
+  const sha256 = await sha256Bytes(fileBuffer);
+  const fwSize = fileBuffer.byteLength;
+  const chunkSize = 512;
+
+  /* Build BEGIN frame: [0x01, target, size_le32, chunk_le16, sha256[32]] = 40 bytes */
+  const beginBuf = new Uint8Array(40);
+  beginBuf[0] = 0x01;
+  beginBuf[1] = target;
+  new DataView(beginBuf.buffer).setUint32(2, fwSize, true);
+  new DataView(beginBuf.buffer).setUint16(6, chunkSize, true);
+  beginBuf.set(sha256, 8);
+
+  try {
+    otaSetStatus('Starting...');
+    addLog('OTA BEGIN: tgt=' + tgtName + ' size=' + fwSize + ' sha=' + Array.from(sha256.slice(0,4)).map(b=>b.toString(16).padStart(2,'0')).join('') + '...', 'tx');
+    await charOtaCtrl.writeValue(beginBuf);
+  } catch (e) {
+    otaOnFail('BEGIN write: ' + e.message);
+    return;
+  }
+
+  /* For OBA self-update, the "ready" notify comes almost immediately.
+     For OBM/PAI, OBA must wait for UART ACK (~2-3ms round trip).
+     We wait up to 5s for the ready notify via OTA status handler.
+     Meanwhile, stream chunks. */
+  otaSetStatus('Transferring ' + tgtName + '...');
+
+  const fileArr = new Uint8Array(fileBuffer);
+  let offset = 0;
+  let chunkNum = 0;
+  const totalChunks = Math.ceil(fwSize / chunkSize);
+
+  while (offset < fwSize) {
+    if (otaAbortFlag) {
+      try { await charOtaCtrl.writeValue(new Uint8Array([0x03, target])); } catch (_) {}
+      otaSetStatus('Cancelled');
+      otaSetUi(false);
+      addLog('OTA cancelled by user', 'err');
+      return;
+    }
+
+    const end = Math.min(offset + chunkSize, fwSize);
+    const chunk = fileArr.slice(offset, end);
+
+    try {
+      /* Write Without Response — paced to avoid BLE buffer overflow */
+      await charOtaData.writeValueWithoutResponse(chunk);
+    } catch (e) {
+      otaOnFail('Chunk @' + offset + ': ' + e.message);
+      return;
+    }
+
+    offset = end;
+    chunkNum++;
+    const pct = (offset / fwSize) * 100;
+    otaSetProgress(pct);
+    if ((chunkNum & 3) === 0) {
+      otaSetStatus(tgtName + ' ' + Math.round(pct) + '%  (' + chunkNum + '/' + totalChunks + ')');
+    }
+
+    /* Small delay: OBM/PAI requires UART round-trip per chunk (~3ms); OBA is local (1ms).
+       Use 30ms to comfortably cover UART ACK + BLE stack processing. */
+    await new Promise(r => setTimeout(r, 30));
+  }
+
+  /* Send END */
+  try {
+    otaSetStatus('Verifying...');
+    await charOtaCtrl.writeValue(new Uint8Array([0x02, target]));
+    addLog('OTA END sent — waiting for confirm...', 'tx');
+  } catch (e) {
+    otaOnFail('END write: ' + e.message);
+  }
+}
+
+async function cancelOta() {
+  otaAbortFlag = true;
 }
 </script>
 </body>
