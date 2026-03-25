@@ -1077,16 +1077,6 @@ function onNotify(event) {
     addLog('OTA[' + tgt + '] ' + msg.s + (msg.off !== undefined ? ' off='+msg.off : ''), msg.s === 'done' ? 'rx' : (msg.s.includes('fail') ? 'err' : 'tx'));
   }
 
-  else if (msg.t === 'ota') {
-    const tgt = msg.tgt !== undefined ? (['','OBM','PAI','OBA'][msg.tgt] || '?') : '';
-    if (msg.s === 'ready')      otaOnReady(tgt);
-    else if (msg.s === 'done')  otaOnDone(tgt);
-    else if (msg.s === 'fail')  otaOnFail('Server: fail ' + tgt);
-    else if (msg.s === 'chunk_fail') otaOnFail('Chunk fail @ ' + msg.off);
-    else if (msg.s === 'abort') { otaSetStatus('Aborted'); otaSetUi(false); }
-    addLog('OTA[' + tgt + '] ' + msg.s + (msg.off !== undefined ? ' off='+msg.off : ''), msg.s === 'done' ? 'rx' : (msg.s.includes('fail') ? 'err' : 'tx'));
-  }
-
   else if (msg.t === 'hb') {
     var pai = (msg.pai !== undefined) ? msg.pai : msg.ble;
     var oba = (msg.oba !== undefined) ? msg.oba : document.getElementById('btnConnect').classList.contains('connected');
@@ -1305,15 +1295,24 @@ async function startOta() {
     await new Promise(r => setTimeout(r, target === 3 ? 10 : 50));
   }
 
-  /* Send END — wait 500ms first to let BLE/UART buffers drain after bulk transfer */
-  try {
-    otaSetStatus('Verifying...');
-    await new Promise(r => setTimeout(r, 500));
-    await charOtaCtrl.writeValue(new Uint8Array([0x02, target]));
-    addLog('OTA END sent — waiting for confirm...', 'tx');
-  } catch (e) {
-    otaOnFail('END write: ' + e.message);
+  /* Send END — wait 2s first to let BLE/UART buffers drain after bulk transfer,
+   * then retry up to 5 times with 1s gap (Write Without Response flood can
+   * leave the ATT layer temporarily unresponsive). */
+  otaSetStatus('Verifying...');
+  await new Promise(r => setTimeout(r, 2000));
+  let endOk = false;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      await charOtaCtrl.writeValue(new Uint8Array([0x02, target]));
+      addLog('OTA END sent — waiting for confirm...', 'tx');
+      endOk = true;
+      break;
+    } catch (e) {
+      addLog('END write attempt ' + (attempt+1) + ' failed: ' + e.message, 'err');
+      if (attempt < 4) await new Promise(r => setTimeout(r, 1000));
+    }
   }
+  if (!endOk) otaOnFail('END write failed after 5 attempts');
 }
 
 async function cancelOta() {
