@@ -1186,14 +1186,14 @@ async function startOta() {
       otaSetStatus(tgtName + ' ' + Math.round(pct) + '%  (' + chunkNum + '/' + totalChunks + ')');
     }
 
-    /* Small delay: OBM/PAI requires UART round-trip per chunk (~3ms); OBA is local (1ms).
-       Use 30ms to comfortably cover UART ACK + BLE stack processing. */
-    await new Promise(r => setTimeout(r, 30));
+    /* Delay per chunk: OBA self-update = 10ms; OBM/PAI = 50ms (UART round-trip to OBM) */
+    await new Promise(r => setTimeout(r, target === 3 ? 10 : 50));
   }
 
-  /* Send END */
+  /* Send END — wait 500ms first to let BLE/UART buffers drain after bulk transfer */
   try {
     otaSetStatus('Verifying...');
+    await new Promise(r => setTimeout(r, 500));
     await charOtaCtrl.writeValue(new Uint8Array([0x02, target]));
     addLog('OTA END sent — waiting for confirm...', 'tx');
   } catch (e) {
