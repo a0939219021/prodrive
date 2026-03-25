@@ -1291,8 +1291,9 @@ async function startOta() {
       otaSetStatus(tgtName + ' ' + Math.round(pct) + '%  (' + chunkNum + '/' + totalChunks + ')');
     }
 
-    /* Delay per chunk: OBA self-update = 10ms; OBM/PAI = 50ms (UART round-trip to OBM) */
-    await new Promise(r => setTimeout(r, target === 3 ? 10 : 50));
+    /* Delay per chunk: OBA self-update = 10ms; OBM/PAI = 100ms
+     * (UART ACK at 460800 baud ~30ms + margin for FreeRTOS scheduling) */
+    await new Promise(r => setTimeout(r, target === 3 ? 10 : 100));
   }
 
   /* Send END — wait 2s first to let BLE/UART buffers drain after bulk transfer,
@@ -1302,6 +1303,7 @@ async function startOta() {
   await new Promise(r => setTimeout(r, 2000));
   let endOk = false;
   for (let attempt = 0; attempt < 5; attempt++) {
+    if (!charOtaCtrl) { addLog('END write: disconnected', 'err'); break; }
     try {
       await charOtaCtrl.writeValue(new Uint8Array([0x02, target]));
       addLog('OTA END sent — waiting for confirm...', 'tx');
