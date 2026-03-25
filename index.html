@@ -882,12 +882,6 @@ function setLinkDot(dotId, lblId, ok, okText, badText) {
   document.getElementById(lblId).textContent = ok ? (okText || 'OK') : (badText || '—');
 }
 
-function onConnect() {
-  document.getElementById('btnConnect').textContent = 'DISCONNECT';
-  document.getElementById('btnConnect').classList.add('connected');
-  setLinkDot('dotOba', 'lblOba', true, 'OK', '—');
-}
-
 function setMotorCmdLed(on) {
   var led = document.getElementById('motorCmdLed');
   if (led) led.classList.toggle('on', !!on);
