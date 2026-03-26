@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- ForJeeper / prodrive: OBA FFE2→OBM 0x85→PAI FFF1; mtr+mtrx+mtrd=36B; DEVICE_CTRL note; synced 2025-03-24 -->
+<!-- ForJeeper / prodrive v1.4: OBA FFE2→OBM 0x85→PAI FFF1; mtr+mtrx+mtrd=36B; DEVICE_CTRL note; 2026-03-25 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -59,6 +59,9 @@ header {
   -webkit-text-fill-color: transparent;
 }
 .logo span { font-weight: 400; opacity: 0.7; font-size: 0.75em; }
+.logo .ver { font-family: 'JetBrains Mono', monospace; font-size: 0.5rem; font-weight: 400;
+  letter-spacing: 0.05em; -webkit-text-fill-color: var(--text-dim); opacity: 0.75;
+  margin-left: 6px; vertical-align: middle; }
 
 #btnConnect {
   font-family: 'Barlow', sans-serif;
@@ -567,7 +570,7 @@ input[type="range"]::-webkit-slider-thumb {
 <body>
 
 <header>
-  <div class="logo">FORJEEPER <span>OBD</span></div>
+  <div class="logo">FORJEEPER <span>OBD</span><span class="ver">v1.4</span></div>
   <button type="button" id="btnConnect" onclick="toggleConnect()">CONNECT</button>
 </header>
 
