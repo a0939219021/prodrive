@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- ForJeeper / prodrive v1.4: OBA FFE2→OBM 0x85→PAI FFF1; mtr+mtrx+mtrd=36B; DEVICE_CTRL note; 2026-03-25 -->
+<!-- ForJeeper / prodrive v1.5: OBM/OBA ver shown in status bar via hb obm_ver/oba_ver; 2026-03-25 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -570,7 +570,7 @@ input[type="range"]::-webkit-slider-thumb {
 <body>
 
 <header>
-  <div class="logo">FORJEEPER <span>OBD</span><span class="ver">v1.4</span></div>
+  <div class="logo">FORJEEPER <span>OBD</span><span class="ver">v1.5</span></div>
   <button type="button" id="btnConnect" onclick="toggleConnect()">CONNECT</button>
 </header>
 
@@ -1084,8 +1084,8 @@ function onNotify(event) {
     var pai = (msg.pai !== undefined) ? msg.pai : msg.ble;
     var oba = (msg.oba !== undefined) ? msg.oba : document.getElementById('btnConnect').classList.contains('connected');
     var obm = (msg.obm !== undefined) ? msg.obm : 1;
-    setLinkDot('dotOba', 'lblOba', !!oba, 'OK', '—');
-    setLinkDot('dotObm', 'lblObm', !!obm, 'OK', '—');
+    setLinkDot('dotOba', 'lblOba', !!oba, msg.oba_ver ? 'v'+msg.oba_ver : 'OK', '—');
+    setLinkDot('dotObm', 'lblObm', !!obm, msg.obm_ver ? 'v'+msg.obm_ver : 'OK', '—');
     setLinkDot('dotPai', 'lblPai', !!pai, 'OK', '—');
     setLinkDot('dotCan', 'lblCan', !!msg.can, 'OK', 'Err');
     var mh = document.getElementById('motorPaiHint');
