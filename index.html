@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- ForJeeper / prodrive v1.5: OBM/OBA ver shown in status bar via hb obm_ver/oba_ver; 2026-03-25 -->
+<!-- ForJeeper / prodrive v1.5: OBM/OBA fw-chip version badges in status bar; 2026-03-25 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -83,9 +83,10 @@ header {
 /* ─── Status bar ─── */
 .status-bar {
   display: flex;
-  gap: 1.5rem;
-  padding: 0.5rem 1.5rem;
-  font-size: 0.8rem;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.45rem 1.5rem;
+  font-size: 0.78rem;
   color: var(--text-dim);
   border-bottom: 1px solid var(--border);
   flex-wrap: wrap;
@@ -94,11 +95,37 @@ header {
   display: inline-block;
   width: 8px; height: 8px;
   border-radius: 50%;
-  margin-right: 6px;
   background: var(--red);
-  vertical-align: middle;
+  flex-shrink: 0;
 }
 .status-bar .dot.on { background: var(--green); box-shadow: 0 0 8px var(--green-glow); }
+
+/* OBM / OBA firmware version chips */
+.fw-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px 3px 7px;
+  border: 1px solid rgba(0,255,255,0.18);
+  border-radius: 20px;
+  background: rgba(0,255,255,0.05);
+}
+.fw-chip .chip-label {
+  font-family: 'Barlow', sans-serif;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: var(--text-dim);
+  text-transform: uppercase;
+}
+.fw-chip .chip-ver {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--cyan);
+  min-width: 2.4rem;
+  text-align: left;
+}
 
 /* ─── Main grid ─── */
 main {
@@ -575,8 +602,16 @@ input[type="range"]::-webkit-slider-thumb {
 </header>
 
 <div class="status-bar">
-  <span><span class="dot" id="dotOba"></span>OBA <span id="lblOba">—</span></span>
-  <span><span class="dot" id="dotObm"></span>OBM <span id="lblObm">—</span></span>
+  <span class="fw-chip" title="OBA firmware version">
+    <span class="dot" id="dotOba"></span>
+    <span class="chip-label">OBA</span>
+    <span class="chip-ver" id="lblOba">—</span>
+  </span>
+  <span class="fw-chip" title="OBM firmware version">
+    <span class="dot" id="dotObm"></span>
+    <span class="chip-label">OBM</span>
+    <span class="chip-ver" id="lblObm">—</span>
+  </span>
   <span><span class="dot" id="dotPai"></span>PAI <span id="lblPai">—</span></span>
   <span><span class="dot" id="dotCan"></span>CAN <span id="lblCan">—</span></span>
   <span>Uptime <span id="lblUptime">—</span></span>
