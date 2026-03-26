@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- ForJeeper / prodrive v1.5: OBM/OBA fw-chip version badges in status bar; 2026-03-25 -->
+<!-- ForJeeper / prodrive v1.6: PAI fw-chip; logo ver 1.5rem; pai_ver from hb or last OTA filename; 2026-03-26 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -59,7 +59,7 @@ header {
   -webkit-text-fill-color: transparent;
 }
 .logo span { font-weight: 400; opacity: 0.7; font-size: 0.75em; }
-.logo .ver { font-family: 'JetBrains Mono', monospace; font-size: 0.5rem; font-weight: 400;
+.logo .ver { font-family: 'JetBrains Mono', monospace; font-size: 1.5rem; font-weight: 400;
   letter-spacing: 0.05em; -webkit-text-fill-color: var(--text-dim); opacity: 0.75;
   margin-left: 6px; vertical-align: middle; }
 
@@ -597,7 +597,7 @@ input[type="range"]::-webkit-slider-thumb {
 <body>
 
 <header>
-  <div class="logo">FORJEEPER <span>OBD</span><span class="ver">v1.5</span></div>
+  <div class="logo">FORJEEPER <span>OBD</span><span class="ver">v1.6</span></div>
   <button type="button" id="btnConnect" onclick="toggleConnect()">CONNECT</button>
 </header>
 
@@ -612,7 +612,11 @@ input[type="range"]::-webkit-slider-thumb {
     <span class="chip-label">OBM</span>
     <span class="chip-ver" id="lblObm">—</span>
   </span>
-  <span><span class="dot" id="dotPai"></span>PAI <span id="lblPai">—</span></span>
+  <span class="fw-chip" title="PAI (CC2340) firmware — from heartbeat or last successful PAI OTA filename">
+    <span class="dot" id="dotPai"></span>
+    <span class="chip-label">PAI</span>
+    <span class="chip-ver" id="lblPai">—</span>
+  </span>
   <span><span class="dot" id="dotCan"></span>CAN <span id="lblCan">—</span></span>
   <span>Uptime <span id="lblUptime">—</span></span>
   <span>Cycle <span id="lblCycle">—</span></span>
@@ -907,6 +911,33 @@ let charOtaCtrl = null, charOtaData = null;
 let motorDir = 0;
 let otaFile = null, otaAbortFlag = false;
 
+/** localStorage key for PAI image version parsed from last successful PAI OTA filename */
+const LS_PAI_VER = 'prodrive_pai_ver';
+
+function parsePaiVerFromFilename(name) {
+  if (!name) return '';
+  const m = name.match(/_v(\d+(?:\.\d+)*)\.bin$/i);
+  return m ? ('v' + m[1]) : '';
+}
+
+function getStoredPaiVerDisplay() {
+  try {
+    const s = localStorage.getItem(LS_PAI_VER);
+    if (!s) return '';
+    return s.charAt(0) === 'v' ? s : ('v' + s);
+  } catch (e) { return ''; }
+}
+
+/** Prefer OBA heartbeat pai_ver; else last OTA filename (e.g. *_v1.bin → v1) */
+function paiVerDisplayFromHb(msg) {
+  if (msg && msg.pai_ver != null && String(msg.pai_ver).length) {
+    const v = String(msg.pai_ver);
+    return v.charAt(0) === 'v' ? v : ('v' + v);
+  }
+  const st = getStoredPaiVerDisplay();
+  return st || 'OK';
+}
+
 function hex32(n) {
   return (n !== undefined && n !== null) ? ('0x' + (Number(n) >>> 0).toString(16).toUpperCase().padStart(8, '0')) : '—';
 }
@@ -1121,7 +1152,7 @@ function onNotify(event) {
     var obm = (msg.obm !== undefined) ? msg.obm : 1;
     setLinkDot('dotOba', 'lblOba', !!oba, msg.oba_ver ? 'v'+msg.oba_ver : 'OK', '—');
     setLinkDot('dotObm', 'lblObm', !!obm, msg.obm_ver ? 'v'+msg.obm_ver : 'OK', '—');
-    setLinkDot('dotPai', 'lblPai', !!pai, 'OK', '—');
+    setLinkDot('dotPai', 'lblPai', !!pai, paiVerDisplayFromHb(msg), '—');
     setLinkDot('dotCan', 'lblCan', !!msg.can, 'OK', 'Err');
     var mh = document.getElementById('motorPaiHint');
     if (mh) mh.style.display = pai ? 'none' : 'block';
@@ -1236,6 +1267,14 @@ function otaOnDone(tgt) {
   otaSetUi(false);
   otaSetProgress(100);
   addLog('OTA complete — device rebooting', 'rx');
+  if (tgt === 'PAI' && otaFile && otaFile.name) {
+    const pv = parsePaiVerFromFilename(otaFile.name);
+    if (pv) {
+      try { localStorage.setItem(LS_PAI_VER, pv); } catch (e) {}
+      const el = document.getElementById('lblPai');
+      if (el) el.textContent = pv;
+    }
+  }
 }
 function otaOnFail(reason) {
   otaSetStatus('Failed: ' + reason);
