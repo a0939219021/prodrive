@@ -932,7 +932,11 @@ function getStoredPaiVerDisplay() {
 function paiVerDisplayFromHb(msg) {
   if (msg && msg.pai_ver != null && String(msg.pai_ver).length) {
     const v = String(msg.pai_ver);
-    return v.charAt(0) === 'v' ? v : ('v' + v);
+    if (v === '?') {
+      /* OBM hasn't probed PAI version yet — fall through to localStorage / default */
+    } else {
+      return v.charAt(0) === 'v' ? v : ('v' + v);
+    }
   }
   const st = getStoredPaiVerDisplay();
   return st || 'OK';
