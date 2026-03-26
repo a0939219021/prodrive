@@ -1346,9 +1346,12 @@ async function startOta() {
       otaSetStatus(tgtName + ' ' + Math.round(pct) + '%  (' + chunkNum + '/' + totalChunks + ')');
     }
 
-    /* Delay per chunk: OBA self-update = 10ms; OBM/PAI = 150ms
-     * (UART round-trip ~30ms + flash write + margin for scheduling) */
-    await new Promise(r => setTimeout(r, target === 3 ? 10 : 150));
+    /* Delay per chunk:
+     *   OBA self-update = 100ms (flash sector erase up to ~50ms + queue depth buffer)
+     *   OBM/PAI = 150ms (UART round-trip ~30ms + OBM flash write + margin)
+     * Keeping OBA ≥ 100ms prevents the Bluedroid GATTS BTC task from blocking
+     * (xQueueSend stall caused BLE disconnect during the "verifying" phase). */
+    await new Promise(r => setTimeout(r, target === 3 ? 100 : 150));
   }
 
   /* Send END — wait 2s first to let BLE/UART buffers drain after bulk transfer,
