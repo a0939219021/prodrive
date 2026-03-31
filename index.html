@@ -642,7 +642,7 @@ input[type="range"]::-webkit-slider-thumb {
 
   <!-- Speed gauge -->
   <div class="card" id="cardSpeed">
-    <div class="card-label">Vehicle Speed</div>
+    <div class="card-label">Motor Duty</div>
     <div class="gauge-container">
       <svg class="gauge-svg" viewBox="0 0 110 70">
         <path class="gauge-track" d="M10,65 A50,50 0 0,1 100,65"/>
@@ -651,7 +651,7 @@ input[type="range"]::-webkit-slider-thumb {
       </svg>
       <div>
         <span class="card-value" id="valSpeed">0</span>
-        <span class="card-unit">km/h</span>
+        <span class="card-unit">%</span>
       </div>
     </div>
   </div>
@@ -895,7 +895,7 @@ const PID_MAP = {
   0x05: { el: 'valCoolant',   unit: '°C',  bar: 'barCoolant',  barMax: 150 },
   0x0B: { el: 'valIntake',    unit: 'kPa' },
   0x0C: { el: 'valRpm',       unit: 'rpm', gauge: 'gaugeRpm', gaugeMax: 8000 },
-  0x0D: { el: 'valSpeed',     unit: 'km/h', gauge: 'gaugeSpeed', gaugeMax: 240 },
+  // 0x0D: { el: 'valSpeed',     unit: 'km/h', gauge: 'gaugeSpeed', gaugeMax: 240 },
   0x0E: { el: 'valTiming',    unit: '°' },
   0x0F: { el: 'valIntakeTemp', unit: '°C' },
   0x10: { el: 'valMaf',       unit: 'g/s' },
@@ -1060,6 +1060,15 @@ function updateMctLivePanel(ss2, fgd, fc, cud) {
     const pct = ((raw >>> 16) / 32768 * 100).toFixed(1);
     const el = document.getElementById('mctCurDuty');
     if (el) el.textContent = pct + '%';
+
+    /* Mirror duty % onto the main dashboard gauge (formerly Vehicle Speed) */
+    const speedValEl = document.getElementById('valSpeed');
+    const speedGaugeEl = document.getElementById('gaugeSpeed');
+    if (speedValEl) speedValEl.textContent = pct;
+    if (speedGaugeEl) {
+      const gPct = Math.min(1, Math.max(0, parseFloat(pct) / 100)); // Cap 0 to 1
+      speedGaugeEl.style.strokeDashoffset = 157 * (1 - gPct);
+    }
   }
   /* Fault row */
   const fgdVal = (fgd !== undefined && fgd !== null) ? (Number(fgd) >>> 0) : null;
