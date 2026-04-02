@@ -817,9 +817,10 @@ input[type="range"]::-webkit-slider-thumb {
           <span class="mlp-fault-val" id="mctFaultCtrl">—</span>
         </div>
       </div>
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem; margin-top:0.75rem;">
+      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:0.5rem; margin-top:0.75rem;">
         <button class="ctrl-btn" onclick="sendMotor(0x03)">SET SPEED</button>
         <button class="ctrl-btn" onclick="sendMotor(0x04)">SET DIR</button>
+        <button class="ctrl-btn" style="background:rgba(239,68,68,0.15); border-color:rgba(239,68,68,0.4); color:#ef4444;" onclick="clearMctFault()">CLR FAULT</button>
       </div>
       <div style="border-top:1px solid rgba(255,255,255,0.1); margin-top:0.75rem; padding-top:0.75rem;">
         <div style="font-size:0.7rem; color:var(--text-dim); margin-bottom:0.5rem;">
@@ -1627,6 +1628,29 @@ async function writeIpdConfig(burnEEPROM) {
     }
   } catch (e) {
     addLog('Write IPD error: ' + e.message, 'err');
+  }
+}
+
+async function clearMctFault() {
+  if (!charCmd) { addLog('Not connected', 'err'); return; }
+  
+  // Format: [CMD(0xF2), Addr_H, Addr_L, Val3, Val2, Val1, Val0]
+  // ALGO_CTRL1 = 0x00E6
+  // Set Bit 29 (CLR_FLT) -> 0x20000000
+  const bufSet = new Uint8Array([0xF2, 0x00, 0xE6, 0x20, 0x00, 0x00, 0x00]);
+  const bufClr = new Uint8Array([0xF2, 0x00, 0xE6, 0x00, 0x00, 0x00, 0x00]);
+  
+  try {
+    await charCmd.writeValue(bufSet);
+    addLog('TX: Clear Fault (Pulse High)', 'tx');
+    setTimeout(async () => {
+      try {
+        await charCmd.writeValue(bufClr);
+        addLog('TX: Clear Fault (Pulse Low)', 'tx');
+      } catch(e) { addLog('TX Clear Fault Low failed: ' + e.message, 'err'); }
+    }, 100);
+  } catch (e) {
+    addLog('TX Clear Fault High failed: ' + e.message, 'err');
   }
 }
 
