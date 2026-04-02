@@ -845,7 +845,102 @@ input[type="range"]::-webkit-slider-thumb {
       </div>
     </div>
 
-    <div class="card log-card" style="grid-column:span 1;">
+    <!-- IPD Tuning Panel -->
+    <div class="card purple" id="cardIpd">
+      <div class="card-label">IPD Tuning (0x82)</div>
+      
+      <div style="font-size:0.75rem; color:var(--text-dim); margin-bottom:0.75rem;">
+        Current 0x82 (Hex): <strong id="valIpdSt1" style="font-family:'JetBrains Mono',monospace; color:var(--cyan);">—</strong>
+      </div>
+      
+      <!-- UI Control form -->
+      <div style="display:flex; flex-direction:column; gap:0.6rem;">
+        
+        <!-- MTR_STARTUP -->
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <span style="font-size:0.8rem; color:var(--text-dim);">Startup Mode</span>
+          <select id="ipdMtrStartup" class="ota-select" style="min-width:120px;" onchange="previewIpdHex()">
+            <option value="0">0: Single Align</option>
+            <option value="1">1: Double Align</option>
+            <option value="2">2: IPD</option>
+            <option value="3">3: Low Freq Initial</option>
+          </select>
+        </div>
+
+        <!-- IPD_CLK_FREQ -->
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <span style="font-size:0.8rem; color:var(--text-dim);">IPD Freq</span>
+          <select id="ipdClkFreq" class="ota-select" style="min-width:120px;" onchange="previewIpdHex()">
+            <option value="0">50 Hz</option>
+            <option value="1">100 Hz</option>
+            <option value="2">250 Hz</option>
+            <option value="3">500 Hz</option>
+            <option value="4">1000 Hz</option>
+            <option value="5">2000 Hz</option>
+            <option value="6">5000 Hz</option>
+            <option value="7">10000 Hz</option>
+          </select>
+        </div>
+
+        <!-- IPD_CURR_THR -->
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <span style="font-size:0.8rem; color:var(--text-dim);">Cur Threshold</span>
+          <select id="ipnCurrThr" class="ota-select" style="min-width:120px;" onchange="previewIpdHex()">
+            <option value="0">0.0V (0x00)</option>
+            <option value="1">0.1V (0x01)</option>
+            <option value="2">0.2V (0x02)</option>
+            <option value="5">0.5V (0x05)</option>
+            <option value="10">1.0V (0x0A)</option>
+            <option value="15">1.5V (0x0F)</option>
+            <option value="20">2.0V (0x14)</option>
+            <option value="26">2.6V (0x1A)</option>
+          </select>
+        </div>
+
+        <!-- IPD_ADV_ANGLE -->
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <span style="font-size:0.8rem; color:var(--text-dim);">Adv Angle</span>
+          <select id="ipdAdvAngle" class="ota-select" style="min-width:120px;" onchange="previewIpdHex()">
+            <option value="0">0°</option>
+            <option value="1">30°</option>
+            <option value="2">60°</option>
+            <option value="3">90°</option>
+          </select>
+        </div>
+
+        <!-- IPD_REPEAT -->
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <span style="font-size:0.8rem; color:var(--text-dim);">Repeat Avg</span>
+          <select id="ipdRepeat" class="ota-select" style="min-width:120px;" onchange="previewIpdHex()">
+            <option value="0">1 (No Avg)</option>
+            <option value="1">2 Samples</option>
+            <option value="2">3 Samples</option>
+            <option value="3">4 Samples</option>
+          </select>
+        </div>
+      </div>
+      
+      <!-- Preview -->
+      <div style="margin-top:0.75rem; padding-top:0.75rem; border-top:1px solid rgba(255,255,255,0.1);">
+        <div style="display:flex; justify-content:space-between; margin-bottom:0.75rem;">
+          <span style="font-size:0.75rem; color:var(--text-dim);">New Hex:</span>
+          <strong id="ipdNewHex" style="font-family:'JetBrains Mono',monospace; color:var(--purple);">—</strong>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem;">
+          <button class="ctrl-btn" style="background:rgba(167,139,250,0.15); border-color:rgba(167,139,250,0.4); color:#a78bfa;"
+                  onclick="writeIpdConfig(false)" title="Write to RAM (Shadow) via 0xF2 command. Lost on power-off.">
+            WRITE 0x82
+          </button>
+          <button class="ctrl-btn" style="background:rgba(239,68,68,0.15); border-color:rgba(239,68,68,0.4); color:#ef4444;"
+                  onclick="writeIpdConfig(true)" title="Write to RAM + BURN EEPROM via 0xF1 command.">
+            BURN EEPROM
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Log Panel -->
+    <div class="card log-card">
       <div class="card-label">Event Log</div>
       <div id="log"></div>
     </div>
@@ -1147,6 +1242,11 @@ function onNotify(event) {
     setRegHex('mtrCud', hex32(msg.cud));
     setRegHex('mtrSed', hex32(msg.sed));
     updateMctLivePanel(null, null, null, msg.cud);
+    
+    // If status push included st1 (STARTUP_CONFIG1), parse it!
+    if (msg.st1 !== undefined) {
+        parseIpdHex(msg.st1);
+    }
   }
 
   else if (msg.t === 'ota') {
@@ -1430,6 +1530,109 @@ async function startOta() {
 async function cancelOta() {
   otaAbortFlag = true;
 }
+
+/* ─── IPD Tuning (0x82 / 0x84) ─── */
+let lastIpdHex = 0; // The original full 32-bit register value read from MCT8329A
+function previewIpdHex() {
+  // Read current values from select elements
+  const mtrStartup = parseInt(document.getElementById('ipdMtrStartup').value) & 0x03;
+  const ipdFreq    = parseInt(document.getElementById('ipdClkFreq').value)    & 0x07;
+  const ipnCurr    = parseInt(document.getElementById('ipnCurrThr').value)    & 0x1F;
+  const ipdAdv     = parseInt(document.getElementById('ipdAdvAngle').value)   & 0x03;
+  const ipdRep     = parseInt(document.getElementById('ipdRepeat').value)     & 0x03;
+
+  // We are assembling STARTUP_CONFIG1 (0x82).
+  // Known mapping from SLLSFQ3 datasheet:
+  // IPD_CLK_FREQ = bits 15:13
+  // IPD_CURR_THR = bits 12:8
+  // IPD_ADV_ANGLE = bits 7:6
+  // IPD_REPEAT = bits 5:4
+  // MTR_STARTUP = bits 2:1
+  
+  // Clear bits 15:0 of lastIpdHex and merge the new bits
+  let newBits = 0;
+  newBits |= (ipdFreq    << 13);
+  newBits |= (ipnCurr    <<  8);
+  newBits |= (ipdAdv     <<  6);
+  newBits |= (ipdRep     <<  4);
+  newBits |= (mtrStartup <<  1);
+  
+  // Preserve the upper 16 bits (bits 31:16) from the device if we read it successfully
+  const upperVal = (lastIpdHex & 0xFFFF0000) >>> 0;
+  let finalVal = (upperVal | newBits) >>> 0;
+  
+  document.getElementById('ipdNewHex').textContent = hex32(finalVal);
+  return finalVal;
+}
+
+function parseIpdHex(hexVal) {
+  lastIpdHex = hexVal;
+  setRegHex('valIpdSt1', hex32(hexVal));
+  
+  const v = hexVal >>> 0;
+  // Extract bits
+  const mtrStartup = (v >>  1) & 0x03;
+  const ipdRep     = (v >>  4) & 0x03;
+  const ipdAdv     = (v >>  6) & 0x03;
+  const ipnCurr    = (v >>  8) & 0x1F;
+  const ipdFreq    = (v >> 13) & 0x07;
+  
+  // Safely update selects if they match a known option
+  const setSelect = (id, val) => {
+    let el = document.getElementById(id);
+    if (!el) return;
+    for (let opt of el.options) {
+      if (parseInt(opt.value) === val) { el.value = val; break; }
+    }
+  };
+  
+  setSelect('ipdMtrStartup', mtrStartup);
+  setSelect('ipdRepeat',     ipdRep);
+  setSelect('ipdAdvAngle',   ipdAdv);
+  setSelect('ipnCurrThr',    ipnCurr);
+  setSelect('ipdClkFreq',    ipdFreq);
+  
+  previewIpdHex();
+}
+
+async function writeIpdConfig(burnEEPROM) {
+  if (!charCmd) { addLog('Not connected', 'err'); return; }
+  const finalVal = previewIpdHex();
+  
+  // CMD_WRITE_SHADOW (0xF2) format: [0xF2, Addr_H, Addr_L, Val3, Val2, Val1, Val0]
+  const buf = new Uint8Array(7);
+  buf[0] = 0xF2; // CMD_WRITE_SHADOW
+  buf[1] = 0x00; // MSB of Address
+  buf[2] = 0x82; // LSB of Address (0x0082 = STARTUP_CONFIG1)
+  
+  buf[3] = (finalVal >>> 24) & 0xFF;
+  buf[4] = (finalVal >>> 16) & 0xFF;
+  buf[5] = (finalVal >>>  8) & 0xFF;
+  buf[6] = (finalVal)        & 0xFF;
+  
+  try {
+    await charCmd.writeValue(buf);
+    addLog('TX: IPD 0x82 written: ' + hex32(finalVal), 'tx');
+    
+    // If user clicked Burn EEPROM, we also need to trigger EEPROM write via 0xF1 
+    // OR we could write PIN_CONFIG1 and trigger burn. Wait, to burn ALL shadow registers to EEPROM,
+    // we can just issue the 0xF1 command right after! 0xF1 uses MCT8329A_programEEPROM() which saves everything!
+    if (burnEEPROM) {
+        if (!confirm('BURN EEPROM: This will permanently write the new IPD settings.\nProceed?')) return;
+        setTimeout(async () => {
+            const burnBuf = new Uint8Array([0xF1, 0x00, 0x00, 0x00]);
+            try { await charCmd.writeValue(burnBuf); addLog('TX: EEPROM Burn command sent...', 'tx'); }
+            catch(e) { addLog('TX Burn EEPROM failed: ' + e.message, 'err'); }
+        }, 150);
+    }
+  } catch (e) {
+    addLog('Write IPD error: ' + e.message, 'err');
+  }
+}
+
+// Initial dummy run to display something before device connects
+previewIpdHex();
+
 </script>
 </body>
 </html>
