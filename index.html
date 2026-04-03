@@ -1584,10 +1584,14 @@
           speedGaugeEl.style.strokeDashoffset = 157 * (1 - gPct);
         }
       }
-      /* Fault row */
+      /* Fault row: filter out 0x81000000 (DRVOFF_STAT) because it's a normal consequence of our hardware stop */
       const fgdVal = (fgd !== undefined && fgd !== null) ? (Number(fgd) >>> 0) : null;
       const fcVal = (fc !== undefined && fc !== null) ? (Number(fc) >>> 0) : null;
-      const hasFault = (fgdVal !== null && fgdVal !== 0) || (fcVal !== null && fcVal !== 0);
+      
+      const realFgd = (fgdVal !== null) ? (fgdVal & ~(0x81000000)) : null;
+      const realFc  = (fcVal  !== null) ? (fcVal  & ~(0x80000000)) : null;
+      
+      const hasFault = (realFgd !== null && realFgd !== 0) || (realFc !== null && realFc !== 0);
       const faultRow = document.getElementById('mctFaultRow');
       if (faultRow && (fgdVal !== null || fcVal !== null)) {
         faultRow.style.display = hasFault ? 'flex' : 'none';
