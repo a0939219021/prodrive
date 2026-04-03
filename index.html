@@ -1,1662 +1,2081 @@
 <!DOCTYPE html>
 <!-- ForJeeper / prodrive: v1.5 badge (1.5rem); PAI fw-chip; pai_ver = hb.pai_ver || localStorage from *_vX.bin; 2026-03-26 -->
 <html lang="en">
+
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>ForJeeper OBD Dashboard</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Orbitron:wght@400;700;900&family=Barlow:wght@300;400;500;600&display=swap" rel="stylesheet">
-<style>
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>ForJeeper OBD Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link
+    href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Orbitron:wght@400;700;900&family=Barlow:wght@300;400;500;600&display=swap"
+    rel="stylesheet">
+  <style>
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
 
-:root {
-  --bg: #0a0e17;
-  --surface: #111827;
-  --border: #1e293b;
-  --text: #e2e8f0;
-  --text-dim: #64748b;
-  --cyan: #06b6d4;
-  --cyan-glow: rgba(6, 182, 212, 0.3);
-  --amber: #f59e0b;
-  --amber-glow: rgba(245, 158, 11, 0.3);
-  --green: #10b981;
-  --green-glow: rgba(16, 185, 129, 0.3);
-  --red: #ef4444;
-  --red-glow: rgba(239, 68, 68, 0.3);
-  --purple: #a78bfa;
-}
+    :root {
+      --bg: #0a0e17;
+      --surface: #111827;
+      --border: #1e293b;
+      --text: #e2e8f0;
+      --text-dim: #64748b;
+      --cyan: #06b6d4;
+      --cyan-glow: rgba(6, 182, 212, 0.3);
+      --amber: #f59e0b;
+      --amber-glow: rgba(245, 158, 11, 0.3);
+      --green: #10b981;
+      --green-glow: rgba(16, 185, 129, 0.3);
+      --red: #ef4444;
+      --red-glow: rgba(239, 68, 68, 0.3);
+      --purple: #a78bfa;
+    }
 
-html { font-size: 14px; }
-body {
-  font-family: 'Barlow', sans-serif;
-  background: var(--bg);
-  color: var(--text);
-  min-height: 100vh;
-  overflow-x: hidden;
-}
+    html {
+      font-size: 14px;
+    }
 
-/* ─── Header ─── */
-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 1rem 1.5rem;
-  border-bottom: 1px solid var(--border);
-  background: linear-gradient(180deg, rgba(17,24,39,0.95), var(--bg));
-  position: sticky;
-  top: 0;
-  z-index: 100;
-  backdrop-filter: blur(12px);
-}
-.logo {
-  font-family: 'Orbitron', sans-serif;
-  font-weight: 900;
-  font-size: 1.4rem;
-  letter-spacing: 0.15em;
-  background: linear-gradient(135deg, var(--cyan), var(--purple));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-.logo span { font-weight: 400; opacity: 0.7; font-size: 0.75em; }
-.logo .ver { font-family: 'JetBrains Mono', monospace; font-size: 1.5rem; font-weight: 400;
-  letter-spacing: 0.05em; -webkit-text-fill-color: var(--text-dim); opacity: 0.75;
-  margin-left: 6px; vertical-align: middle; }
+    body {
+      font-family: 'Barlow', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
 
-#btnConnect {
-  font-family: 'Barlow', sans-serif;
-  font-weight: 600;
-  font-size: 0.9rem;
-  padding: 0.6rem 1.6rem;
-  border: 2px solid var(--cyan);
-  border-radius: 8px;
-  background: transparent;
-  color: var(--cyan);
-  cursor: pointer;
-  transition: all 0.2s;
-  letter-spacing: 0.05em;
-}
-#btnConnect:hover { background: var(--cyan); color: var(--bg); }
-#btnConnect.connected { border-color: var(--green); color: var(--green); }
-#btnConnect.connected:hover { background: var(--green); color: var(--bg); }
+    /* ─── Header ─── */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      background: linear-gradient(180deg, rgba(17, 24, 39, 0.95), var(--bg));
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      backdrop-filter: blur(12px);
+    }
 
-/* ─── Status bar ─── */
-.status-bar {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding: 0.45rem 1.5rem;
-  font-size: 0.78rem;
-  color: var(--text-dim);
-  border-bottom: 1px solid var(--border);
-  flex-wrap: wrap;
-}
-.status-bar .dot {
-  display: inline-block;
-  width: 8px; height: 8px;
-  border-radius: 50%;
-  background: var(--red);
-  flex-shrink: 0;
-}
-.status-bar .dot.on { background: var(--green); box-shadow: 0 0 8px var(--green-glow); }
+    .logo {
+      font-family: 'Orbitron', sans-serif;
+      font-weight: 900;
+      font-size: 1.4rem;
+      letter-spacing: 0.15em;
+      background: linear-gradient(135deg, var(--cyan), var(--purple));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
 
-/* OBM / OBA firmware version chips */
-.fw-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 3px 10px 3px 7px;
-  border: 1px solid rgba(0,255,255,0.18);
-  border-radius: 20px;
-  background: rgba(0,255,255,0.05);
-}
-.fw-chip .chip-label {
-  font-family: 'Barlow', sans-serif;
-  font-size: 0.72rem;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  color: var(--text-dim);
-  text-transform: uppercase;
-}
-.fw-chip .chip-ver {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.88rem;
-  font-weight: 600;
-  color: var(--cyan);
-  min-width: 2.4rem;
-  text-align: left;
-}
+    .logo span {
+      font-weight: 400;
+      opacity: 0.7;
+      font-size: 0.75em;
+    }
 
-/* ─── Main grid ─── */
-main {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 1rem;
-  padding: 1rem 1.5rem 2rem;
-  max-width: 1200px;
-  margin: 0 auto;
-}
-@media (max-width: 900px) {
-  main { grid-template-columns: 1fr 1fr; }
-}
-@media (max-width: 560px) {
-  main { grid-template-columns: 1fr; padding: 0.75rem; gap: 0.75rem; }
-  header { padding: 0.75rem 1rem; }
-}
+    .logo .ver {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 1.5rem;
+      font-weight: 400;
+      letter-spacing: 0.05em;
+      -webkit-text-fill-color: var(--text-dim);
+      opacity: 0.75;
+      margin-left: 6px;
+      vertical-align: middle;
+    }
 
-/* ─── Gauge cards ─── */
-.card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 1.25rem;
-  position: relative;
-  overflow: hidden;
-  transition: border-color 0.3s;
-}
-.card::before {
-  content: '';
-  position: absolute;
-  top: 0; left: 0; right: 0;
-  height: 3px;
-  background: var(--cyan);
-  opacity: 0.5;
-}
-.card.amber::before { background: var(--amber); }
-.card.green::before { background: var(--green); }
-.card.purple::before { background: var(--purple); }
-.card.red::before { background: var(--red); }
-.card.wide { grid-column: span 2; }
-@media (max-width: 560px) { .card.wide { grid-column: span 1; } }
+    #btnConnect {
+      font-family: 'Barlow', sans-serif;
+      font-weight: 600;
+      font-size: 0.9rem;
+      padding: 0.6rem 1.6rem;
+      border: 2px solid var(--cyan);
+      border-radius: 8px;
+      background: transparent;
+      color: var(--cyan);
+      cursor: pointer;
+      transition: all 0.2s;
+      letter-spacing: 0.05em;
+    }
 
-.card-label {
-  font-size: 0.75rem;
-  font-weight: 500;
-  color: var(--text-dim);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  margin-bottom: 0.5rem;
-}
-.card-value {
-  font-family: 'Orbitron', sans-serif;
-  font-weight: 700;
-  font-size: 2.2rem;
-  line-height: 1;
-  color: var(--cyan);
-}
-.card.amber .card-value { color: var(--amber); }
-.card.green .card-value { color: var(--green); }
-.card.purple .card-value { color: var(--purple); }
-.card.red .card-value { color: var(--red); }
+    #btnConnect:hover {
+      background: var(--cyan);
+      color: var(--bg);
+    }
 
-.card-unit {
-  font-family: 'Barlow', sans-serif;
-  font-weight: 300;
-  font-size: 0.9rem;
-  color: var(--text-dim);
-  margin-left: 0.3rem;
-}
+    #btnConnect.connected {
+      border-color: var(--green);
+      color: var(--green);
+    }
 
-/* ─── Gauge arc ─── */
-.gauge-container { display: flex; align-items: center; gap: 1.5rem; }
-.gauge-svg { width: 110px; height: 70px; flex-shrink: 0; }
-.gauge-track { fill: none; stroke: var(--border); stroke-width: 8; }
-.gauge-fill {
-  fill: none;
-  stroke: var(--cyan);
-  stroke-width: 8;
-  stroke-linecap: round;
-  transition: stroke-dashoffset 0.4s ease;
-}
-.card.amber .gauge-fill { stroke: var(--amber); }
-.card.green .gauge-fill { stroke: var(--green); }
+    #btnConnect.connected:hover {
+      background: var(--green);
+      color: var(--bg);
+    }
 
-/* ─── Progress bar ─── */
-.bar-track {
-  width: 100%;
-  height: 6px;
-  background: var(--border);
-  border-radius: 3px;
-  margin-top: 0.75rem;
-  overflow: hidden;
-}
-.bar-fill {
-  height: 100%;
-  border-radius: 3px;
-  background: var(--cyan);
-  transition: width 0.4s ease;
-  width: 0%;
-}
-.card.amber .bar-fill { background: var(--amber); }
-.card.green .bar-fill { background: var(--green); }
-.card.purple .bar-fill { background: var(--purple); }
+    /* ─── Status bar ─── */
+    .status-bar {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      padding: 0.45rem 1.5rem;
+      font-size: 0.78rem;
+      color: var(--text-dim);
+      border-bottom: 1px solid var(--border);
+      flex-wrap: wrap;
+    }
 
-/* ─── Motor control panel ─── */
-.motor-panel {
-  grid-column: span 3;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1rem;
-}
-@media (max-width: 900px) { .motor-panel { grid-column: span 2; } }
-@media (max-width: 560px) { .motor-panel { grid-column: span 1; grid-template-columns: 1fr; } }
+    .status-bar .dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--red);
+      flex-shrink: 0;
+    }
 
-.motor-status {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  margin-bottom: 1rem;
-  flex-wrap: wrap;
-}
-.motor-led-row {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.75rem;
-  color: var(--text-dim);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-.motor-led {
-  display: inline-block;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: var(--border);
-  box-shadow: inset 0 0 6px rgba(0,0,0,0.5);
-  transition: background 0.2s, box-shadow 0.2s;
-}
-.motor-led.on {
-  background: var(--green);
-  box-shadow: 0 0 12px var(--green-glow);
-}
-.motor-hint {
-  font-size: 0.72rem;
-  color: var(--amber);
-  margin: 0.35rem 0 0.75rem;
-  padding: 0.45rem 0.6rem;
-  border-radius: 6px;
-  border: 1px solid rgba(245, 158, 11, 0.35);
-  background: rgba(245, 158, 11, 0.08);
-  line-height: 1.35;
-}
+    .status-bar .dot.on {
+      background: var(--green);
+      box-shadow: 0 0 8px var(--green-glow);
+    }
 
-/* ─── MCT8329A register console (engineering layout) ─── */
-.mct-reg-panel {
-  margin: 0.75rem 0 1rem;
-  border-radius: 10px;
-  border: 1px solid rgba(6, 182, 212, 0.22);
-  background: linear-gradient(165deg, rgba(15, 23, 42, 0.95) 0%, rgba(17, 24, 39, 0.88) 100%);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 4px 20px rgba(0,0,0,0.35);
-  overflow: hidden;
-}
-.mct-reg-panel::before {
-  content: '';
-  display: block;
-  height: 3px;
-  background: linear-gradient(90deg, var(--cyan), var(--purple));
-  opacity: 0.85;
-}
-.mct-reg-panel-hd {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 0.35rem 1rem;
-  padding: 0.55rem 0.75rem 0.35rem;
-  border-bottom: 1px solid rgba(30, 41, 59, 0.9);
-}
-.mct-reg-title {
-  font-family: 'Orbitron', sans-serif;
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  color: var(--cyan);
-}
-.mct-reg-sub {
-  font-size: 0.65rem;
-  color: var(--text-dim);
-  letter-spacing: 0.06em;
-  font-family: 'JetBrains Mono', monospace;
-}
-.mct-reg-scroll {
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-}
-.mct-reg-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.72rem;
-}
-.mct-reg-table thead th {
-  text-align: left;
-  font-weight: 600;
-  font-size: 0.62rem;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--text-dim);
-  padding: 0.4rem 0.65rem;
-  background: rgba(0,0,0,0.25);
-  border-bottom: 1px solid var(--border);
-}
-.mct-reg-table thead th.mct-reg-sub {
-  text-transform: none;
-  letter-spacing: 0.03em;
-  font-size: 0.58rem;
-  font-weight: 500;
-  color: var(--amber);
-  padding: 0.28rem 0.65rem 0.4rem;
-  border-bottom: 1px solid rgba(245, 158, 11, 0.25);
-}
-.mct-reg-table tbody tr:nth-child(odd)  { background: rgba(255,255,255,0.02); }
-.mct-reg-table tbody tr:nth-child(even) { background: rgba(6, 182, 212, 0.04); }
-.mct-reg-table tbody tr:hover {
-  background: rgba(6, 182, 212, 0.09);
-}
-.mct-reg-table td {
-  padding: 0.38rem 0.65rem;
-  vertical-align: middle;
-  border-bottom: 1px solid rgba(30, 41, 59, 0.65);
-}
-.mct-reg-table td:first-child {
-  font-weight: 500;
-  color: var(--text-dim);
-  font-size: 0.68rem;
-  letter-spacing: 0.04em;
-  white-space: nowrap;
-}
-.mct-addr {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.68rem;
-  color: var(--purple);
-  opacity: 0.9;
-  white-space: nowrap;
-}
-.mct-val {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.74rem;
-  font-weight: 500;
-  color: var(--cyan);
-  letter-spacing: 0.03em;
-  text-align: right;
-  text-shadow: 0 0 24px rgba(6, 182, 212, 0.15);
-}
-.mct-val.mct-val-zero {
-  color: var(--text-dim);
-  font-weight: 400;
-}
+    /* OBM / OBA firmware version chips */
+    .fw-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 10px 3px 7px;
+      border: 1px solid rgba(0, 255, 255, 0.18);
+      border-radius: 20px;
+      background: rgba(0, 255, 255, 0.05);
+    }
 
-.motor-state-badge {
-  display: inline-block;
-  padding: 0.3rem 0.8rem;
-  border-radius: 6px;
-  font-size: 0.85rem;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
-.motor-state-badge.stopped { background: rgba(100,116,139,0.2); color: var(--text-dim); border: 1px solid var(--text-dim); }
-.motor-state-badge.running { background: var(--green-glow); color: var(--green); border: 1px solid var(--green); }
-.motor-state-badge.fault   { background: var(--red-glow); color: var(--red); border: 1px solid var(--red); }
+    .fw-chip .chip-label {
+      font-family: 'Barlow', sans-serif;
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      color: var(--text-dim);
+      text-transform: uppercase;
+    }
 
-.ctrl-btn {
-  font-family: 'Barlow', sans-serif;
-  font-weight: 600;
-  font-size: 0.95rem;
-  padding: 0.7rem 1.2rem;
-  border-radius: 8px;
-  border: 1.5px solid var(--border);
-  background: var(--surface);
-  color: var(--text);
-  cursor: pointer;
-  transition: all 0.2s;
-  width: 100%;
-}
-.ctrl-btn:active { transform: scale(0.97); }
-.ctrl-btn.start { border-color: var(--green); color: var(--green); }
-.ctrl-btn.start:hover { background: var(--green); color: var(--bg); }
-.ctrl-btn.stop { border-color: var(--red); color: var(--red); }
-.ctrl-btn.stop:hover { background: var(--red); color: #fff; }
+    .fw-chip .chip-ver {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: var(--cyan);
+      min-width: 2.4rem;
+      text-align: left;
+    }
 
-.slider-group { margin-top: 0.75rem; }
-.slider-group label {
-  display: flex;
-  justify-content: space-between;
-  font-size: 0.8rem;
-  color: var(--text-dim);
-  margin-bottom: 0.3rem;
-}
-/* Motor live status panel */
-.motor-live-panel {
-  margin-top: 0.5rem;
-  padding: 0.5rem 0.6rem;
-  background: rgba(6, 182, 212, 0.05);
-  border: 1px solid rgba(6, 182, 212, 0.18);
-  border-radius: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-}
-.mlp-row {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-}
-.mlp-label { font-size: 0.72rem; color: var(--text-dim); white-space: nowrap; }
-.mlp-sep { margin-left: 0.5rem; }
-.mlp-duty {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: var(--cyan);
-  min-width: 3.5rem;
-}
-.mlp-fault-row {
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-  flex-wrap: wrap;
-}
-.mlp-fault-label { font-size: 0.72rem; color: #fbbf24; }
-.mlp-fault-val {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.78rem;
-  color: #ef4444;
-  font-weight: 600;
-}
-/* MCT state pill */
-.mct-state-pill {
-  display: inline-block;
-  padding: 0.18rem 0.65rem;
-  border-radius: 999px;
-  font-size: 0.78rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  font-family: 'JetBrains Mono', monospace;
-  background: rgba(100,116,139,0.2);
-  color: #94a3b8;
-  border: 1px solid rgba(100,116,139,0.3);
-  transition: background 0.25s, color 0.25s;
-}
-.mct-state-pill.idle     { background: rgba(100,116,139,0.2); color: #94a3b8; border-color: rgba(100,116,139,0.3); }
-.mct-state-pill.starting { background: rgba(245,158,11,0.15); color: #f59e0b; border-color: rgba(245,158,11,0.4); }
-.mct-state-pill.running  { background: rgba(16,185,129,0.15); color: #10b981; border-color: rgba(16,185,129,0.4); }
-.mct-state-pill.init     { background: rgba(167,139,250,0.15); color: #a78bfa; border-color: rgba(167,139,250,0.4); }
-.mct-state-pill.stopping { background: rgba(245,158,11,0.12); color: #fbbf24; border-color: rgba(245,158,11,0.3); }
-.mct-state-pill.fault    { background: rgba(239,68,68,0.18); color: #ef4444; border-color: rgba(239,68,68,0.5); }
-input[type="range"] {
-  -webkit-appearance: none;
-  width: 100%;
-  height: 6px;
-  background: var(--border);
-  border-radius: 3px;
-  outline: none;
-}
-input[type="range"]::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 20px; height: 20px;
-  border-radius: 50%;
-  background: var(--cyan);
-  cursor: pointer;
-  border: 2px solid var(--bg);
-}
+    /* ─── Main grid ─── */
+    main {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 1rem;
+      padding: 1rem 1.5rem 2rem;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
 
-.dir-toggle {
-  display: flex;
-  gap: 0.5rem;
-  margin-top: 0.75rem;
-}
-.dir-btn {
-  flex: 1;
-  padding: 0.5rem;
-  border: 1.5px solid var(--border);
-  border-radius: 6px;
-  background: var(--surface);
-  color: var(--text-dim);
-  font-family: 'Barlow', sans-serif;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
-  text-align: center;
-}
-.dir-btn.active { border-color: var(--cyan); color: var(--cyan); background: rgba(6,182,212,0.1); }
+    @media (max-width: 900px) {
+      main {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
 
-/* ─── Log ─── */
-.log-card {
-  grid-column: span 3;
-}
-@media (max-width: 900px) { .log-card { grid-column: span 2; } }
-@media (max-width: 560px) { .log-card { grid-column: span 1; } }
+    @media (max-width: 560px) {
+      main {
+        grid-template-columns: 1fr;
+        padding: 0.75rem;
+        gap: 0.75rem;
+      }
 
-#log {
-  font-family: 'Courier New', monospace;
-  font-size: 0.75rem;
-  color: var(--text-dim);
-  max-height: 150px;
-  overflow-y: auto;
-  line-height: 1.6;
-  white-space: pre-wrap;
-  word-break: break-all;
-}
-#log .ts { color: var(--text-dim); opacity: 0.5; }
-#log .rx { color: var(--green); }
-#log .tx { color: var(--amber); }
-#log .err { color: var(--red); }
+      header {
+        padding: 0.75rem 1rem;
+      }
+    }
 
-/* ─── Animations ─── */
-@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
-.card { animation: fadeIn 0.4s ease both; }
-.card:nth-child(2) { animation-delay: 0.05s; }
-.card:nth-child(3) { animation-delay: 0.1s; }
-.card:nth-child(4) { animation-delay: 0.15s; }
-.card:nth-child(5) { animation-delay: 0.2s; }
-.card:nth-child(6) { animation-delay: 0.25s; }
+    /* ─── Gauge cards ─── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.25rem;
+      position: relative;
+      overflow: hidden;
+      transition: border-color 0.3s;
+    }
 
-/* ─── OTA Panel ─── */
-.ota-card { grid-column: span 3; }
-@media (max-width: 900px) { .ota-card { grid-column: span 2; } }
-@media (max-width: 560px) { .ota-card { grid-column: span 1; } }
-.ota-row { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; margin-bottom: 0.75rem; }
-.ota-label { color: var(--text-dim); font-size: 0.8rem; min-width: 4.5rem; }
-.ota-select {
-  font-family: 'Barlow', sans-serif; font-size: 0.85rem; background: var(--bg);
-  color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 0.3rem 0.6rem; cursor: pointer;
-}
-.ota-file-btn {
-  font-family: 'Barlow', sans-serif; font-size: 0.8rem; font-weight: 500;
-  padding: 0.3rem 0.8rem; border: 1px solid var(--border); border-radius: 6px;
-  background: transparent; color: var(--text); cursor: pointer; transition: all 0.2s;
-}
-.ota-file-btn:hover { border-color: var(--cyan); color: var(--cyan); }
-#otaFileName { color: var(--text-dim); font-size: 0.8rem; font-family: 'JetBrains Mono', monospace; }
-.ota-start-btn {
-  font-family: 'Barlow', sans-serif; font-weight: 600; font-size: 0.85rem;
-  padding: 0.45rem 1.4rem; border: 2px solid var(--amber); border-radius: 8px;
-  background: transparent; color: var(--amber); cursor: pointer; transition: all 0.2s; letter-spacing: 0.05em;
-}
-.ota-start-btn:hover:not(:disabled) { background: var(--amber); color: var(--bg); }
-.ota-start-btn:disabled { opacity: 0.35; cursor: not-allowed; }
-.ota-cancel-btn {
-  font-family: 'Barlow', sans-serif; font-weight: 500; font-size: 0.85rem;
-  padding: 0.4rem 1rem; border: 1px solid var(--red); border-radius: 8px;
-  background: transparent; color: var(--red); cursor: pointer; transition: all 0.2s; display: none;
-}
-.ota-cancel-btn:hover { background: var(--red); color: var(--bg); }
-.ota-progress-wrap {
-  background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
-  height: 14px; overflow: hidden; margin-top: 0.1rem; flex: 1; min-width: 120px;
-}
-.ota-progress-bar {
-  height: 100%; width: 0%; background: linear-gradient(90deg, var(--amber), var(--cyan));
-  border-radius: 8px; transition: width 0.2s;
-}
-#otaStatus { font-size: 0.8rem; font-family: 'JetBrains Mono', monospace; color: var(--text-dim); min-width: 5rem; }
-</style>
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: var(--cyan);
+      opacity: 0.5;
+    }
+
+    .card.amber::before {
+      background: var(--amber);
+    }
+
+    .card.green::before {
+      background: var(--green);
+    }
+
+    .card.purple::before {
+      background: var(--purple);
+    }
+
+    .card.red::before {
+      background: var(--red);
+    }
+
+    .card.wide {
+      grid-column: span 2;
+    }
+
+    @media (max-width: 560px) {
+      .card.wide {
+        grid-column: span 1;
+      }
+    }
+
+    .card-label {
+      font-size: 0.75rem;
+      font-weight: 500;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 0.5rem;
+    }
+
+    .card-value {
+      font-family: 'Orbitron', sans-serif;
+      font-weight: 700;
+      font-size: 2.2rem;
+      line-height: 1;
+      color: var(--cyan);
+    }
+
+    .card.amber .card-value {
+      color: var(--amber);
+    }
+
+    .card.green .card-value {
+      color: var(--green);
+    }
+
+    .card.purple .card-value {
+      color: var(--purple);
+    }
+
+    .card.red .card-value {
+      color: var(--red);
+    }
+
+    .card-unit {
+      font-family: 'Barlow', sans-serif;
+      font-weight: 300;
+      font-size: 0.9rem;
+      color: var(--text-dim);
+      margin-left: 0.3rem;
+    }
+
+    /* ─── Gauge arc ─── */
+    .gauge-container {
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
+    }
+
+    .gauge-svg {
+      width: 110px;
+      height: 70px;
+      flex-shrink: 0;
+    }
+
+    .gauge-track {
+      fill: none;
+      stroke: var(--border);
+      stroke-width: 8;
+    }
+
+    .gauge-fill {
+      fill: none;
+      stroke: var(--cyan);
+      stroke-width: 8;
+      stroke-linecap: round;
+      transition: stroke-dashoffset 0.4s ease;
+    }
+
+    .card.amber .gauge-fill {
+      stroke: var(--amber);
+    }
+
+    .card.green .gauge-fill {
+      stroke: var(--green);
+    }
+
+    /* ─── Progress bar ─── */
+    .bar-track {
+      width: 100%;
+      height: 6px;
+      background: var(--border);
+      border-radius: 3px;
+      margin-top: 0.75rem;
+      overflow: hidden;
+    }
+
+    .bar-fill {
+      height: 100%;
+      border-radius: 3px;
+      background: var(--cyan);
+      transition: width 0.4s ease;
+      width: 0%;
+    }
+
+    .card.amber .bar-fill {
+      background: var(--amber);
+    }
+
+    .card.green .bar-fill {
+      background: var(--green);
+    }
+
+    .card.purple .bar-fill {
+      background: var(--purple);
+    }
+
+    /* ─── Motor control panel ─── */
+    .motor-panel {
+      grid-column: span 3;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+
+    @media (max-width: 900px) {
+      .motor-panel {
+        grid-column: span 2;
+      }
+    }
+
+    @media (max-width: 560px) {
+      .motor-panel {
+        grid-column: span 1;
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .motor-status {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .motor-led-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .motor-led {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--border);
+      box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.5);
+      transition: background 0.2s, box-shadow 0.2s;
+    }
+
+    .motor-led.on {
+      background: var(--green);
+      box-shadow: 0 0 12px var(--green-glow);
+    }
+
+    .motor-hint {
+      font-size: 0.72rem;
+      color: var(--amber);
+      margin: 0.35rem 0 0.75rem;
+      padding: 0.45rem 0.6rem;
+      border-radius: 6px;
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      background: rgba(245, 158, 11, 0.08);
+      line-height: 1.35;
+    }
+
+    /* ─── MCT8329A register console (engineering layout) ─── */
+    .mct-reg-panel {
+      margin: 0.75rem 0 1rem;
+      border-radius: 10px;
+      border: 1px solid rgba(6, 182, 212, 0.22);
+      background: linear-gradient(165deg, rgba(15, 23, 42, 0.95) 0%, rgba(17, 24, 39, 0.88) 100%);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 4px 20px rgba(0, 0, 0, 0.35);
+      overflow: hidden;
+    }
+
+    .mct-reg-panel::before {
+      content: '';
+      display: block;
+      height: 3px;
+      background: linear-gradient(90deg, var(--cyan), var(--purple));
+      opacity: 0.85;
+    }
+
+    .mct-reg-panel-hd {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 0.35rem 1rem;
+      padding: 0.55rem 0.75rem 0.35rem;
+      border-bottom: 1px solid rgba(30, 41, 59, 0.9);
+    }
+
+    .mct-reg-title {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      color: var(--cyan);
+    }
+
+    .mct-reg-sub {
+      font-size: 0.65rem;
+      color: var(--text-dim);
+      letter-spacing: 0.06em;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .mct-reg-scroll {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .mct-reg-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.72rem;
+    }
+
+    .mct-reg-table thead th {
+      text-align: left;
+      font-weight: 600;
+      font-size: 0.62rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--text-dim);
+      padding: 0.4rem 0.65rem;
+      background: rgba(0, 0, 0, 0.25);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .mct-reg-table thead th.mct-reg-sub {
+      text-transform: none;
+      letter-spacing: 0.03em;
+      font-size: 0.58rem;
+      font-weight: 500;
+      color: var(--amber);
+      padding: 0.28rem 0.65rem 0.4rem;
+      border-bottom: 1px solid rgba(245, 158, 11, 0.25);
+    }
+
+    .mct-reg-table tbody tr:nth-child(odd) {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .mct-reg-table tbody tr:nth-child(even) {
+      background: rgba(6, 182, 212, 0.04);
+    }
+
+    .mct-reg-table tbody tr:hover {
+      background: rgba(6, 182, 212, 0.09);
+    }
+
+    .mct-reg-table td {
+      padding: 0.38rem 0.65rem;
+      vertical-align: middle;
+      border-bottom: 1px solid rgba(30, 41, 59, 0.65);
+    }
+
+    .mct-reg-table td:first-child {
+      font-weight: 500;
+      color: var(--text-dim);
+      font-size: 0.68rem;
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+    }
+
+    .mct-addr {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.68rem;
+      color: var(--purple);
+      opacity: 0.9;
+      white-space: nowrap;
+    }
+
+    .mct-val {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.74rem;
+      font-weight: 500;
+      color: var(--cyan);
+      letter-spacing: 0.03em;
+      text-align: right;
+      text-shadow: 0 0 24px rgba(6, 182, 212, 0.15);
+    }
+
+    .mct-val.mct-val-zero {
+      color: var(--text-dim);
+      font-weight: 400;
+    }
+
+    .motor-state-badge {
+      display: inline-block;
+      padding: 0.3rem 0.8rem;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .motor-state-badge.stopped {
+      background: rgba(100, 116, 139, 0.2);
+      color: var(--text-dim);
+      border: 1px solid var(--text-dim);
+    }
+
+    .motor-state-badge.running {
+      background: var(--green-glow);
+      color: var(--green);
+      border: 1px solid var(--green);
+    }
+
+    .motor-state-badge.fault {
+      background: var(--red-glow);
+      color: var(--red);
+      border: 1px solid var(--red);
+    }
+
+    .ctrl-btn {
+      font-family: 'Barlow', sans-serif;
+      font-weight: 600;
+      font-size: 0.95rem;
+      padding: 0.7rem 1.2rem;
+      border-radius: 8px;
+      border: 1.5px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      cursor: pointer;
+      transition: all 0.2s;
+      width: 100%;
+    }
+
+    .ctrl-btn:active {
+      transform: scale(0.97);
+    }
+
+    .ctrl-btn.start {
+      border-color: var(--green);
+      color: var(--green);
+    }
+
+    .ctrl-btn.start:hover {
+      background: var(--green);
+      color: var(--bg);
+    }
+
+    .ctrl-btn.stop {
+      border-color: var(--red);
+      color: var(--red);
+    }
+
+    .ctrl-btn.stop:hover {
+      background: var(--red);
+      color: #fff;
+    }
+
+    .slider-group {
+      margin-top: 0.75rem;
+    }
+
+    .slider-group label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.8rem;
+      color: var(--text-dim);
+      margin-bottom: 0.3rem;
+    }
+
+    /* Motor live status panel */
+    .motor-live-panel {
+      margin-top: 0.5rem;
+      padding: 0.5rem 0.6rem;
+      background: rgba(6, 182, 212, 0.05);
+      border: 1px solid rgba(6, 182, 212, 0.18);
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+
+    .mlp-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+
+    .mlp-label {
+      font-size: 0.72rem;
+      color: var(--text-dim);
+      white-space: nowrap;
+    }
+
+    .mlp-sep {
+      margin-left: 0.5rem;
+    }
+
+    .mlp-duty {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--cyan);
+      min-width: 3.5rem;
+    }
+
+    .mlp-fault-row {
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+      flex-wrap: wrap;
+    }
+
+    .mlp-fault-label {
+      font-size: 0.72rem;
+      color: #fbbf24;
+    }
+
+    .mlp-fault-val {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.78rem;
+      color: #ef4444;
+      font-weight: 600;
+    }
+
+    /* MCT state pill */
+    .mct-state-pill {
+      display: inline-block;
+      padding: 0.18rem 0.65rem;
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      font-family: 'JetBrains Mono', monospace;
+      background: rgba(100, 116, 139, 0.2);
+      color: #94a3b8;
+      border: 1px solid rgba(100, 116, 139, 0.3);
+      transition: background 0.25s, color 0.25s;
+    }
+
+    .mct-state-pill.idle {
+      background: rgba(100, 116, 139, 0.2);
+      color: #94a3b8;
+      border-color: rgba(100, 116, 139, 0.3);
+    }
+
+    .mct-state-pill.starting {
+      background: rgba(245, 158, 11, 0.15);
+      color: #f59e0b;
+      border-color: rgba(245, 158, 11, 0.4);
+    }
+
+    .mct-state-pill.running {
+      background: rgba(16, 185, 129, 0.15);
+      color: #10b981;
+      border-color: rgba(16, 185, 129, 0.4);
+    }
+
+    .mct-state-pill.init {
+      background: rgba(167, 139, 250, 0.15);
+      color: #a78bfa;
+      border-color: rgba(167, 139, 250, 0.4);
+    }
+
+    .mct-state-pill.stopping {
+      background: rgba(245, 158, 11, 0.12);
+      color: #fbbf24;
+      border-color: rgba(245, 158, 11, 0.3);
+    }
+
+    .mct-state-pill.fault {
+      background: rgba(239, 68, 68, 0.18);
+      color: #ef4444;
+      border-color: rgba(239, 68, 68, 0.5);
+    }
+
+    input[type="range"] {
+      -webkit-appearance: none;
+      width: 100%;
+      height: 6px;
+      background: var(--border);
+      border-radius: 3px;
+      outline: none;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: var(--cyan);
+      cursor: pointer;
+      border: 2px solid var(--bg);
+    }
+
+    .dir-toggle {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 0.75rem;
+    }
+
+    .dir-btn {
+      flex: 1;
+      padding: 0.5rem;
+      border: 1.5px solid var(--border);
+      border-radius: 6px;
+      background: var(--surface);
+      color: var(--text-dim);
+      font-family: 'Barlow', sans-serif;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-align: center;
+    }
+
+    .dir-btn.active {
+      border-color: var(--cyan);
+      color: var(--cyan);
+      background: rgba(6, 182, 212, 0.1);
+    }
+
+    /* ─── Log ─── */
+    .log-card {
+      grid-column: span 3;
+    }
+
+    @media (max-width: 900px) {
+      .log-card {
+        grid-column: span 2;
+      }
+    }
+
+    @media (max-width: 560px) {
+      .log-card {
+        grid-column: span 1;
+      }
+    }
+
+    #log {
+      font-family: 'Courier New', monospace;
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      max-height: 150px;
+      overflow-y: auto;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    #log .ts {
+      color: var(--text-dim);
+      opacity: 0.5;
+    }
+
+    #log .rx {
+      color: var(--green);
+    }
+
+    #log .tx {
+      color: var(--amber);
+    }
+
+    #log .err {
+      color: var(--red);
+    }
+
+    /* ─── Animations ─── */
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(8px);
+      }
+
+      to {
+        opacity: 1;
+        transform: none;
+      }
+    }
+
+    .card {
+      animation: fadeIn 0.4s ease both;
+    }
+
+    .card:nth-child(2) {
+      animation-delay: 0.05s;
+    }
+
+    .card:nth-child(3) {
+      animation-delay: 0.1s;
+    }
+
+    .card:nth-child(4) {
+      animation-delay: 0.15s;
+    }
+
+    .card:nth-child(5) {
+      animation-delay: 0.2s;
+    }
+
+    .card:nth-child(6) {
+      animation-delay: 0.25s;
+    }
+
+    /* ─── OTA Panel ─── */
+    .ota-card {
+      grid-column: span 3;
+    }
+
+    @media (max-width: 900px) {
+      .ota-card {
+        grid-column: span 2;
+      }
+    }
+
+    @media (max-width: 560px) {
+      .ota-card {
+        grid-column: span 1;
+      }
+    }
+
+    .ota-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      align-items: center;
+      margin-bottom: 0.75rem;
+    }
+
+    .ota-label {
+      color: var(--text-dim);
+      font-size: 0.8rem;
+      min-width: 4.5rem;
+    }
+
+    .ota-select {
+      font-family: 'Barlow', sans-serif;
+      font-size: 0.85rem;
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.3rem 0.6rem;
+      cursor: pointer;
+    }
+
+    .ota-file-btn {
+      font-family: 'Barlow', sans-serif;
+      font-size: 0.8rem;
+      font-weight: 500;
+      padding: 0.3rem 0.8rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: transparent;
+      color: var(--text);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .ota-file-btn:hover {
+      border-color: var(--cyan);
+      color: var(--cyan);
+    }
+
+    #otaFileName {
+      color: var(--text-dim);
+      font-size: 0.8rem;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .ota-start-btn {
+      font-family: 'Barlow', sans-serif;
+      font-weight: 600;
+      font-size: 0.85rem;
+      padding: 0.45rem 1.4rem;
+      border: 2px solid var(--amber);
+      border-radius: 8px;
+      background: transparent;
+      color: var(--amber);
+      cursor: pointer;
+      transition: all 0.2s;
+      letter-spacing: 0.05em;
+    }
+
+    .ota-start-btn:hover:not(:disabled) {
+      background: var(--amber);
+      color: var(--bg);
+    }
+
+    .ota-start-btn:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+
+    .ota-cancel-btn {
+      font-family: 'Barlow', sans-serif;
+      font-weight: 500;
+      font-size: 0.85rem;
+      padding: 0.4rem 1rem;
+      border: 1px solid var(--red);
+      border-radius: 8px;
+      background: transparent;
+      color: var(--red);
+      cursor: pointer;
+      transition: all 0.2s;
+      display: none;
+    }
+
+    .ota-cancel-btn:hover {
+      background: var(--red);
+      color: var(--bg);
+    }
+
+    .ota-progress-wrap {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      height: 14px;
+      overflow: hidden;
+      margin-top: 0.1rem;
+      flex: 1;
+      min-width: 120px;
+    }
+
+    .ota-progress-bar {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--amber), var(--cyan));
+      border-radius: 8px;
+      transition: width 0.2s;
+    }
+
+    #otaStatus {
+      font-size: 0.8rem;
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--text-dim);
+      min-width: 5rem;
+    }
+  </style>
 </head>
+
 <body>
 
-<header>
-  <div class="logo">FORJEEPER <span>OBD</span><span class="ver">v1.5</span></div>
-  <button type="button" id="btnConnect" onclick="toggleConnect()">CONNECT</button>
-</header>
+  <header>
+    <div class="logo">FORJEEPER <span>OBD</span><span class="ver">v1.5</span></div>
+    <button type="button" id="btnConnect" onclick="toggleConnect()">CONNECT</button>
+  </header>
 
-<div class="status-bar">
-  <span class="fw-chip" title="OBA firmware version">
-    <span class="dot" id="dotOba"></span>
-    <span class="chip-label">OBA</span>
-    <span class="chip-ver" id="lblOba">—</span>
-  </span>
-  <span class="fw-chip" title="OBM firmware version">
-    <span class="dot" id="dotObm"></span>
-    <span class="chip-label">OBM</span>
-    <span class="chip-ver" id="lblObm">—</span>
-  </span>
-  <span class="fw-chip" title="PAI (CC2340) firmware — from heartbeat or last successful PAI OTA filename">
-    <span class="dot" id="dotPai"></span>
-    <span class="chip-label">PAI</span>
-    <span class="chip-ver" id="lblPai">—</span>
-  </span>
-  <span><span class="dot" id="dotCan"></span>CAN <span id="lblCan">—</span></span>
-  <span>Uptime <span id="lblUptime">—</span></span>
-  <span>Cycle <span id="lblCycle">—</span></span>
-</div>
+  <div class="status-bar">
+    <span class="fw-chip" title="OBA firmware version">
+      <span class="dot" id="dotOba"></span>
+      <span class="chip-label">OBA</span>
+      <span class="chip-ver" id="lblOba">—</span>
+    </span>
+    <span class="fw-chip" title="OBM firmware version">
+      <span class="dot" id="dotObm"></span>
+      <span class="chip-label">OBM</span>
+      <span class="chip-ver" id="lblObm">—</span>
+    </span>
+    <span class="fw-chip" title="PAI (CC2340) firmware — from heartbeat or last successful PAI OTA filename">
+      <span class="dot" id="dotPai"></span>
+      <span class="chip-label">PAI</span>
+      <span class="chip-ver" id="lblPai">—</span>
+    </span>
+    <span><span class="dot" id="dotCan"></span>CAN <span id="lblCan">—</span></span>
+    <span>Uptime <span id="lblUptime">—</span></span>
+    <span>Cycle <span id="lblCycle">—</span></span>
+  </div>
 
-<main>
+  <main>
 
-  <!-- RPM gauge -->
-  <div class="card" id="cardRpm">
-    <div class="card-label">Engine RPM</div>
-    <div class="gauge-container">
-      <svg class="gauge-svg" viewBox="0 0 110 70">
-        <path class="gauge-track" d="M10,65 A50,50 0 0,1 100,65"/>
-        <path class="gauge-fill" id="gaugeRpm" d="M10,65 A50,50 0 0,1 100,65"
-              stroke-dasharray="157" stroke-dashoffset="157"/>
-      </svg>
-      <div>
-        <span class="card-value" id="valRpm">0</span>
-        <span class="card-unit">rpm</span>
+    <!-- RPM gauge -->
+    <div class="card" id="cardRpm">
+      <div class="card-label">Engine RPM</div>
+      <div class="gauge-container">
+        <svg class="gauge-svg" viewBox="0 0 110 70">
+          <path class="gauge-track" d="M10,65 A50,50 0 0,1 100,65" />
+          <path class="gauge-fill" id="gaugeRpm" d="M10,65 A50,50 0 0,1 100,65" stroke-dasharray="157"
+            stroke-dashoffset="157" />
+        </svg>
+        <div>
+          <span class="card-value" id="valRpm">0</span>
+          <span class="card-unit">rpm</span>
+        </div>
       </div>
     </div>
-  </div>
 
-  <!-- Speed gauge -->
-  <div class="card" id="cardSpeed">
-    <div class="card-label">Motor Duty</div>
-    <div class="gauge-container">
-      <svg class="gauge-svg" viewBox="0 0 110 70">
-        <path class="gauge-track" d="M10,65 A50,50 0 0,1 100,65"/>
-        <path class="gauge-fill" id="gaugeSpeed" d="M10,65 A50,50 0 0,1 100,65"
-              stroke-dasharray="157" stroke-dashoffset="157"/>
-      </svg>
-      <div>
-        <span class="card-value" id="valSpeed">0</span>
-        <span class="card-unit">%</span>
+    <!-- Speed gauge -->
+    <div class="card" id="cardSpeed">
+      <div class="card-label">Motor Duty</div>
+      <div class="gauge-container">
+        <svg class="gauge-svg" viewBox="0 0 110 70">
+          <path class="gauge-track" d="M10,65 A50,50 0 0,1 100,65" />
+          <path class="gauge-fill" id="gaugeSpeed" d="M10,65 A50,50 0 0,1 100,65" stroke-dasharray="157"
+            stroke-dashoffset="157" />
+        </svg>
+        <div>
+          <span class="card-value" id="valSpeed">0</span>
+          <span class="card-unit">%</span>
+        </div>
       </div>
     </div>
-  </div>
 
-  <!-- Throttle -->
-  <div class="card green" id="cardThrottle">
-    <div class="card-label">Throttle</div>
-    <span class="card-value" id="valThrottle">0</span><span class="card-unit">%</span>
-    <div class="bar-track"><div class="bar-fill" id="barThrottle"></div></div>
-  </div>
+    <!-- Throttle -->
+    <div class="card green" id="cardThrottle">
+      <div class="card-label">Throttle</div>
+      <span class="card-value" id="valThrottle">0</span><span class="card-unit">%</span>
+      <div class="bar-track">
+        <div class="bar-fill" id="barThrottle"></div>
+      </div>
+    </div>
 
-  <!-- Coolant temp -->
-  <div class="card amber" id="cardCoolant">
-    <div class="card-label">Coolant Temp</div>
-    <span class="card-value" id="valCoolant">—</span><span class="card-unit">°C</span>
-    <div class="bar-track"><div class="bar-fill" id="barCoolant"></div></div>
-  </div>
+    <!-- Coolant temp -->
+    <div class="card amber" id="cardCoolant">
+      <div class="card-label">Coolant Temp</div>
+      <span class="card-value" id="valCoolant">—</span><span class="card-unit">°C</span>
+      <div class="bar-track">
+        <div class="bar-fill" id="barCoolant"></div>
+      </div>
+    </div>
 
-  <!-- Intake pressure -->
-  <div class="card purple" id="cardIntake">
-    <div class="card-label">Intake Pressure</div>
-    <span class="card-value" id="valIntake">—</span><span class="card-unit">kPa</span>
-  </div>
+    <!-- Intake pressure -->
+    <div class="card purple" id="cardIntake">
+      <div class="card-label">Intake Pressure</div>
+      <span class="card-value" id="valIntake">—</span><span class="card-unit">kPa</span>
+    </div>
 
-  <!-- MAF -->
-  <div class="card" id="cardMaf">
-    <div class="card-label">MAF Flow</div>
-    <span class="card-value" id="valMaf">—</span><span class="card-unit">g/s</span>
-  </div>
+    <!-- MAF -->
+    <div class="card" id="cardMaf">
+      <div class="card-label">MAF Flow</div>
+      <span class="card-value" id="valMaf">—</span><span class="card-unit">g/s</span>
+    </div>
 
-  <!-- Secondary data row -->
-  <div class="card" id="cardIntakeTemp">
-    <div class="card-label">Intake Temp</div>
-    <span class="card-value" id="valIntakeTemp">—</span><span class="card-unit">°C</span>
-  </div>
+    <!-- Secondary data row -->
+    <div class="card" id="cardIntakeTemp">
+      <div class="card-label">Intake Temp</div>
+      <span class="card-value" id="valIntakeTemp">—</span><span class="card-unit">°C</span>
+    </div>
 
-  <div class="card" id="cardAmbient">
-    <div class="card-label">Ambient Temp</div>
-    <span class="card-value" id="valAmbient">—</span><span class="card-unit">°C</span>
-  </div>
+    <div class="card" id="cardAmbient">
+      <div class="card-label">Ambient Temp</div>
+      <span class="card-value" id="valAmbient">—</span><span class="card-unit">°C</span>
+    </div>
 
-  <div class="card" id="cardBaro">
-    <div class="card-label">Baro Pressure</div>
-    <span class="card-value" id="valBaro">—</span><span class="card-unit">kPa</span>
-  </div>
+    <div class="card" id="cardBaro">
+      <div class="card-label">Baro Pressure</div>
+      <span class="card-value" id="valBaro">—</span><span class="card-unit">kPa</span>
+    </div>
 
-  <div class="card green" id="cardFuel">
-    <div class="card-label">Fuel Level</div>
-    <span class="card-value" id="valFuel">—</span><span class="card-unit">%</span>
-    <div class="bar-track"><div class="bar-fill" id="barFuel"></div></div>
-  </div>
+    <div class="card green" id="cardFuel">
+      <div class="card-label">Fuel Level</div>
+      <span class="card-value" id="valFuel">—</span><span class="card-unit">%</span>
+      <div class="bar-track">
+        <div class="bar-fill" id="barFuel"></div>
+      </div>
+    </div>
 
-  <div class="card" id="cardTiming">
-    <div class="card-label">Timing Advance</div>
-    <span class="card-value" id="valTiming">—</span><span class="card-unit">°</span>
-  </div>
+    <div class="card" id="cardTiming">
+      <div class="card-label">Timing Advance</div>
+      <span class="card-value" id="valTiming">—</span><span class="card-unit">°</span>
+    </div>
 
-  <div class="card purple" id="cardRuntime">
-    <div class="card-label">Engine Runtime</div>
-    <span class="card-value" id="valRuntime">—</span><span class="card-unit">sec</span>
-  </div>
+    <div class="card purple" id="cardRuntime">
+      <div class="card-label">Engine Runtime</div>
+      <span class="card-value" id="valRuntime">—</span><span class="card-unit">sec</span>
+    </div>
 
-  <!-- Motor control -->
-  <div class="motor-panel">
-    <div class="card green">
-      <div class="card-label">Motor Control</div>
-      <p id="motorPaiHint" class="motor-hint" style="display:none;">PAI (CC2340) not connected: commands cannot reach MCT8329A and motor status is unavailable. Ensure OBM↔PAI BLE is active.</p>
-      <div class="motor-status">
-        <div class="motor-led-row" title="Command LED: ON when motor started">
-          <span class="motor-led" id="motorCmdLed"></span>
-          <span>CMD</span>
+    <!-- Motor control -->
+    <div class="motor-panel">
+      <div class="card green">
+        <div class="card-label">Motor Control</div>
+        <p id="motorPaiHint" class="motor-hint" style="display:none;">PAI (CC2340) not connected: commands cannot reach
+          MCT8329A and motor status is unavailable. Ensure OBM↔PAI BLE is active.</p>
+        <div class="motor-status">
+          <div class="motor-led-row" title="Command LED: ON when motor started">
+            <span class="motor-led" id="motorCmdLed"></span>
+            <span>CMD</span>
+          </div>
+          <span class="motor-state-badge stopped" id="motorBadge">STOPPED</span>
+          <span style="color:var(--text-dim); font-size:0.85rem;">
+            Speed: <strong id="motorSpeedVal">0</strong>%
+            &nbsp;|&nbsp; Fault: <span id="motorFaultVal">None</span>
+            &nbsp;|&nbsp; I2C: <span id="motorI2cAddr">—</span>
+          </span>
         </div>
-        <span class="motor-state-badge stopped" id="motorBadge">STOPPED</span>
-        <span style="color:var(--text-dim); font-size:0.85rem;">
-          Speed: <strong id="motorSpeedVal">0</strong>%
-          &nbsp;|&nbsp; Fault: <span id="motorFaultVal">None</span>
-          &nbsp;|&nbsp; I2C: <span id="motorI2cAddr">—</span>
-        </span>
-      </div>
-      <div class="mct-reg-panel" aria-label="MCT8329A live registers">
-        <div class="mct-reg-panel-hd">
-          <span class="mct-reg-title">MCT8329A · LIVE</span>
-          <span class="mct-reg-sub">RAM · uint32 LE · I²C 7-bit</span>
-        </div>
-        <div class="mct-reg-scroll">
-          <table class="mct-reg-table">
-            <thead>
-              <tr>
-                <th>Register</th>
-                <th>Addr</th>
-                <th>Value</th>
-              </tr>
-              <tr>
-                <th colspan="3" class="mct-reg-sub">Duty registers: read-only readback (SLLSFQ3 §7.8.5) — not write targets</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td>SYS_STATUS1</td>
-                <td class="mct-addr">0x0E4</td>
-                <td class="mct-val" id="mtrSs1">—</td>
-              </tr>
-              <tr>
-                <td>SYS_STATUS2</td>
-                <td class="mct-addr">0x0EA</td>
-                <td class="mct-val" id="mtrSs2">—</td>
-              </tr>
-              <tr>
-                <td>GATE_DRIVER_FAULT</td>
-                <td class="mct-addr">0x0E0</td>
-                <td class="mct-val" id="mtrFgd">—</td>
-              </tr>
-              <tr>
-                <td>CONTROLLER_FAULT</td>
-                <td class="mct-addr">0x0E2</td>
-                <td class="mct-val" id="mtrFctrl">—</td>
-              </tr>
-              <tr>
-                <td>SYS_STATUS3</td>
-                <td class="mct-addr">0x0EC</td>
-                <td class="mct-val" id="mtrS3">—</td>
-              </tr>
-              <tr>
-                <td>INPUT_DUTY</td>
-                <td class="mct-addr">0x40C</td>
-                <td class="mct-val" id="mtrInd">—</td>
-              </tr>
-              <tr>
-                <td>CURRENT_DUTY</td>
-                <td class="mct-addr">0x512</td>
-                <td class="mct-val" id="mtrCud">—</td>
-              </tr>
-              <tr>
-                <td>SET_DUTY</td>
-                <td class="mct-addr">0x522</td>
-                <td class="mct-val" id="mtrSed">—</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem;">
-        <button class="ctrl-btn start" onclick="sendMotor(0x01)">START</button>
-        <button class="ctrl-btn stop" onclick="sendMotor(0x02)">STOP</button>
-      </div>
-      <div class="slider-group">
-        <label>Speed <span id="lblSliderSpeed">10</span>%</label>
-        <input type="range" id="sliderSpeed" min="0" max="100" value="10"
-               oninput="document.getElementById('lblSliderSpeed').textContent=this.value">
-      </div>
-      <!-- Motor Live Status Panel -->
-      <div class="motor-live-panel">
-        <div class="mlp-row">
-          <span class="mlp-label">MCT State</span>
-          <span class="mct-state-pill" id="mctStateBadge">—</span>
-          <span class="mlp-label mlp-sep">Current Duty</span>
-          <span class="mlp-duty" id="mctCurDuty">—%</span>
-        </div>
-        <div class="mlp-fault-row" id="mctFaultRow" style="display:none;">
-          <span class="mlp-fault-label">⚠ GD Fault:</span>
-          <span class="mlp-fault-val" id="mctFaultGd">—</span>
-          <span class="mlp-fault-label">CTRL Fault:</span>
-          <span class="mlp-fault-val" id="mctFaultCtrl">—</span>
-        </div>
-      </div>
-      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:0.5rem; margin-top:0.75rem;">
-        <button class="ctrl-btn" onclick="sendMotor(0x03)">SET SPEED</button>
-        <button class="ctrl-btn" onclick="sendMotor(0x04)">SET DIR</button>
-        <button class="ctrl-btn" style="background:rgba(239,68,68,0.15); border-color:rgba(239,68,68,0.4); color:#ef4444;" onclick="clearMctFault()">CLR FAULT</button>
-      </div>
-      <div style="border-top:1px solid rgba(255,255,255,0.1); margin-top:0.75rem; padding-top:0.75rem;">
-        <div style="font-size:0.7rem; color:var(--text-dim); margin-bottom:0.5rem;">
-          ⚙ EEPROM Tools (one-time setup)
+        <div class="mct-reg-panel" aria-label="MCT8329A live registers">
+          <div class="mct-reg-panel-hd">
+            <span class="mct-reg-title">MCT8329A · LIVE</span>
+            <span class="mct-reg-sub">RAM · uint32 LE · I²C 7-bit</span>
+          </div>
+          <div class="mct-reg-scroll">
+            <table class="mct-reg-table">
+              <thead>
+                <tr>
+                  <th>Register</th>
+                  <th>Addr</th>
+                  <th>Value</th>
+                </tr>
+                <tr>
+                  <th colspan="3" class="mct-reg-sub">Duty registers: read-only readback (SLLSFQ3 §7.8.5) — not write
+                    targets</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>SYS_STATUS1</td>
+                  <td class="mct-addr">0x0E4</td>
+                  <td class="mct-val" id="mtrSs1">—</td>
+                </tr>
+                <tr>
+                  <td>SYS_STATUS2</td>
+                  <td class="mct-addr">0x0EA</td>
+                  <td class="mct-val" id="mtrSs2">—</td>
+                </tr>
+                <tr>
+                  <td>GATE_DRIVER_FAULT</td>
+                  <td class="mct-addr">0x0E0</td>
+                  <td class="mct-val" id="mtrFgd">—</td>
+                </tr>
+                <tr>
+                  <td>CONTROLLER_FAULT</td>
+                  <td class="mct-addr">0x0E2</td>
+                  <td class="mct-val" id="mtrFctrl">—</td>
+                </tr>
+                <tr>
+                  <td>SYS_STATUS3</td>
+                  <td class="mct-addr">0x0EC</td>
+                  <td class="mct-val" id="mtrS3">—</td>
+                </tr>
+                <tr>
+                  <td>INPUT_DUTY</td>
+                  <td class="mct-addr">0x40C</td>
+                  <td class="mct-val" id="mtrInd">—</td>
+                </tr>
+                <tr>
+                  <td>CURRENT_DUTY</td>
+                  <td class="mct-addr">0x512</td>
+                  <td class="mct-val" id="mtrCud">—</td>
+                </tr>
+                <tr>
+                  <td>SET_DUTY</td>
+                  <td class="mct-addr">0x522</td>
+                  <td class="mct-val" id="mtrSed">—</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem;">
-          <button class="ctrl-btn" style="background:rgba(251,191,36,0.15); border-color:rgba(251,191,36,0.4); color:#fbbf24;"
-                  onclick="sendEEPROMCmd(0xF0)" title="Write PIN_CONFIG1 shadow → I2C mode (effective immediately, lost on power-off)">
-            APPLY SPD CONFIG
-          </button>
-          <button class="ctrl-btn" style="background:rgba(239,68,68,0.15); border-color:rgba(239,68,68,0.4); color:#ef4444;"
-                  onclick="sendEEPROMCmd(0xF1)" title="Write PIN_CONFIG1 and burn EEPROM (permanent, ~500 ms)">
-            BURN EEPROM
-          </button>
+          <button class="ctrl-btn start" onclick="sendMotor(0x01)">START</button>
+          <button class="ctrl-btn stop" onclick="sendMotor(0x02)">STOP</button>
         </div>
-        <div style="font-size:0.65rem; color:var(--text-dim); margin-top:0.4rem;">
-          APPLY: test immediately (lost on power-off)　BURN: permanent (~500 ms, power-cycle after)
+        <div class="slider-group">
+          <label>Speed <span id="lblSliderSpeed">10</span>%</label>
+          <input type="range" id="sliderSpeed" min="0" max="100" value="10"
+            oninput="document.getElementById('lblSliderSpeed').textContent=this.value">
+        </div>
+        <!-- Motor Live Status Panel -->
+        <div class="motor-live-panel">
+          <div class="mlp-row">
+            <span class="mlp-label">MCT State</span>
+            <span class="mct-state-pill" id="mctStateBadge">—</span>
+            <span class="mlp-label mlp-sep">Current Duty</span>
+            <span class="mlp-duty" id="mctCurDuty">—%</span>
+          </div>
+          <div class="mlp-fault-row" id="mctFaultRow" style="display:none;">
+            <span class="mlp-fault-label">⚠ GD Fault:</span>
+            <span class="mlp-fault-val" id="mctFaultGd">—</span>
+            <span class="mlp-fault-label">CTRL Fault:</span>
+            <span class="mlp-fault-val" id="mctFaultCtrl">—</span>
+          </div>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:0.5rem; margin-top:0.75rem;">
+          <button class="ctrl-btn" onclick="sendMotor(0x03)">SET SPEED</button>
+          <button class="ctrl-btn" onclick="sendMotor(0x04)">SET DIR</button>
+          <button class="ctrl-btn"
+            style="background:rgba(239,68,68,0.15); border-color:rgba(239,68,68,0.4); color:#ef4444;"
+            onclick="clearMctFault()">CLR FAULT</button>
+        </div>
+        <div style="border-top:1px solid rgba(255,255,255,0.1); margin-top:0.75rem; padding-top:0.75rem;">
+          <div style="font-size:0.7rem; color:var(--text-dim); margin-bottom:0.5rem;">
+            ⚙ EEPROM Tools (one-time setup)
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem;">
+            <button class="ctrl-btn"
+              style="background:rgba(251,191,36,0.15); border-color:rgba(251,191,36,0.4); color:#fbbf24;"
+              onclick="sendEEPROMCmd(0xF0)"
+              title="Write PIN_CONFIG1 shadow → I2C mode (effective immediately, lost on power-off)">
+              APPLY SPD CONFIG
+            </button>
+            <button class="ctrl-btn"
+              style="background:rgba(239,68,68,0.15); border-color:rgba(239,68,68,0.4); color:#ef4444;"
+              onclick="sendEEPROMCmd(0xF1)" title="Write PIN_CONFIG1 and burn EEPROM (permanent, ~500 ms)">
+              BURN EEPROM
+            </button>
+          </div>
+          <div style="font-size:0.65rem; color:var(--text-dim); margin-top:0.4rem;">
+            APPLY: test immediately (lost on power-off)　BURN: permanent (~500 ms, power-cycle after)
+          </div>
+        </div>
+        <div class="dir-toggle">
+          <div class="dir-btn active" id="dirFwd" onclick="setDir(0)">FWD</div>
+          <div class="dir-btn" id="dirRev" onclick="setDir(1)">REV</div>
         </div>
       </div>
-      <div class="dir-toggle">
-        <div class="dir-btn active" id="dirFwd" onclick="setDir(0)">FWD</div>
-        <div class="dir-btn" id="dirRev" onclick="setDir(1)">REV</div>
+
+      <!-- IPD Tuning Panel -->
+      <div class="card purple" id="cardIpd">
+        <div class="card-label">IPD Tuning (0x82)</div>
+
+        <div style="font-size:0.75rem; color:var(--text-dim); margin-bottom:0.75rem;">
+          Current 0x82 (Hex): <strong id="valIpdSt1"
+            style="font-family:'JetBrains Mono',monospace; color:var(--cyan);">—</strong>
+        </div>
+
+        <!-- UI Control form -->
+        <div style="display:flex; flex-direction:column; gap:0.6rem;">
+
+          <!-- MTR_STARTUP -->
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span style="font-size:0.8rem; color:var(--text-dim);">Startup Mode</span>
+            <select id="ipdMtrStartup" class="ota-select" style="min-width:120px;" onchange="previewIpdHex()">
+              <option value="0">0: Single Align</option>
+              <option value="1">1: Double Align</option>
+              <option value="2">2: IPD</option>
+              <option value="3">3: Low Freq Initial</option>
+            </select>
+          </div>
+
+          <!-- IPD_CLK_FREQ -->
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span style="font-size:0.8rem; color:var(--text-dim);">IPD Freq</span>
+            <select id="ipdClkFreq" class="ota-select" style="min-width:120px;" onchange="previewIpdHex()">
+              <option value="0">50 Hz</option>
+              <option value="1">100 Hz</option>
+              <option value="2">250 Hz</option>
+              <option value="3">500 Hz</option>
+              <option value="4">1000 Hz</option>
+              <option value="5">2000 Hz</option>
+              <option value="6">5000 Hz</option>
+              <option value="7">10000 Hz</option>
+            </select>
+          </div>
+
+          <!-- IPD_CURR_THR -->
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span style="font-size:0.8rem; color:var(--text-dim);">Cur Threshold</span>
+            <select id="ipnCurrThr" class="ota-select" style="min-width:120px;" onchange="previewIpdHex()">
+              <option value="0">0.0V (0x00)</option>
+              <option value="1">0.1V (0x01)</option>
+              <option value="2">0.2V (0x02)</option>
+              <option value="5">0.5V (0x05)</option>
+              <option value="10">1.0V (0x0A)</option>
+              <option value="15">1.5V (0x0F)</option>
+              <option value="20">2.0V (0x14)</option>
+              <option value="26">2.6V (0x1A)</option>
+            </select>
+          </div>
+
+          <!-- IPD_ADV_ANGLE -->
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span style="font-size:0.8rem; color:var(--text-dim);">Adv Angle</span>
+            <select id="ipdAdvAngle" class="ota-select" style="min-width:120px;" onchange="previewIpdHex()">
+              <option value="0">0°</option>
+              <option value="1">30°</option>
+              <option value="2">60°</option>
+              <option value="3">90°</option>
+            </select>
+          </div>
+
+          <!-- IPD_REPEAT -->
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span style="font-size:0.8rem; color:var(--text-dim);">Repeat Avg</span>
+            <select id="ipdRepeat" class="ota-select" style="min-width:120px;" onchange="previewIpdHex()">
+              <option value="0">1 (No Avg)</option>
+              <option value="1">2 Samples</option>
+              <option value="2">3 Samples</option>
+              <option value="3">4 Samples</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Preview -->
+        <div style="margin-top:0.75rem; padding-top:0.75rem; border-top:1px solid rgba(255,255,255,0.1);">
+          <div style="display:flex; justify-content:space-between; margin-bottom:0.75rem;">
+            <span style="font-size:0.75rem; color:var(--text-dim);">New Hex:</span>
+            <strong id="ipdNewHex" style="font-family:'JetBrains Mono',monospace; color:var(--purple);">—</strong>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem;">
+            <button class="ctrl-btn"
+              style="background:rgba(167,139,250,0.15); border-color:rgba(167,139,250,0.4); color:#a78bfa;"
+              onclick="writeIpdConfig(false)" title="Write to RAM (Shadow) via 0xF2 command. Lost on power-off.">
+              WRITE 0x82
+            </button>
+            <button class="ctrl-btn"
+              style="background:rgba(239,68,68,0.15); border-color:rgba(239,68,68,0.4); color:#ef4444;"
+              onclick="writeIpdConfig(true)" title="Write to RAM + BURN EEPROM via 0xF1 command.">
+              BURN EEPROM
+            </button>
+          </div>
+        </div>
       </div>
+
+      <!-- Log Panel -->
+      <div class="card log-card">
+        <div class="card-label">Event Log</div>
+        <div id="log"></div>
+      </div>
+
+      <!-- OTA Firmware Update -->
+      <div class="card ota-card">
+        <div class="card-label">OTA Firmware Update</div>
+
+        <div class="ota-row">
+          <span class="ota-label">Target</span>
+          <select id="otaTarget" class="ota-select">
+            <option value="3">OBA (ESP32-C6 Gateway, 0x03)</option>
+            <option value="1">OBM (ESP32-C6 OBD Central, 0x01)</option>
+            <option value="2">PAI (CC2340R5 Motor, 0x02)</option>
+          </select>
+        </div>
+
+        <div class="ota-row">
+          <span class="ota-label">File</span>
+          <button class="ota-file-btn" onclick="document.getElementById('otaFileInput').click()">Choose .bin</button>
+          <input type="file" id="otaFileInput" accept=".bin" style="display:none" onchange="onOtaFileSelected(this)">
+          <span id="otaFileName">No file selected</span>
+        </div>
+
+        <div class="ota-row" style="align-items:center; gap:1rem;">
+          <button class="ota-start-btn" id="otaStartBtn" onclick="startOta()" disabled>FLASH</button>
+          <button class="ota-cancel-btn" id="otaCancelBtn" onclick="cancelOta()">CANCEL</button>
+          <div class="ota-progress-wrap">
+            <div class="ota-progress-bar" id="otaProgressBar"></div>
+          </div>
+          <span id="otaStatus">—</span>
+        </div>
+      </div>
+
     </div>
 
-    <!-- IPD Tuning Panel -->
-    <div class="card purple" id="cardIpd">
-      <div class="card-label">IPD Tuning (0x82)</div>
-      
-      <div style="font-size:0.75rem; color:var(--text-dim); margin-bottom:0.75rem;">
-        Current 0x82 (Hex): <strong id="valIpdSt1" style="font-family:'JetBrains Mono',monospace; color:var(--cyan);">—</strong>
-      </div>
-      
-      <!-- UI Control form -->
-      <div style="display:flex; flex-direction:column; gap:0.6rem;">
-        
-        <!-- MTR_STARTUP -->
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-          <span style="font-size:0.8rem; color:var(--text-dim);">Startup Mode</span>
-          <select id="ipdMtrStartup" class="ota-select" style="min-width:120px;" onchange="previewIpdHex()">
-            <option value="0">0: Single Align</option>
-            <option value="1">1: Double Align</option>
-            <option value="2">2: IPD</option>
-            <option value="3">3: Low Freq Initial</option>
-          </select>
-        </div>
+  </main>
 
-        <!-- IPD_CLK_FREQ -->
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-          <span style="font-size:0.8rem; color:var(--text-dim);">IPD Freq</span>
-          <select id="ipdClkFreq" class="ota-select" style="min-width:120px;" onchange="previewIpdHex()">
-            <option value="0">50 Hz</option>
-            <option value="1">100 Hz</option>
-            <option value="2">250 Hz</option>
-            <option value="3">500 Hz</option>
-            <option value="4">1000 Hz</option>
-            <option value="5">2000 Hz</option>
-            <option value="6">5000 Hz</option>
-            <option value="7">10000 Hz</option>
-          </select>
-        </div>
+  <script>
+    const SVC_UUID = '0000ffe0-0000-1000-8000-00805f9b34fb';
+    const CHAR_DATA = '0000ffe1-0000-1000-8000-00805f9b34fb';
+    const CHAR_CMD = '0000ffe2-0000-1000-8000-00805f9b34fb';
+    const CHAR_OTA_CTRL = '0000ffe3-0000-1000-8000-00805f9b34fb';
+    const CHAR_OTA_DATA = '0000ffe4-0000-1000-8000-00805f9b34fb';
 
-        <!-- IPD_CURR_THR -->
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-          <span style="font-size:0.8rem; color:var(--text-dim);">Cur Threshold</span>
-          <select id="ipnCurrThr" class="ota-select" style="min-width:120px;" onchange="previewIpdHex()">
-            <option value="0">0.0V (0x00)</option>
-            <option value="1">0.1V (0x01)</option>
-            <option value="2">0.2V (0x02)</option>
-            <option value="5">0.5V (0x05)</option>
-            <option value="10">1.0V (0x0A)</option>
-            <option value="15">1.5V (0x0F)</option>
-            <option value="20">2.0V (0x14)</option>
-            <option value="26">2.6V (0x1A)</option>
-          </select>
-        </div>
+    const PID_MAP = {
+      0x05: { el: 'valCoolant', unit: '°C', bar: 'barCoolant', barMax: 150 },
+      0x0B: { el: 'valIntake', unit: 'kPa' },
+      0x0C: { el: 'valRpm', unit: 'rpm', gauge: 'gaugeRpm', gaugeMax: 8000 },
+      // 0x0D: { el: 'valSpeed',     unit: 'km/h', gauge: 'gaugeSpeed', gaugeMax: 240 },
+      0x0E: { el: 'valTiming', unit: '°' },
+      0x0F: { el: 'valIntakeTemp', unit: '°C' },
+      0x10: { el: 'valMaf', unit: 'g/s' },
+      0x11: { el: 'valThrottle', unit: '%', bar: 'barThrottle', barMax: 100 },
+      0x1F: { el: 'valRuntime', unit: 'sec' },
+      0x2F: { el: 'valFuel', unit: '%', bar: 'barFuel', barMax: 100 },
+      0x33: { el: 'valBaro', unit: 'kPa' },
+      0x46: { el: 'valAmbient', unit: '°C' },
+    };
 
-        <!-- IPD_ADV_ANGLE -->
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-          <span style="font-size:0.8rem; color:var(--text-dim);">Adv Angle</span>
-          <select id="ipdAdvAngle" class="ota-select" style="min-width:120px;" onchange="previewIpdHex()">
-            <option value="0">0°</option>
-            <option value="1">30°</option>
-            <option value="2">60°</option>
-            <option value="3">90°</option>
-          </select>
-        </div>
+    let device = null, server = null, charData = null, charCmd = null;
+    let charOtaCtrl = null, charOtaData = null;
+    let motorDir = 0;
+    let otaFile = null, otaAbortFlag = false;
 
-        <!-- IPD_REPEAT -->
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-          <span style="font-size:0.8rem; color:var(--text-dim);">Repeat Avg</span>
-          <select id="ipdRepeat" class="ota-select" style="min-width:120px;" onchange="previewIpdHex()">
-            <option value="0">1 (No Avg)</option>
-            <option value="1">2 Samples</option>
-            <option value="2">3 Samples</option>
-            <option value="3">4 Samples</option>
-          </select>
-        </div>
-      </div>
-      
-      <!-- Preview -->
-      <div style="margin-top:0.75rem; padding-top:0.75rem; border-top:1px solid rgba(255,255,255,0.1);">
-        <div style="display:flex; justify-content:space-between; margin-bottom:0.75rem;">
-          <span style="font-size:0.75rem; color:var(--text-dim);">New Hex:</span>
-          <strong id="ipdNewHex" style="font-family:'JetBrains Mono',monospace; color:var(--purple);">—</strong>
-        </div>
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem;">
-          <button class="ctrl-btn" style="background:rgba(167,139,250,0.15); border-color:rgba(167,139,250,0.4); color:#a78bfa;"
-                  onclick="writeIpdConfig(false)" title="Write to RAM (Shadow) via 0xF2 command. Lost on power-off.">
-            WRITE 0x82
-          </button>
-          <button class="ctrl-btn" style="background:rgba(239,68,68,0.15); border-color:rgba(239,68,68,0.4); color:#ef4444;"
-                  onclick="writeIpdConfig(true)" title="Write to RAM + BURN EEPROM via 0xF1 command.">
-            BURN EEPROM
-          </button>
-        </div>
-      </div>
-    </div>
+    /** localStorage key for PAI image version parsed from last successful PAI OTA filename */
+    const LS_PAI_VER = 'prodrive_pai_ver';
 
-    <!-- Log Panel -->
-    <div class="card log-card">
-      <div class="card-label">Event Log</div>
-      <div id="log"></div>
-    </div>
-
-    <!-- OTA Firmware Update -->
-    <div class="card ota-card">
-      <div class="card-label">OTA Firmware Update</div>
-
-      <div class="ota-row">
-        <span class="ota-label">Target</span>
-        <select id="otaTarget" class="ota-select">
-          <option value="3">OBA  (ESP32-C6 Gateway, 0x03)</option>
-          <option value="1">OBM  (ESP32-C6 OBD Central, 0x01)</option>
-          <option value="2">PAI  (CC2340R5 Motor, 0x02)</option>
-        </select>
-      </div>
-
-      <div class="ota-row">
-        <span class="ota-label">File</span>
-        <button class="ota-file-btn" onclick="document.getElementById('otaFileInput').click()">Choose .bin</button>
-        <input type="file" id="otaFileInput" accept=".bin" style="display:none" onchange="onOtaFileSelected(this)">
-        <span id="otaFileName">No file selected</span>
-      </div>
-
-      <div class="ota-row" style="align-items:center; gap:1rem;">
-        <button class="ota-start-btn" id="otaStartBtn" onclick="startOta()" disabled>FLASH</button>
-        <button class="ota-cancel-btn" id="otaCancelBtn" onclick="cancelOta()">CANCEL</button>
-        <div class="ota-progress-wrap">
-          <div class="ota-progress-bar" id="otaProgressBar"></div>
-        </div>
-        <span id="otaStatus">—</span>
-      </div>
-    </div>
-
-  </div>
-
-</main>
-
-<script>
-const SVC_UUID        = '0000ffe0-0000-1000-8000-00805f9b34fb';
-const CHAR_DATA       = '0000ffe1-0000-1000-8000-00805f9b34fb';
-const CHAR_CMD        = '0000ffe2-0000-1000-8000-00805f9b34fb';
-const CHAR_OTA_CTRL   = '0000ffe3-0000-1000-8000-00805f9b34fb';
-const CHAR_OTA_DATA   = '0000ffe4-0000-1000-8000-00805f9b34fb';
-
-const PID_MAP = {
-  0x05: { el: 'valCoolant',   unit: '°C',  bar: 'barCoolant',  barMax: 150 },
-  0x0B: { el: 'valIntake',    unit: 'kPa' },
-  0x0C: { el: 'valRpm',       unit: 'rpm', gauge: 'gaugeRpm', gaugeMax: 8000 },
-  // 0x0D: { el: 'valSpeed',     unit: 'km/h', gauge: 'gaugeSpeed', gaugeMax: 240 },
-  0x0E: { el: 'valTiming',    unit: '°' },
-  0x0F: { el: 'valIntakeTemp', unit: '°C' },
-  0x10: { el: 'valMaf',       unit: 'g/s' },
-  0x11: { el: 'valThrottle',  unit: '%',   bar: 'barThrottle', barMax: 100 },
-  0x1F: { el: 'valRuntime',   unit: 'sec' },
-  0x2F: { el: 'valFuel',      unit: '%',   bar: 'barFuel', barMax: 100 },
-  0x33: { el: 'valBaro',      unit: 'kPa' },
-  0x46: { el: 'valAmbient',   unit: '°C' },
-};
-
-let device = null, server = null, charData = null, charCmd = null;
-let charOtaCtrl = null, charOtaData = null;
-let motorDir = 0;
-let otaFile = null, otaAbortFlag = false;
-
-/** localStorage key for PAI image version parsed from last successful PAI OTA filename */
-const LS_PAI_VER = 'prodrive_pai_ver';
-
-function parsePaiVerFromFilename(name) {
-  if (!name) return '';
-  const m = name.match(/_v(\d+(?:\.\d+)*)\.bin$/i);
-  return m ? ('v' + m[1]) : '';
-}
-
-function getStoredPaiVerDisplay() {
-  try {
-    const s = localStorage.getItem(LS_PAI_VER);
-    if (!s) return '';
-    return s.charAt(0) === 'v' ? s : ('v' + s);
-  } catch (e) { return ''; }
-}
-
-/** Prefer OBA heartbeat pai_ver; else last OTA filename (e.g. *_v1.bin → v1) */
-function paiVerDisplayFromHb(msg) {
-  if (msg && msg.pai_ver != null && String(msg.pai_ver).length) {
-    const v = String(msg.pai_ver);
-    if (v === '?') {
-      /* OBM hasn't probed PAI version yet — fall through to localStorage / default */
-    } else {
-      return v.charAt(0) === 'v' ? v : ('v' + v);
-    }
-  }
-  const st = getStoredPaiVerDisplay();
-  return st || 'OK';
-}
-
-function hex32(n) {
-  return (n !== undefined && n !== null) ? ('0x' + (Number(n) >>> 0).toString(16).toUpperCase().padStart(8, '0')) : '—';
-}
-function setRegHex(elId, s) {
-  var el = document.getElementById(elId);
-  if (!el) return;
-  el.textContent = s;
-  el.classList.toggle('mct-val-zero', s === '—' || s === '0x00000000');
-}
-
-/* ─── BLE Connect / Disconnect ─── */
-async function toggleConnect() {
-  if (!navigator.bluetooth) {
-    alert('Web Bluetooth is not supported in this browser.\nUse Chrome or Edge (desktop/Android); on iPhone use the Bluefy app.');
-    addLog('Web Bluetooth not available', 'err');
-    return;
-  }
-
-  if (device && device.gatt && device.gatt.connected) {
-    device.gatt.disconnect();
-    return;
-  }
-
-  const btn = document.getElementById('btnConnect');
-  btn.textContent = 'SCANNING...';
-
-  try {
-    addLog('Scanning for OBD_GW...', 'tx');
-    device = await navigator.bluetooth.requestDevice({
-      filters: [{ name: 'OBD_GW' }],
-      optionalServices: [SVC_UUID]   /* all chars are under same service */
-    });
-    device.addEventListener('gattserverdisconnected', onDisconnect);
-
-    btn.textContent = 'CONNECTING...';
-    addLog('Connecting to ' + (device.name || '(no name)') + '...', 'tx');
-    server = await device.gatt.connect();
-
-    addLog('Discovering services...', 'tx');
-    const svc = await server.getPrimaryService(SVC_UUID);
-
-    charData = await svc.getCharacteristic(CHAR_DATA);
-    charCmd  = await svc.getCharacteristic(CHAR_CMD);
-    try {
-      charOtaCtrl = await svc.getCharacteristic(CHAR_OTA_CTRL);
-      charOtaData = await svc.getCharacteristic(CHAR_OTA_DATA);
-    } catch (_) {
-      addLog('OTA chars not found (older OBA firmware?)', 'err');
+    function parsePaiVerFromFilename(name) {
+      if (!name) return '';
+      const m = name.match(/_v(\d+(?:\.\d+)*)\.bin$/i);
+      return m ? ('v' + m[1]) : '';
     }
 
-    await charData.startNotifications();
-    charData.addEventListener('characteristicvaluechanged', onNotify);
-
-    onConnect();
-    addLog('Connected! Receiving data...', 'rx');
-  } catch (e) {
-    btn.textContent = 'CONNECT';
-    addLog('Error: ' + (e && e.message ? e.message : String(e)), 'err');
-    if (e && e.name !== 'NotFoundError') {
-      alert('BLE: ' + (e.message || String(e)));
+    function getStoredPaiVerDisplay() {
+      try {
+        const s = localStorage.getItem(LS_PAI_VER);
+        if (!s) return '';
+        return s.charAt(0) === 'v' ? s : ('v' + s);
+      } catch (e) { return ''; }
     }
-  }
-}
 
-function setLinkDot(dotId, lblId, ok, okText, badText) {
-  document.getElementById(dotId).classList.toggle('on', !!ok);
-  document.getElementById(lblId).textContent = ok ? (okText || 'OK') : (badText || '—');
-}
-
-function setMotorCmdLed(on) {
-  var led = document.getElementById('motorCmdLed');
-  if (led) led.classList.toggle('on', !!on);
-}
-
-function onDisconnect() {
-  document.getElementById('btnConnect').textContent = 'CONNECT';
-  document.getElementById('btnConnect').classList.remove('connected');
-  setLinkDot('dotOba', 'lblOba', false, 'OK', '—');
-  setLinkDot('dotObm', 'lblObm', false, 'OK', '—');
-  setLinkDot('dotPai', 'lblPai', false, 'OK', '—');
-  setLinkDot('dotCan', 'lblCan', false, 'OK', '—');
-  setMotorCmdLed(false);
-  var mh = document.getElementById('motorPaiHint');
-  if (mh) mh.style.display = 'none';
-  charData = null; charCmd = null; charOtaCtrl = null; charOtaData = null;
-  otaAbortFlag = true;
-  otaSetUi(false);
-  addLog('Disconnected', 'err');
-}
-
-/* ─── BLE Notify handler ─── */
-/* ─── MCT8329A Live Status Panel ─── */
-const MCT_STATES = {
-  0: { label: 'IDLE',     cls: 'idle'     },
-  1: { label: 'STARTING', cls: 'starting' },
-  2: { label: 'RUNNING',  cls: 'running'  },
-  4: { label: 'INIT',     cls: 'init'     },
-  5: { label: 'STOPPING', cls: 'stopping' },
-  7: { label: 'FAULT',    cls: 'fault'    },
-};
-
-function updateMctLivePanel(ss2, fgd, fc, cud) {
-  /* MCT state from SYS_STATUS2 bits[2:0] */
-  if (ss2 !== undefined && ss2 !== null) {
-    const stateNum = Number(ss2) & 0x7;
-    const st = MCT_STATES[stateNum] || { label: 'UNKNOWN', cls: '' };
-    const pill = document.getElementById('mctStateBadge');
-    if (pill) {
-      pill.textContent = st.label;
-      pill.className = 'mct-state-pill' + (st.cls ? ' ' + st.cls : '');
+    /** Prefer OBA heartbeat pai_ver; else last OTA filename (e.g. *_v1.bin → v1) */
+    function paiVerDisplayFromHb(msg) {
+      if (msg && msg.pai_ver != null && String(msg.pai_ver).length) {
+        const v = String(msg.pai_ver);
+        if (v === '?') {
+          /* OBM hasn't probed PAI version yet — fall through to localStorage / default */
+        } else {
+          return v.charAt(0) === 'v' ? v : ('v' + v);
+        }
+      }
+      const st = getStoredPaiVerDisplay();
+      return st || 'OK';
     }
-  }
-  /* Current Duty: bits[31:16] of CURRENT_DUTY / 2^15 * 100 % */
-  if (cud !== undefined && cud !== null) {
-    const raw = Number(cud) >>> 0;
-    const pct = ((raw >>> 16) / 32768 * 100).toFixed(1);
-    const el = document.getElementById('mctCurDuty');
-    if (el) el.textContent = pct + '%';
 
-    /* Mirror duty % onto the main dashboard gauge (formerly Vehicle Speed) */
-    const speedValEl = document.getElementById('valSpeed');
-    const speedGaugeEl = document.getElementById('gaugeSpeed');
-    if (speedValEl) speedValEl.textContent = pct;
-    if (speedGaugeEl) {
-      const gPct = Math.min(1, Math.max(0, parseFloat(pct) / 100)); // Cap 0 to 1
-      speedGaugeEl.style.strokeDashoffset = 157 * (1 - gPct);
+    function hex32(n) {
+      return (n !== undefined && n !== null) ? ('0x' + (Number(n) >>> 0).toString(16).toUpperCase().padStart(8, '0')) : '—';
     }
-  }
-  /* Fault row */
-  const fgdVal = (fgd !== undefined && fgd !== null) ? (Number(fgd) >>> 0) : null;
-  const fcVal  = (fc  !== undefined && fc  !== null) ? (Number(fc)  >>> 0) : null;
-  const hasFault = (fgdVal !== null && fgdVal !== 0) || (fcVal !== null && fcVal !== 0);
-  const faultRow = document.getElementById('mctFaultRow');
-  if (faultRow && (fgdVal !== null || fcVal !== null)) {
-    faultRow.style.display = hasFault ? 'flex' : 'none';
-    if (fgdVal !== null) {
-      const gd = document.getElementById('mctFaultGd');
-      if (gd) gd.textContent = '⚠ 0x' + fgdVal.toString(16).toUpperCase().padStart(8,'0');
+    function setRegHex(elId, s) {
+      var el = document.getElementById(elId);
+      if (!el) return;
+      el.textContent = s;
+      el.classList.toggle('mct-val-zero', s === '—' || s === '0x00000000');
     }
-    if (fcVal !== null) {
-      const ct = document.getElementById('mctFaultCtrl');
-      if (ct) ct.textContent = '⚠ 0x' + fcVal.toString(16).toUpperCase().padStart(8,'0');
+
+    /* ─── BLE Connect / Disconnect ─── */
+    async function toggleConnect() {
+      if (!navigator.bluetooth) {
+        alert('Web Bluetooth is not supported in this browser.\nUse Chrome or Edge (desktop/Android); on iPhone use the Bluefy app.');
+        addLog('Web Bluetooth not available', 'err');
+        return;
+      }
+
+      if (device && device.gatt && device.gatt.connected) {
+        device.gatt.disconnect();
+        return;
+      }
+
+      const btn = document.getElementById('btnConnect');
+      btn.textContent = 'SCANNING...';
+
+      try {
+        addLog('Scanning for OBD_GW...', 'tx');
+        device = await navigator.bluetooth.requestDevice({
+          filters: [{ name: 'OBD_GW' }],
+          optionalServices: [SVC_UUID]   /* all chars are under same service */
+        });
+        device.addEventListener('gattserverdisconnected', onDisconnect);
+
+        btn.textContent = 'CONNECTING...';
+        addLog('Connecting to ' + (device.name || '(no name)') + '...', 'tx');
+        server = await device.gatt.connect();
+
+        addLog('Discovering services...', 'tx');
+        const svc = await server.getPrimaryService(SVC_UUID);
+
+        charData = await svc.getCharacteristic(CHAR_DATA);
+        charCmd = await svc.getCharacteristic(CHAR_CMD);
+        try {
+          charOtaCtrl = await svc.getCharacteristic(CHAR_OTA_CTRL);
+          charOtaData = await svc.getCharacteristic(CHAR_OTA_DATA);
+        } catch (_) {
+          addLog('OTA chars not found (older OBA firmware?)', 'err');
+        }
+
+        await charData.startNotifications();
+        charData.addEventListener('characteristicvaluechanged', onNotify);
+
+        onConnect();
+        addLog('Connected! Receiving data...', 'rx');
+      } catch (e) {
+        btn.textContent = 'CONNECT';
+        addLog('Error: ' + (e && e.message ? e.message : String(e)), 'err');
+        if (e && e.name !== 'NotFoundError') {
+          alert('BLE: ' + (e.message || String(e)));
+        }
+      }
     }
-  }
-}
 
-function onNotify(event) {
-  const raw = new TextDecoder().decode(event.target.value);
-  let msg;
-  try { msg = JSON.parse(raw); } catch (_x) { return; }
-
-  if (msg.t === 'obd') {
-    const pid = msg.p;
-    const val = msg.v;
-    const info = PID_MAP[pid];
-    if (!info) return;
-
-    const el = document.getElementById(info.el);
-    if (el) el.textContent = val;
-
-    if (info.bar) {
-      const pct = Math.min(100, Math.max(0, (val / info.barMax) * 100));
-      document.getElementById(info.bar).style.width = pct + '%';
+    function setLinkDot(dotId, lblId, ok, okText, badText) {
+      document.getElementById(dotId).classList.toggle('on', !!ok);
+      document.getElementById(lblId).textContent = ok ? (okText || 'OK') : (badText || '—');
     }
-    if (info.gauge) {
-      const pct = Math.min(1, Math.max(0, val / info.gaugeMax));
-      const offset = 157 * (1 - pct);
-      document.getElementById(info.gauge).style.strokeDashoffset = offset;
+
+    function setMotorCmdLed(on) {
+      var led = document.getElementById('motorCmdLed');
+      if (led) led.classList.toggle('on', !!on);
     }
-  }
 
-  else if (msg.t === 'mtr') {
-    const badge = document.getElementById('motorBadge');
-    const states = { 0: ['STOPPED','stopped'], 1: ['RUNNING','running'], 255: ['FAULT','fault'] };
-    const [text, cls] = states[msg.s] || ['UNKNOWN','stopped'];
-    setMotorCmdLed(msg.s === 1);
-    badge.textContent = text;
-    badge.className = 'motor-state-badge ' + cls;
-    document.getElementById('motorSpeedVal').textContent = msg.sp;
-    document.getElementById('motorFaultVal').textContent = msg.f ? ('0x'+Number(msg.f).toString(16).toUpperCase()) : 'None';
-    document.getElementById('motorI2cAddr').textContent = (msg.a !== undefined) ? ('0x' + Number(msg.a).toString(16).toUpperCase().padStart(2,'0')) : '—';
-    if (msg.ss2 !== undefined || msg.fgd !== undefined) {
-      if (msg.ss1 !== undefined) setRegHex('mtrSs1', hex32(msg.ss1));
-      setRegHex('mtrSs2', hex32(msg.ss2));
-      setRegHex('mtrFgd', hex32(msg.fgd));
-      setRegHex('mtrFctrl', hex32(msg.fc));
-      setRegHex('mtrS3', hex32(msg.s3));
-      updateMctLivePanel(msg.ss2, msg.fgd, msg.fc, null);
-    }
-  }
-
-  else if (msg.t === 'mtrx') {
-    if (msg.ss1 !== undefined) setRegHex('mtrSs1', hex32(msg.ss1));
-    setRegHex('mtrSs2', hex32(msg.ss2));
-    setRegHex('mtrFgd', hex32(msg.fgd));
-    setRegHex('mtrFctrl', hex32(msg.fc));
-    setRegHex('mtrS3', hex32(msg.s3));
-    updateMctLivePanel(msg.ss2, msg.fgd, msg.fc, null);
-  }
-
-  else if (msg.t === 'mtrd') {
-    setRegHex('mtrInd', hex32(msg.ind));
-    setRegHex('mtrCud', hex32(msg.cud));
-    setRegHex('mtrSed', hex32(msg.sed));
-    updateMctLivePanel(null, null, null, msg.cud);
-    
-    // If status push included st1 (STARTUP_CONFIG1), parse it!
-    if (msg.st1 !== undefined) {
-        parseIpdHex(msg.st1);
-    }
-  }
-
-  else if (msg.t === 'ota') {
-    const tgt = msg.tgt !== undefined ? (['','OBM','PAI','OBA'][msg.tgt] || '?') : '';
-    if (msg.s === 'ready')      otaOnReady(tgt);
-    else if (msg.s === 'done')  otaOnDone(tgt);
-    else if (msg.s === 'fail')  otaOnFail('Server: fail ' + tgt);
-    else if (msg.s === 'chunk_fail') otaOnFail('Chunk fail @ ' + msg.off);
-    else if (msg.s === 'abort') { otaSetStatus('Aborted'); otaSetUi(false); }
-    addLog('OTA[' + tgt + '] ' + msg.s + (msg.off !== undefined ? ' off='+msg.off : ''), msg.s === 'done' ? 'rx' : (msg.s.includes('fail') ? 'err' : 'tx'));
-  }
-
-  else if (msg.t === 'hb') {
-    var pai = (msg.pai !== undefined) ? msg.pai : msg.ble;
-    var oba = (msg.oba !== undefined) ? msg.oba : document.getElementById('btnConnect').classList.contains('connected');
-    var obm = (msg.obm !== undefined) ? msg.obm : 1;
-    setLinkDot('dotOba', 'lblOba', !!oba, msg.oba_ver ? 'v'+msg.oba_ver : 'OK', '—');
-    setLinkDot('dotObm', 'lblObm', !!obm, msg.obm_ver ? 'v'+msg.obm_ver : 'OK', '—');
-    setLinkDot('dotPai', 'lblPai', !!pai, paiVerDisplayFromHb(msg), '—');
-    setLinkDot('dotCan', 'lblCan', !!msg.can, 'OK', 'Err');
-    var mh = document.getElementById('motorPaiHint');
-    if (mh) mh.style.display = pai ? 'none' : 'block';
-    document.getElementById('lblUptime').textContent = formatUptime(msg.up);
-    document.getElementById('lblCycle').textContent = '#' + msg.cyc;
-  }
-}
-
-/* ─── Motor commands ─── */
-async function sendMotor(cmd) {
-  if (!charCmd) { addLog('Not connected', 'err'); return; }
-  const speed = parseInt(document.getElementById('sliderSpeed').value);
-  const buf = new Uint8Array([cmd, speed, motorDir, 0x00]);
-  try {
-    await charCmd.writeValue(buf);
-    const names = { 1:'START', 2:'STOP', 3:'SET_SPEED', 4:'SET_DIR' };
-    addLog('TX Motor: ' + (names[cmd]||'?') + ' spd=' + speed + ' dir=' + motorDir, 'tx');
-    if (cmd === 0x01) setMotorCmdLed(true);
-    if (cmd === 0x02) setMotorCmdLed(false);
-  } catch (e) {
-    addLog('Write error: ' + e.message, 'err');
-  }
-}
-
-async function sendEEPROMCmd(cmd) {
-  if (!charCmd) { addLog('Not connected', 'err'); return; }
-  const names = { 0xF0:'APPLY_SPD_CONFIG', 0xF1:'BURN_EEPROM' };
-  const label = names[cmd] || ('CMD_0x'+cmd.toString(16).toUpperCase());
-  if (cmd === 0xF1) {
-    if (!confirm('BURN EEPROM: This will permanently write MCT8329A EEPROM (SPD_CTRL_MODE=2).\nProceed?')) return;
-  }
-  const buf = new Uint8Array([cmd, 0x00, 0x00, 0x00]);
-  try {
-    await charCmd.writeValue(buf);
-    addLog('TX EEPROM: ' + label + ' sent — watch PAI CCS console for result', 'tx');
-  } catch (e) {
-    addLog('Write error: ' + e.message, 'err');
-  }
-}
-
-function setDir(d) {
-  motorDir = d;
-  document.getElementById('dirFwd').classList.toggle('active', d === 0);
-  document.getElementById('dirRev').classList.toggle('active', d === 1);
-}
-
-/* ─── Log ─── */
-function addLog(text, cls) {
-  const log = document.getElementById('log');
-  const ts = new Date().toLocaleTimeString('en-GB');
-  log.innerHTML += '<span class="ts">[' + ts + ']</span> <span class="' + (cls||'') + '">' + text + '</span>\n';
-  log.scrollTop = log.scrollHeight;
-  const lines = log.children;
-  while (lines.length > 200) lines[0].remove();
-}
-
-function formatUptime(sec) {
-  if (sec == null) return '—';
-  const h = Math.floor(sec / 3600);
-  const m = Math.floor((sec % 3600) / 60);
-  const s = sec % 60;
-  return (h ? h + 'h ' : '') + (m ? m + 'm ' : '') + s + 's';
-}
-
-/* ─── OTA Firmware Update ─── */
-function onOtaFileSelected(input) {
-  otaFile = input.files[0] || null;
-  const nameEl = document.getElementById('otaFileName');
-  const startBtn = document.getElementById('otaStartBtn');
-  if (otaFile) {
-    const kb = (otaFile.size / 1024).toFixed(1);
-    nameEl.textContent = otaFile.name + ' (' + kb + ' KB)';
-    startBtn.disabled = !charOtaCtrl;
-  } else {
-    nameEl.textContent = 'No file selected';
-    startBtn.disabled = true;
-  }
-}
-
-function onConnect() {
-  document.getElementById('btnConnect').textContent = 'DISCONNECT';
-  document.getElementById('btnConnect').classList.add('connected');
-  setLinkDot('dotOba', 'lblOba', true, 'OK', '—');
-  /* Re-enable OTA start if a file is already selected */
-  if (otaFile && charOtaCtrl) {
-    document.getElementById('otaStartBtn').disabled = false;
-  }
-}
-
-function otaSetStatus(msg) {
-  document.getElementById('otaStatus').textContent = msg;
-}
-function otaSetProgress(pct) {
-  document.getElementById('otaProgressBar').style.width = Math.round(pct) + '%';
-}
-function otaSetUi(active) {
-  document.getElementById('otaStartBtn').style.display  = active ? 'none'  : '';
-  document.getElementById('otaCancelBtn').style.display = active ? 'inline-block' : 'none';
-  document.getElementById('otaTarget').disabled = active;
-  if (!active) otaSetProgress(0);
-}
-
-/* Promise-based wait for OTA ready/fail notification from OBA */
-var otaReadyResolve = null;
-
-function otaOnReady(tgt) {
-  otaSetStatus('Flashing ' + tgt + '...');
-  if (otaReadyResolve) { otaReadyResolve(true); otaReadyResolve = null; }
-}
-function otaOnDone(tgt) {
-  otaSetStatus('Done ' + tgt + ' ✓');
-  otaSetUi(false);
-  otaSetProgress(100);
-  addLog('OTA complete — device rebooting', 'rx');
-  if (tgt === 'PAI' && otaFile && otaFile.name) {
-    const pv = parsePaiVerFromFilename(otaFile.name);
-    if (pv) {
-      try { localStorage.setItem(LS_PAI_VER, pv); } catch (e) {}
-      const el = document.getElementById('lblPai');
-      if (el) el.textContent = pv;
-    }
-  }
-}
-function otaOnFail(reason) {
-  otaSetStatus('Failed: ' + reason);
-  otaSetUi(false);
-  addLog('OTA FAILED: ' + reason, 'err');
-  if (otaReadyResolve) { otaReadyResolve(false); otaReadyResolve = null; }
-}
-
-async function sha256Bytes(arrayBuffer) {
-  const hash = await crypto.subtle.digest('SHA-256', arrayBuffer);
-  return new Uint8Array(hash);
-}
-
-async function startOta() {
-  if (!charOtaCtrl || !charOtaData || !otaFile) {
-    addLog('OTA: not connected or no file', 'err');
-    return;
-  }
-  const target = parseInt(document.getElementById('otaTarget').value);
-  const targetNames = { 1: 'OBM', 2: 'PAI', 3: 'OBA' };
-  const tgtName = targetNames[target] || '?';
-
-  if (!confirm('Flash ' + tgtName + ' with "' + otaFile.name + '"?\n\nThe device will reboot after update.')) return;
-
-  otaAbortFlag = false;
-  otaSetUi(true);
-  otaSetStatus('Hashing...');
-  otaSetProgress(0);
-  addLog('OTA start → ' + tgtName + '  ' + otaFile.name, 'tx');
-
-  let fileBuffer;
-  try {
-    fileBuffer = await otaFile.arrayBuffer();
-  } catch (e) {
-    otaOnFail('File read: ' + e.message);
-    return;
-  }
-
-  const sha256 = await sha256Bytes(fileBuffer);
-  const fwSize = fileBuffer.byteLength;
-  const chunkSize = 512;
-
-  /* Build BEGIN frame: [0x01, target, size_le32, chunk_le16, sha256[32]] = 40 bytes */
-  const beginBuf = new Uint8Array(40);
-  beginBuf[0] = 0x01;
-  beginBuf[1] = target;
-  new DataView(beginBuf.buffer).setUint32(2, fwSize, true);
-  new DataView(beginBuf.buffer).setUint16(6, chunkSize, true);
-  beginBuf.set(sha256, 8);
-
-  try {
-    otaSetStatus('Starting...');
-    addLog('OTA BEGIN: tgt=' + tgtName + ' size=' + fwSize + ' sha=' + Array.from(sha256.slice(0,4)).map(b=>b.toString(16).padStart(2,'0')).join('') + '...', 'tx');
-    await charOtaCtrl.writeValue(beginBuf);
-  } catch (e) {
-    otaOnFail('BEGIN write: ' + e.message);
-    return;
-  }
-
-  /* Wait for OBA to respond with 'ready' (OBM erases flash — up to ~4 seconds).
-     If OBA replies 'fail', abort.  Timeout after 20 seconds. */
-  otaSetStatus('Erasing flash...');
-  addLog('Waiting for device ready (flash erase)...', 'tx');
-
-  const readyOk = await Promise.race([
-    new Promise(resolve => { otaReadyResolve = resolve; }),
-    new Promise(resolve => setTimeout(() => resolve(false), 20000))
-  ]);
-  otaReadyResolve = null;
-
-  if (!readyOk) {
-    otaOnFail('Device not ready (BEGIN timeout)');
-    return;
-  }
-
-  otaSetStatus('Transferring ' + tgtName + '...');
-
-  const fileArr = new Uint8Array(fileBuffer);
-  let offset = 0;
-  let chunkNum = 0;
-  const totalChunks = Math.ceil(fwSize / chunkSize);
-
-  while (offset < fwSize) {
-    if (otaAbortFlag) {
-      try { await charOtaCtrl.writeValue(new Uint8Array([0x03, target])); } catch (_) {}
-      otaSetStatus('Cancelled');
+    function onDisconnect() {
+      document.getElementById('btnConnect').textContent = 'CONNECT';
+      document.getElementById('btnConnect').classList.remove('connected');
+      setLinkDot('dotOba', 'lblOba', false, 'OK', '—');
+      setLinkDot('dotObm', 'lblObm', false, 'OK', '—');
+      setLinkDot('dotPai', 'lblPai', false, 'OK', '—');
+      setLinkDot('dotCan', 'lblCan', false, 'OK', '—');
+      setMotorCmdLed(false);
+      var mh = document.getElementById('motorPaiHint');
+      if (mh) mh.style.display = 'none';
+      charData = null; charCmd = null; charOtaCtrl = null; charOtaData = null;
+      otaAbortFlag = true;
       otaSetUi(false);
-      addLog('OTA cancelled by user', 'err');
-      return;
+      addLog('Disconnected', 'err');
     }
 
-    const end = Math.min(offset + chunkSize, fwSize);
-    const chunk = fileArr.slice(offset, end);
+    /* ─── BLE Notify handler ─── */
+    /* ─── MCT8329A Live Status Panel ─── */
+    const MCT_STATES = {
+      0: { label: 'IDLE', cls: 'idle' },
+      1: { label: 'ALIGN', cls: 'starting' },
+      2: { label: 'START_IPD', cls: 'starting' },
+      3: { label: 'OPEN_LOOP', cls: 'starting' },
+      4: { label: 'CLOSED_LOOP', cls: 'running' },
+      5: { label: 'STOPPING', cls: 'stopping' },
+      6: { label: 'BEMF_SYNC', cls: 'running' },
+      7: { label: 'RUNNING_EXT', cls: 'running' },
+    };
 
-    try {
-      /* Write Without Response — paced to avoid BLE buffer overflow */
-      await charOtaData.writeValueWithoutResponse(chunk);
-    } catch (e) {
-      otaOnFail('Chunk @' + offset + ': ' + e.message);
-      return;
+    function updateMctLivePanel(ss2, fgd, fc, cud) {
+      /* MCT state from SYS_STATUS2 bits[2:0] */
+      if (ss2 !== undefined && ss2 !== null) {
+        const stateNum = Number(ss2) & 0x7;
+        const st = MCT_STATES[stateNum] || { label: 'UNKNOWN', cls: '' };
+        const pill = document.getElementById('mctStateBadge');
+        if (pill) {
+          pill.textContent = st.label;
+          pill.className = 'mct-state-pill' + (st.cls ? ' ' + st.cls : '');
+        }
+      }
+      /* Current Duty: bits[31:16] of CURRENT_DUTY / 2^15 * 100 % */
+      if (cud !== undefined && cud !== null) {
+        const raw = Number(cud) >>> 0;
+        const pct = ((raw >>> 16) / 32768 * 100).toFixed(1);
+        const el = document.getElementById('mctCurDuty');
+        if (el) el.textContent = pct + '%';
+
+        /* Mirror duty % onto the main dashboard gauge (formerly Vehicle Speed) */
+        const speedValEl = document.getElementById('valSpeed');
+        const speedGaugeEl = document.getElementById('gaugeSpeed');
+        if (speedValEl) speedValEl.textContent = pct;
+        if (speedGaugeEl) {
+          const gPct = Math.min(1, Math.max(0, parseFloat(pct) / 100)); // Cap 0 to 1
+          speedGaugeEl.style.strokeDashoffset = 157 * (1 - gPct);
+        }
+      }
+      /* Fault row */
+      const fgdVal = (fgd !== undefined && fgd !== null) ? (Number(fgd) >>> 0) : null;
+      const fcVal = (fc !== undefined && fc !== null) ? (Number(fc) >>> 0) : null;
+      const hasFault = (fgdVal !== null && fgdVal !== 0) || (fcVal !== null && fcVal !== 0);
+      const faultRow = document.getElementById('mctFaultRow');
+      if (faultRow && (fgdVal !== null || fcVal !== null)) {
+        faultRow.style.display = hasFault ? 'flex' : 'none';
+        if (fgdVal !== null) {
+          const gd = document.getElementById('mctFaultGd');
+          if (gd) gd.textContent = '⚠ 0x' + fgdVal.toString(16).toUpperCase().padStart(8, '0');
+        }
+        if (fcVal !== null) {
+          const ct = document.getElementById('mctFaultCtrl');
+          if (ct) ct.textContent = '⚠ 0x' + fcVal.toString(16).toUpperCase().padStart(8, '0');
+        }
+      }
     }
 
-    offset = end;
-    chunkNum++;
-    const pct = (offset / fwSize) * 100;
-    otaSetProgress(pct);
-    if ((chunkNum & 3) === 0) {
-      otaSetStatus(tgtName + ' ' + Math.round(pct) + '%  (' + chunkNum + '/' + totalChunks + ')');
+    function onNotify(event) {
+      const raw = new TextDecoder().decode(event.target.value);
+      let msg;
+      try { msg = JSON.parse(raw); } catch (_x) { return; }
+
+      if (msg.t === 'obd') {
+        const pid = msg.p;
+        const val = msg.v;
+        const info = PID_MAP[pid];
+        if (!info) return;
+
+        const el = document.getElementById(info.el);
+        if (el) el.textContent = val;
+
+        if (info.bar) {
+          const pct = Math.min(100, Math.max(0, (val / info.barMax) * 100));
+          document.getElementById(info.bar).style.width = pct + '%';
+        }
+        if (info.gauge) {
+          const pct = Math.min(1, Math.max(0, val / info.gaugeMax));
+          const offset = 157 * (1 - pct);
+          document.getElementById(info.gauge).style.strokeDashoffset = offset;
+        }
+      }
+
+      else if (msg.t === 'mtr') {
+        const badge = document.getElementById('motorBadge');
+        const states = { 0: ['STOPPED', 'stopped'], 1: ['RUNNING', 'running'], 255: ['FAULT', 'fault'] };
+        const [text, cls] = states[msg.s] || ['UNKNOWN', 'stopped'];
+        setMotorCmdLed(msg.s === 1);
+        badge.textContent = text;
+        badge.className = 'motor-state-badge ' + cls;
+        document.getElementById('motorSpeedVal').textContent = msg.sp;
+        document.getElementById('motorFaultVal').textContent = msg.f ? ('0x' + Number(msg.f).toString(16).toUpperCase()) : 'None';
+        document.getElementById('motorI2cAddr').textContent = (msg.a !== undefined) ? ('0x' + Number(msg.a).toString(16).toUpperCase().padStart(2, '0')) : '—';
+        if (msg.ss2 !== undefined || msg.fgd !== undefined) {
+          if (msg.ss1 !== undefined) setRegHex('mtrSs1', hex32(msg.ss1));
+          setRegHex('mtrSs2', hex32(msg.ss2));
+          setRegHex('mtrFgd', hex32(msg.fgd));
+          setRegHex('mtrFctrl', hex32(msg.fc));
+          setRegHex('mtrS3', hex32(msg.s3));
+          updateMctLivePanel(msg.ss2, msg.fgd, msg.fc, null);
+        }
+      }
+
+      else if (msg.t === 'mtrx') {
+        if (msg.ss1 !== undefined) setRegHex('mtrSs1', hex32(msg.ss1));
+        setRegHex('mtrSs2', hex32(msg.ss2));
+        setRegHex('mtrFgd', hex32(msg.fgd));
+        setRegHex('mtrFctrl', hex32(msg.fc));
+        setRegHex('mtrS3', hex32(msg.s3));
+        updateMctLivePanel(msg.ss2, msg.fgd, msg.fc, null);
+      }
+
+      else if (msg.t === 'mtrd') {
+        setRegHex('mtrInd', hex32(msg.ind));
+        setRegHex('mtrCud', hex32(msg.cud));
+        setRegHex('mtrSed', hex32(msg.sed));
+        updateMctLivePanel(null, null, null, msg.cud);
+
+        // If status push included st1 (STARTUP_CONFIG1), parse it!
+        if (msg.st1 !== undefined) {
+          parseIpdHex(msg.st1);
+        }
+      }
+
+      else if (msg.t === 'ota') {
+        const tgt = msg.tgt !== undefined ? (['', 'OBM', 'PAI', 'OBA'][msg.tgt] || '?') : '';
+        if (msg.s === 'ready') otaOnReady(tgt);
+        else if (msg.s === 'done') otaOnDone(tgt);
+        else if (msg.s === 'fail') otaOnFail('Server: fail ' + tgt);
+        else if (msg.s === 'chunk_fail') otaOnFail('Chunk fail @ ' + msg.off);
+        else if (msg.s === 'abort') { otaSetStatus('Aborted'); otaSetUi(false); }
+        addLog('OTA[' + tgt + '] ' + msg.s + (msg.off !== undefined ? ' off=' + msg.off : ''), msg.s === 'done' ? 'rx' : (msg.s.includes('fail') ? 'err' : 'tx'));
+      }
+
+      else if (msg.t === 'hb') {
+        var pai = (msg.pai !== undefined) ? msg.pai : msg.ble;
+        var oba = (msg.oba !== undefined) ? msg.oba : document.getElementById('btnConnect').classList.contains('connected');
+        var obm = (msg.obm !== undefined) ? msg.obm : 1;
+        setLinkDot('dotOba', 'lblOba', !!oba, msg.oba_ver ? 'v' + msg.oba_ver : 'OK', '—');
+        setLinkDot('dotObm', 'lblObm', !!obm, msg.obm_ver ? 'v' + msg.obm_ver : 'OK', '—');
+        setLinkDot('dotPai', 'lblPai', !!pai, paiVerDisplayFromHb(msg), '—');
+        setLinkDot('dotCan', 'lblCan', !!msg.can, 'OK', 'Err');
+        var mh = document.getElementById('motorPaiHint');
+        if (mh) mh.style.display = pai ? 'none' : 'block';
+        document.getElementById('lblUptime').textContent = formatUptime(msg.up);
+        document.getElementById('lblCycle').textContent = '#' + msg.cyc;
+      }
     }
 
-    /* Delay per chunk:
-     *   OBA self-update = 100ms (flash sector erase up to ~50ms + queue depth buffer)
-     *   OBM/PAI = 150ms (UART round-trip ~30ms + OBM flash write + margin)
-     * Keeping OBA ≥ 100ms prevents the Bluedroid GATTS BTC task from blocking
-     * (xQueueSend stall caused BLE disconnect during the "verifying" phase). */
-    await new Promise(r => setTimeout(r, target === 3 ? 100 : 150));
-  }
-
-  /* Send END — wait 2s first to let BLE/UART buffers drain after bulk transfer,
-   * then retry up to 5 times with 1s gap (Write Without Response flood can
-   * leave the ATT layer temporarily unresponsive). */
-  otaSetStatus('Verifying...');
-  await new Promise(r => setTimeout(r, 2000));
-  let endOk = false;
-  for (let attempt = 0; attempt < 5; attempt++) {
-    if (!charOtaCtrl) { addLog('END write: disconnected', 'err'); break; }
-    try {
-      await charOtaCtrl.writeValue(new Uint8Array([0x02, target]));
-      addLog('OTA END sent — waiting for confirm...', 'tx');
-      endOk = true;
-      break;
-    } catch (e) {
-      addLog('END write attempt ' + (attempt+1) + ' failed: ' + e.message, 'err');
-      if (attempt < 4) await new Promise(r => setTimeout(r, 1000));
+    /* ─── Motor commands ─── */
+    async function sendMotor(cmd) {
+      if (!charCmd) { addLog('Not connected', 'err'); return; }
+      const speed = parseInt(document.getElementById('sliderSpeed').value);
+      const buf = new Uint8Array([cmd, speed, motorDir, 0x00]);
+      try {
+        await charCmd.writeValue(buf);
+        const names = { 1: 'START', 2: 'STOP', 3: 'SET_SPEED', 4: 'SET_DIR' };
+        addLog('TX Motor: ' + (names[cmd] || '?') + ' spd=' + speed + ' dir=' + motorDir, 'tx');
+        if (cmd === 0x01) setMotorCmdLed(true);
+        if (cmd === 0x02) setMotorCmdLed(false);
+      } catch (e) {
+        addLog('Write error: ' + e.message, 'err');
+      }
     }
-  }
-  if (!endOk) otaOnFail('END write failed after 5 attempts');
-}
 
-async function cancelOta() {
-  otaAbortFlag = true;
-}
-
-/* ─── IPD Tuning (0x82 / 0x84) ─── */
-let lastIpdHex = 0; // The original full 32-bit register value read from MCT8329A
-function previewIpdHex() {
-  // Read current values from select elements
-  const mtrStartup = parseInt(document.getElementById('ipdMtrStartup').value) & 0x03;
-  const ipdFreq    = parseInt(document.getElementById('ipdClkFreq').value)    & 0x07;
-  const ipnCurr    = parseInt(document.getElementById('ipnCurrThr').value)    & 0x1F;
-  const ipdAdv     = parseInt(document.getElementById('ipdAdvAngle').value)   & 0x03;
-  const ipdRep     = parseInt(document.getElementById('ipdRepeat').value)     & 0x03;
-
-  // We are assembling STARTUP_CONFIG1 (0x82).
-  // Known mapping from SLLSFQ3 datasheet:
-  // IPD_CLK_FREQ = bits 15:13
-  // IPD_CURR_THR = bits 12:8
-  // IPD_ADV_ANGLE = bits 7:6
-  // IPD_REPEAT = bits 5:4
-  // MTR_STARTUP = bits 2:1
-  
-  // Clear bits 15:0 of lastIpdHex and merge the new bits
-  let newBits = 0;
-  newBits |= (ipdFreq    << 13);
-  newBits |= (ipnCurr    <<  8);
-  newBits |= (ipdAdv     <<  6);
-  newBits |= (ipdRep     <<  4);
-  newBits |= (mtrStartup <<  1);
-  
-  // Preserve the upper 16 bits (bits 31:16) from the device if we read it successfully
-  const upperVal = (lastIpdHex & 0xFFFF0000) >>> 0;
-  let finalVal = (upperVal | newBits) >>> 0;
-  
-  document.getElementById('ipdNewHex').textContent = hex32(finalVal);
-  return finalVal;
-}
-
-function parseIpdHex(hexVal) {
-  lastIpdHex = hexVal;
-  setRegHex('valIpdSt1', hex32(hexVal));
-  
-  const v = hexVal >>> 0;
-  // Extract bits
-  const mtrStartup = (v >>  1) & 0x03;
-  const ipdRep     = (v >>  4) & 0x03;
-  const ipdAdv     = (v >>  6) & 0x03;
-  const ipnCurr    = (v >>  8) & 0x1F;
-  const ipdFreq    = (v >> 13) & 0x07;
-  
-  // Safely update selects if they match a known option
-  const setSelect = (id, val) => {
-    let el = document.getElementById(id);
-    if (!el) return;
-    for (let opt of el.options) {
-      if (parseInt(opt.value) === val) { el.value = val; break; }
+    async function sendEEPROMCmd(cmd) {
+      if (!charCmd) { addLog('Not connected', 'err'); return; }
+      const names = { 0xF0: 'APPLY_SPD_CONFIG', 0xF1: 'BURN_EEPROM' };
+      const label = names[cmd] || ('CMD_0x' + cmd.toString(16).toUpperCase());
+      if (cmd === 0xF1) {
+        if (!confirm('BURN EEPROM: This will permanently write MCT8329A EEPROM (SPD_CTRL_MODE=2).\nProceed?')) return;
+      }
+      const buf = new Uint8Array([cmd, 0x00, 0x00, 0x00]);
+      try {
+        await charCmd.writeValue(buf);
+        addLog('TX EEPROM: ' + label + ' sent — watch PAI CCS console for result', 'tx');
+      } catch (e) {
+        addLog('Write error: ' + e.message, 'err');
+      }
     }
-  };
-  
-  setSelect('ipdMtrStartup', mtrStartup);
-  setSelect('ipdRepeat',     ipdRep);
-  setSelect('ipdAdvAngle',   ipdAdv);
-  setSelect('ipnCurrThr',    ipnCurr);
-  setSelect('ipdClkFreq',    ipdFreq);
-  
-  previewIpdHex();
-}
 
-async function writeIpdConfig(burnEEPROM) {
-  if (!charCmd) { addLog('Not connected', 'err'); return; }
-  const finalVal = previewIpdHex();
-  
-  // CMD_WRITE_SHADOW (0xF2) format: [0xF2, Addr_H, Addr_L, Val3, Val2, Val1, Val0]
-  const buf = new Uint8Array(7);
-  buf[0] = 0xF2; // CMD_WRITE_SHADOW
-  buf[1] = 0x00; // MSB of Address
-  buf[2] = 0x82; // LSB of Address (0x0082 = STARTUP_CONFIG1)
-  
-  buf[3] = (finalVal >>> 24) & 0xFF;
-  buf[4] = (finalVal >>> 16) & 0xFF;
-  buf[5] = (finalVal >>>  8) & 0xFF;
-  buf[6] = (finalVal)        & 0xFF;
-  
-  try {
-    await charCmd.writeValue(buf);
-    addLog('TX: IPD 0x82 written: ' + hex32(finalVal), 'tx');
-    
-    // If user clicked Burn EEPROM, we also need to trigger EEPROM write via 0xF1 
-    // OR we could write PIN_CONFIG1 and trigger burn. Wait, to burn ALL shadow registers to EEPROM,
-    // we can just issue the 0xF1 command right after! 0xF1 uses MCT8329A_programEEPROM() which saves everything!
-    if (burnEEPROM) {
-        if (!confirm('BURN EEPROM: This will permanently write the new IPD settings.\nProceed?')) return;
-        setTimeout(async () => {
+    function setDir(d) {
+      motorDir = d;
+      document.getElementById('dirFwd').classList.toggle('active', d === 0);
+      document.getElementById('dirRev').classList.toggle('active', d === 1);
+    }
+
+    /* ─── Log ─── */
+    function addLog(text, cls) {
+      const log = document.getElementById('log');
+      const ts = new Date().toLocaleTimeString('en-GB');
+      log.innerHTML += '<span class="ts">[' + ts + ']</span> <span class="' + (cls || '') + '">' + text + '</span>\n';
+      log.scrollTop = log.scrollHeight;
+      const lines = log.children;
+      while (lines.length > 200) lines[0].remove();
+    }
+
+    function formatUptime(sec) {
+      if (sec == null) return '—';
+      const h = Math.floor(sec / 3600);
+      const m = Math.floor((sec % 3600) / 60);
+      const s = sec % 60;
+      return (h ? h + 'h ' : '') + (m ? m + 'm ' : '') + s + 's';
+    }
+
+    /* ─── OTA Firmware Update ─── */
+    function onOtaFileSelected(input) {
+      otaFile = input.files[0] || null;
+      const nameEl = document.getElementById('otaFileName');
+      const startBtn = document.getElementById('otaStartBtn');
+      if (otaFile) {
+        const kb = (otaFile.size / 1024).toFixed(1);
+        nameEl.textContent = otaFile.name + ' (' + kb + ' KB)';
+        startBtn.disabled = !charOtaCtrl;
+      } else {
+        nameEl.textContent = 'No file selected';
+        startBtn.disabled = true;
+      }
+    }
+
+    function onConnect() {
+      document.getElementById('btnConnect').textContent = 'DISCONNECT';
+      document.getElementById('btnConnect').classList.add('connected');
+      setLinkDot('dotOba', 'lblOba', true, 'OK', '—');
+      /* Re-enable OTA start if a file is already selected */
+      if (otaFile && charOtaCtrl) {
+        document.getElementById('otaStartBtn').disabled = false;
+      }
+    }
+
+    function otaSetStatus(msg) {
+      document.getElementById('otaStatus').textContent = msg;
+    }
+    function otaSetProgress(pct) {
+      document.getElementById('otaProgressBar').style.width = Math.round(pct) + '%';
+    }
+    function otaSetUi(active) {
+      document.getElementById('otaStartBtn').style.display = active ? 'none' : '';
+      document.getElementById('otaCancelBtn').style.display = active ? 'inline-block' : 'none';
+      document.getElementById('otaTarget').disabled = active;
+      if (!active) otaSetProgress(0);
+    }
+
+    /* Promise-based wait for OTA ready/fail notification from OBA */
+    var otaReadyResolve = null;
+
+    function otaOnReady(tgt) {
+      otaSetStatus('Flashing ' + tgt + '...');
+      if (otaReadyResolve) { otaReadyResolve(true); otaReadyResolve = null; }
+    }
+    function otaOnDone(tgt) {
+      otaSetStatus('Done ' + tgt + ' ✓');
+      otaSetUi(false);
+      otaSetProgress(100);
+      addLog('OTA complete — device rebooting', 'rx');
+      if (tgt === 'PAI' && otaFile && otaFile.name) {
+        const pv = parsePaiVerFromFilename(otaFile.name);
+        if (pv) {
+          try { localStorage.setItem(LS_PAI_VER, pv); } catch (e) { }
+          const el = document.getElementById('lblPai');
+          if (el) el.textContent = pv;
+        }
+      }
+    }
+    function otaOnFail(reason) {
+      otaSetStatus('Failed: ' + reason);
+      otaSetUi(false);
+      addLog('OTA FAILED: ' + reason, 'err');
+      if (otaReadyResolve) { otaReadyResolve(false); otaReadyResolve = null; }
+    }
+
+    async function sha256Bytes(arrayBuffer) {
+      const hash = await crypto.subtle.digest('SHA-256', arrayBuffer);
+      return new Uint8Array(hash);
+    }
+
+    async function startOta() {
+      if (!charOtaCtrl || !charOtaData || !otaFile) {
+        addLog('OTA: not connected or no file', 'err');
+        return;
+      }
+      const target = parseInt(document.getElementById('otaTarget').value);
+      const targetNames = { 1: 'OBM', 2: 'PAI', 3: 'OBA' };
+      const tgtName = targetNames[target] || '?';
+
+      if (!confirm('Flash ' + tgtName + ' with "' + otaFile.name + '"?\n\nThe device will reboot after update.')) return;
+
+      otaAbortFlag = false;
+      otaSetUi(true);
+      otaSetStatus('Hashing...');
+      otaSetProgress(0);
+      addLog('OTA start → ' + tgtName + '  ' + otaFile.name, 'tx');
+
+      let fileBuffer;
+      try {
+        fileBuffer = await otaFile.arrayBuffer();
+      } catch (e) {
+        otaOnFail('File read: ' + e.message);
+        return;
+      }
+
+      const sha256 = await sha256Bytes(fileBuffer);
+      const fwSize = fileBuffer.byteLength;
+      const chunkSize = 512;
+
+      /* Build BEGIN frame: [0x01, target, size_le32, chunk_le16, sha256[32]] = 40 bytes */
+      const beginBuf = new Uint8Array(40);
+      beginBuf[0] = 0x01;
+      beginBuf[1] = target;
+      new DataView(beginBuf.buffer).setUint32(2, fwSize, true);
+      new DataView(beginBuf.buffer).setUint16(6, chunkSize, true);
+      beginBuf.set(sha256, 8);
+
+      try {
+        otaSetStatus('Starting...');
+        addLog('OTA BEGIN: tgt=' + tgtName + ' size=' + fwSize + ' sha=' + Array.from(sha256.slice(0, 4)).map(b => b.toString(16).padStart(2, '0')).join('') + '...', 'tx');
+        await charOtaCtrl.writeValue(beginBuf);
+      } catch (e) {
+        otaOnFail('BEGIN write: ' + e.message);
+        return;
+      }
+
+      /* Wait for OBA to respond with 'ready' (OBM erases flash — up to ~4 seconds).
+         If OBA replies 'fail', abort.  Timeout after 20 seconds. */
+      otaSetStatus('Erasing flash...');
+      addLog('Waiting for device ready (flash erase)...', 'tx');
+
+      const readyOk = await Promise.race([
+        new Promise(resolve => { otaReadyResolve = resolve; }),
+        new Promise(resolve => setTimeout(() => resolve(false), 20000))
+      ]);
+      otaReadyResolve = null;
+
+      if (!readyOk) {
+        otaOnFail('Device not ready (BEGIN timeout)');
+        return;
+      }
+
+      otaSetStatus('Transferring ' + tgtName + '...');
+
+      const fileArr = new Uint8Array(fileBuffer);
+      let offset = 0;
+      let chunkNum = 0;
+      const totalChunks = Math.ceil(fwSize / chunkSize);
+
+      while (offset < fwSize) {
+        if (otaAbortFlag) {
+          try { await charOtaCtrl.writeValue(new Uint8Array([0x03, target])); } catch (_) { }
+          otaSetStatus('Cancelled');
+          otaSetUi(false);
+          addLog('OTA cancelled by user', 'err');
+          return;
+        }
+
+        const end = Math.min(offset + chunkSize, fwSize);
+        const chunk = fileArr.slice(offset, end);
+
+        try {
+          /* Write Without Response — paced to avoid BLE buffer overflow */
+          await charOtaData.writeValueWithoutResponse(chunk);
+        } catch (e) {
+          otaOnFail('Chunk @' + offset + ': ' + e.message);
+          return;
+        }
+
+        offset = end;
+        chunkNum++;
+        const pct = (offset / fwSize) * 100;
+        otaSetProgress(pct);
+        if ((chunkNum & 3) === 0) {
+          otaSetStatus(tgtName + ' ' + Math.round(pct) + '%  (' + chunkNum + '/' + totalChunks + ')');
+        }
+
+        /* Delay per chunk:
+         *   OBA self-update = 100ms (flash sector erase up to ~50ms + queue depth buffer)
+         *   OBM/PAI = 150ms (UART round-trip ~30ms + OBM flash write + margin)
+         * Keeping OBA ≥ 100ms prevents the Bluedroid GATTS BTC task from blocking
+         * (xQueueSend stall caused BLE disconnect during the "verifying" phase). */
+        await new Promise(r => setTimeout(r, target === 3 ? 100 : 150));
+      }
+
+      /* Send END — wait 2s first to let BLE/UART buffers drain after bulk transfer,
+       * then retry up to 5 times with 1s gap (Write Without Response flood can
+       * leave the ATT layer temporarily unresponsive). */
+      otaSetStatus('Verifying...');
+      await new Promise(r => setTimeout(r, 2000));
+      let endOk = false;
+      for (let attempt = 0; attempt < 5; attempt++) {
+        if (!charOtaCtrl) { addLog('END write: disconnected', 'err'); break; }
+        try {
+          await charOtaCtrl.writeValue(new Uint8Array([0x02, target]));
+          addLog('OTA END sent — waiting for confirm...', 'tx');
+          endOk = true;
+          break;
+        } catch (e) {
+          addLog('END write attempt ' + (attempt + 1) + ' failed: ' + e.message, 'err');
+          if (attempt < 4) await new Promise(r => setTimeout(r, 1000));
+        }
+      }
+      if (!endOk) otaOnFail('END write failed after 5 attempts');
+    }
+
+    async function cancelOta() {
+      otaAbortFlag = true;
+    }
+
+    /* ─── IPD Tuning (0x82 / 0x84) ─── */
+    let lastIpdHex = 0; // The original full 32-bit register value read from MCT8329A
+    function previewIpdHex() {
+      // Read current values from select elements
+      const mtrStartup = parseInt(document.getElementById('ipdMtrStartup').value) & 0x03;
+      const ipdFreq = parseInt(document.getElementById('ipdClkFreq').value) & 0x07;
+      const ipnCurr = parseInt(document.getElementById('ipnCurrThr').value) & 0x1F;
+      const ipdAdv = parseInt(document.getElementById('ipdAdvAngle').value) & 0x03;
+      const ipdRep = parseInt(document.getElementById('ipdRepeat').value) & 0x03;
+
+      // We are assembling STARTUP_CONFIG1 (0x82).
+      // Known mapping from SLLSFQ3 datasheet:
+      // IPD_CLK_FREQ = bits 15:13
+      // IPD_CURR_THR = bits 12:8
+      // IPD_ADV_ANGLE = bits 7:6
+      // IPD_REPEAT = bits 5:4
+      // MTR_STARTUP = bits 2:1
+
+      // Clear bits 15:0 of lastIpdHex and merge the new bits
+      let newBits = 0;
+      newBits |= (ipdFreq << 13);
+      newBits |= (ipnCurr << 8);
+      newBits |= (ipdAdv << 6);
+      newBits |= (ipdRep << 4);
+      newBits |= (mtrStartup << 1);
+
+      // Preserve the upper 16 bits (bits 31:16) from the device if we read it successfully
+      const upperVal = (lastIpdHex & 0xFFFF0000) >>> 0;
+      let finalVal = (upperVal | newBits) >>> 0;
+
+      document.getElementById('ipdNewHex').textContent = hex32(finalVal);
+      return finalVal;
+    }
+
+    function parseIpdHex(hexVal) {
+      lastIpdHex = hexVal;
+      setRegHex('valIpdSt1', hex32(hexVal));
+
+      const v = hexVal >>> 0;
+      // Extract bits
+      const mtrStartup = (v >> 1) & 0x03;
+      const ipdRep = (v >> 4) & 0x03;
+      const ipdAdv = (v >> 6) & 0x03;
+      const ipnCurr = (v >> 8) & 0x1F;
+      const ipdFreq = (v >> 13) & 0x07;
+
+      // Safely update selects if they match a known option
+      const setSelect = (id, val) => {
+        let el = document.getElementById(id);
+        if (!el) return;
+        for (let opt of el.options) {
+          if (parseInt(opt.value) === val) { el.value = val; break; }
+        }
+      };
+
+      setSelect('ipdMtrStartup', mtrStartup);
+      setSelect('ipdRepeat', ipdRep);
+      setSelect('ipdAdvAngle', ipdAdv);
+      setSelect('ipnCurrThr', ipnCurr);
+      setSelect('ipdClkFreq', ipdFreq);
+
+      previewIpdHex();
+    }
+
+    async function writeIpdConfig(burnEEPROM) {
+      if (!charCmd) { addLog('Not connected', 'err'); return; }
+      const finalVal = previewIpdHex();
+
+      // CMD_WRITE_SHADOW (0xF2) format: [0xF2, Addr_H, Addr_L, Val3, Val2, Val1, Val0]
+      const buf = new Uint8Array(7);
+      buf[0] = 0xF2; // CMD_WRITE_SHADOW
+      buf[1] = 0x00; // MSB of Address
+      buf[2] = 0x82; // LSB of Address (0x0082 = STARTUP_CONFIG1)
+
+      buf[3] = (finalVal >>> 24) & 0xFF;
+      buf[4] = (finalVal >>> 16) & 0xFF;
+      buf[5] = (finalVal >>> 8) & 0xFF;
+      buf[6] = (finalVal) & 0xFF;
+
+      try {
+        await charCmd.writeValue(buf);
+        addLog('TX: IPD 0x82 written: ' + hex32(finalVal), 'tx');
+
+        // If user clicked Burn EEPROM, we also need to trigger EEPROM write via 0xF1 
+        // OR we could write PIN_CONFIG1 and trigger burn. Wait, to burn ALL shadow registers to EEPROM,
+        // we can just issue the 0xF1 command right after! 0xF1 uses MCT8329A_programEEPROM() which saves everything!
+        if (burnEEPROM) {
+          if (!confirm('BURN EEPROM: This will permanently write the new IPD settings.\nProceed?')) return;
+          setTimeout(async () => {
             const burnBuf = new Uint8Array([0xF1, 0x00, 0x00, 0x00]);
             try { await charCmd.writeValue(burnBuf); addLog('TX: EEPROM Burn command sent...', 'tx'); }
-            catch(e) { addLog('TX Burn EEPROM failed: ' + e.message, 'err'); }
-        }, 150);
+            catch (e) { addLog('TX Burn EEPROM failed: ' + e.message, 'err'); }
+          }, 150);
+        }
+      } catch (e) {
+        addLog('Write IPD error: ' + e.message, 'err');
+      }
     }
-  } catch (e) {
-    addLog('Write IPD error: ' + e.message, 'err');
-  }
-}
 
-async function clearMctFault() {
-  if (!charCmd) { addLog('Not connected', 'err'); return; }
-  
-  // Format: [CMD(0xF2), Addr_H, Addr_L, Val3, Val2, Val1, Val0]
-  // ALGO_CTRL1 = 0x00E6
-  // Set Bit 29 (CLR_FLT) -> 0x20000000
-  const bufSet = new Uint8Array([0xF2, 0x00, 0xE6, 0x20, 0x00, 0x00, 0x00]);
-  const bufClr = new Uint8Array([0xF2, 0x00, 0xE6, 0x00, 0x00, 0x00, 0x00]);
-  
-  try {
-    await charCmd.writeValue(bufSet);
-    addLog('TX: Clear Fault (Pulse High)', 'tx');
-    setTimeout(async () => {
+    async function clearMctFault() {
+      if (!charCmd) { addLog('Not connected', 'err'); return; }
+
+      // Format: [CMD(0xF2), Addr_H, Addr_L, Val3, Val2, Val1, Val0]
+      // ALGO_CTRL1 = 0x00E6
+      // Set Bit 29 (CLR_FLT) -> 0x20000000
+      const bufSet = new Uint8Array([0xF2, 0x00, 0xE6, 0x20, 0x00, 0x00, 0x00]);
+      const bufClr = new Uint8Array([0xF2, 0x00, 0xE6, 0x00, 0x00, 0x00, 0x00]);
+
       try {
-        await charCmd.writeValue(bufClr);
-        addLog('TX: Clear Fault (Pulse Low)', 'tx');
-      } catch(e) { addLog('TX Clear Fault Low failed: ' + e.message, 'err'); }
-    }, 100);
-  } catch (e) {
-    addLog('TX Clear Fault High failed: ' + e.message, 'err');
-  }
-}
+        await charCmd.writeValue(bufSet);
+        addLog('TX: Clear Fault (Pulse High)', 'tx');
+        setTimeout(async () => {
+          try {
+            await charCmd.writeValue(bufClr);
+            addLog('TX: Clear Fault (Pulse Low)', 'tx');
+          } catch (e) { addLog('TX Clear Fault Low failed: ' + e.message, 'err'); }
+        }, 100);
+      } catch (e) {
+        addLog('TX Clear Fault High failed: ' + e.message, 'err');
+      }
+    }
 
-// Initial dummy run to display something before device connects
-previewIpdHex();
+    // Initial dummy run to display something before device connects
+    previewIpdHex();
 
-</script>
+  </script>
 </body>
+
 </html>
