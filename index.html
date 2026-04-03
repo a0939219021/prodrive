@@ -1568,10 +1568,10 @@
           pill.className = 'mct-state-pill' + (st.cls ? ' ' + st.cls : '');
         }
       }
-      /* Current Duty: bits[31:16] of CURRENT_DUTY / 2^15 * 100 % */
+      /* Current Duty: uq1.30 format (2^30 = 100%) */
       if (cud !== undefined && cud !== null) {
         const raw = Number(cud) >>> 0;
-        const pct = ((raw >>> 16) / 32768 * 100).toFixed(1);
+        const pct = (raw / 10737418.24).toFixed(1);
         const el = document.getElementById('mctCurDuty');
         if (el) el.textContent = pct + '%';
 
