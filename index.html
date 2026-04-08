@@ -1139,13 +1139,22 @@
 
       <!-- Log Panel -->
       <div class="card log-card">
-        <div class="card-label">Event Log</div>
+        <div class="card-label" style="cursor:pointer; display:flex; justify-content:space-between; align-items:center;" onclick="togglePanel('logCtrlBody', this)">
+          <span>Event Log</span>
+          <span style="font-size:1.2rem; font-family:monospace; color:var(--text-dim); opacity:0.8; padding:0 4px;">+</span>
+        </div>
+        <div id="logCtrlBody" style="display:none;">
         <div id="log"></div>
+        </div>
       </div>
 
       <!-- OTA Firmware Update -->
       <div class="card ota-card">
-        <div class="card-label">OTA Firmware Update</div>
+        <div class="card-label" style="cursor:pointer; display:flex; justify-content:space-between; align-items:center;" onclick="togglePanel('otaCtrlBody', this)">
+          <span>OTA Firmware Update</span>
+          <span style="font-size:1.2rem; font-family:monospace; color:var(--text-dim); opacity:0.8; padding:0 4px;">+</span>
+        </div>
+        <div id="otaCtrlBody" style="display:none;">
 
         <div class="ota-row">
           <span class="ota-label">Target</span>
@@ -1170,6 +1179,7 @@
             <div class="ota-progress-bar" id="otaProgressBar"></div>
           </div>
           <span id="otaStatus">—</span>
+        </div>
         </div>
       </div>
 
