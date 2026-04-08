@@ -1368,8 +1368,20 @@
             <input type="number" id="tuneTpsThr" value="9" min="0" max="100" oninput="drawTuneGraph()" style="width:70px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:0.3rem; padding:0.2rem 0.4rem; font-family:monospace; text-align:right;">
           </div>
           <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span style="font-size:0.8rem; color:var(--text-dim);">TPS Cruise (%)</span>
+            <input type="number" id="tuneTpsCruise" value="35" min="0" max="100" oninput="drawTuneGraph()" style="width:70px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:0.3rem; padding:0.2rem 0.4rem; font-family:monospace; text-align:right;">
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center;">
             <span style="font-size:0.8rem; color:var(--text-dim);">TPS Max Mapping (%)</span>
             <input type="number" id="tuneTpsMax" value="76" min="0" max="100" oninput="drawTuneGraph()" style="width:70px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:0.3rem; padding:0.2rem 0.4rem; font-family:monospace; text-align:right;">
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span style="font-size:0.8rem; color:var(--text-dim);">Min Duty (%)</span>
+            <input type="number" id="tuneMinDuty" value="15" min="0" max="100" oninput="drawTuneGraph()" style="width:70px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:0.3rem; padding:0.2rem 0.4rem; font-family:monospace; text-align:right;">
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span style="font-size:0.8rem; color:var(--text-dim);">Cruise Duty (%)</span>
+            <input type="number" id="tuneDutyCruise" value="30" min="0" max="100" oninput="drawTuneGraph()" style="width:70px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:0.3rem; padding:0.2rem 0.4rem; font-family:monospace; text-align:right;">
           </div>
           <div style="display:flex; justify-content:space-between; align-items:center;">
             <span style="font-size:0.8rem; color:var(--text-dim);">Min Duty (%)</span>
@@ -1469,6 +1481,7 @@
     let charOtaCtrl = null, charOtaData = null;
     let motorDir = 0;
     let otaFile = null, otaAbortFlag = false;
+    let liveTps = null, liveDuty = null;
 
     /** localStorage key for PAI image version parsed from last successful PAI OTA filename */
     const LS_PAI_VER = 'prodrive_pai_ver';
@@ -1676,6 +1689,10 @@
           const offset = 157 * (1 - pct);
           document.getElementById(info.gauge).style.strokeDashoffset = offset;
         }
+        if (pid === 0x11) { // Throttle
+          liveTps = val;
+          if (typeof drawTuneGraph === 'function') drawTuneGraph();
+        }
       }
 
       else if (msg.t === 'mtr') {
@@ -1712,6 +1729,11 @@
         setRegHex('mtrCud', hex32(msg.cud));
         setRegHex('mtrSed', hex32(msg.sed));
         updateMctLivePanel(null, null, null, msg.cud);
+
+        if (msg.cud !== undefined && msg.cud !== null) {
+          liveDuty = (Number(msg.cud) >>> 0) / 10737418.24;
+          if (typeof drawTuneGraph === 'function') drawTuneGraph();
+        }
 
         // If status push included st1 (STARTUP_CONFIG1), parse it!
         if (msg.st1 !== undefined) {
@@ -2127,17 +2149,19 @@
     async function sendMotorTune(burnToNvs) {
       if (!charCmd) { addLog('Not connected', 'err'); return; }
       
-      const vTpsThr = parseInt(document.getElementById('tuneTpsThr').value);
-      const vTpsMax = parseInt(document.getElementById('tuneTpsMax').value);
-      const vMinDuty = parseInt(document.getElementById('tuneMinDuty').value);
-      const vMaxDuty = parseInt(document.getElementById('tuneMaxDuty').value);
-      const vMapThr = parseInt(document.getElementById('tuneMapThr').value);
+      const vTpsThr = parseInt(document.getElementById('tuneTpsThr').value) || 0;
+      const vTpsMax = parseInt(document.getElementById('tuneTpsMax').value) || 0;
+      const vMinDuty = parseInt(document.getElementById('tuneMinDuty').value) || 0;
+      const vMaxDuty = parseInt(document.getElementById('tuneMaxDuty').value) || 0;
+      const vMapThr = parseInt(document.getElementById('tuneMapThr').value) || 0;
+      const vTpsCruise = parseInt(document.getElementById('tuneTpsCruise').value) || 0;
+      const vDutyCruise = parseInt(document.getElementById('tuneDutyCruise').value) || 0;
 
       if (burnToNvs) {
         if (!confirm('BURN TO OBM: This will permanently write the Motor Curve parameters to OBM NVS (EEPROM).\nProceed?')) return;
       }
       
-      const buf = new Uint8Array(21);
+      const buf = new Uint8Array(29);
       buf[0] = burnToNvs ? 0xC1 : 0xC0;
       
       const dv = new DataView(buf.buffer, 1);
@@ -2146,6 +2170,8 @@
       dv.setInt32(8, vMinDuty, true);
       dv.setInt32(12, vMaxDuty, true);
       dv.setInt32(16, vMapThr, true);
+      dv.setInt32(20, vTpsCruise, true);
+      dv.setInt32(24, vDutyCruise, true);
       
       try {
         await charCmd.writeValue(buf);
@@ -2172,6 +2198,8 @@
       const tpsMax = parseInt(document.getElementById('tuneTpsMax').value) || 0;
       const minDuty = parseInt(document.getElementById('tuneMinDuty').value) || 0;
       const maxDuty = parseInt(document.getElementById('tuneMaxDuty').value) || 0;
+      const tpsCruise = parseInt(document.getElementById('tuneTpsCruise').value) || 0;
+      const dutyCruise = parseInt(document.getElementById('tuneDutyCruise').value) || 0;
 
       // Draw grid and labels
       ctx.strokeStyle = 'rgba(255,255,255,0.1)';
@@ -2213,30 +2241,59 @@
       // Jump to MinDuty
       ctx.lineTo(getX(tpsThr), getY(minDuty));
       
-      let pX = getX(tpsThr);
-      let pY = getY(minDuty);
+      let pX = getX(tpsCruise);
+      let pY = getY(dutyCruise);
       let qX = getX(tpsMax);
       let qY = getY(maxDuty);
       
-      if (tpsMax > tpsThr) {
+      // If cruise makes sense (between min and max tps)
+      if (tpsCruise > tpsThr && tpsCruise < tpsMax) {
+        ctx.lineTo(pX, pY);
         ctx.lineTo(qX, qY);
-        // Cap at maxDuty until 100%
-        ctx.lineTo(getX(100), qY);
+      } else if (tpsMax > tpsThr) {
+        ctx.lineTo(qX, qY);
       } else {
-        // Step directly to maxDuty
         ctx.lineTo(getX(tpsThr), getY(maxDuty));
-        ctx.lineTo(getX(100), getY(maxDuty));
       }
       
+      // Cap at maxDuty until 100%
+      if (tpsMax <= 100) {
+        ctx.lineTo(getX(100), qY);
+      }
       ctx.stroke();
       
-      // Draw points
+      // Draw tuning points
       ctx.fillStyle = '#fff';
       if (tpsThr >= 0 && tpsThr <= 100) {
         ctx.beginPath(); ctx.arc(getX(tpsThr), getY(minDuty), 3, 0, 2*Math.PI); ctx.fill();
       }
+      if (tpsCruise > tpsThr && tpsCruise < tpsMax) {
+        ctx.beginPath(); ctx.arc(pX, pY, 3, 0, 2*Math.PI); ctx.fill();
+      }
       if (tpsMax >= 0 && tpsMax <= 100) {
         ctx.beginPath(); ctx.arc(qX, qY, 3, 0, 2*Math.PI); ctx.fill();
+      }
+
+      // Draw LIVE dot if available
+      if (liveTps !== null && liveDuty !== null) {
+        const lx = getX(liveTps);
+        const ly = getY(liveDuty);
+        
+        // Glow effect
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = '#10b981'; // vibrant green
+        
+        ctx.fillStyle = '#10b981';
+        ctx.beginPath();
+        ctx.arc(lx, ly, 4.5, 0, 2*Math.PI);
+        ctx.fill();
+
+        ctx.shadowBlur = 0; // reset
+        
+        // Output live stats
+        ctx.fillStyle = '#10b981';
+        ctx.font = 'bold 10px monospace';
+        ctx.fillText(`L:${Math.round(liveTps)}%, ${Math.round(liveDuty)}%`, w - 75, 14);
       }
     }
     
