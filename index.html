@@ -1082,6 +1082,97 @@
 
     <!-- Motor control -->
     <div class="motor-panel">
+      <!-- Motor Tuning (Live) Panel -->
+      <div class="card purple" id="cardMotorTune">
+        <div class="card-label">Motor Tuning (Pro)</div>
+        <div style="font-size:0.75rem; color:var(--text-dim); margin-bottom:0.75rem;">
+          Configure live mapping limits and thresholds. Apply live or burn to OBM RAM/NVS.
+        </div>
+        <div style="display:flex; flex-direction:column; gap:0.6rem;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span style="font-size:0.8rem; color:var(--text-dim);">TPS Threshold (+%)</span>
+            <input type="number" id="tuneTpsThr" value="9" min="0" max="100" oninput="drawTuneGraph()" style="width:70px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:0.3rem; padding:0.2rem 0.4rem; font-family:monospace; text-align:right;">
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span style="font-size:0.8rem; color:var(--text-dim);">TPS Cruise (%)</span>
+            <input type="number" id="tuneTpsCruise" value="35" min="0" max="100" oninput="drawTuneGraph()" style="width:70px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:0.3rem; padding:0.2rem 0.4rem; font-family:monospace; text-align:right;">
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span style="font-size:0.8rem; color:var(--text-dim);">TPS Max Mapping (%)</span>
+            <input type="number" id="tuneTpsMax" value="76" min="0" max="100" oninput="drawTuneGraph()" style="width:70px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:0.3rem; padding:0.2rem 0.4rem; font-family:monospace; text-align:right;">
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span style="font-size:0.8rem; color:var(--text-dim);">Min Duty (%)</span>
+            <input type="number" id="tuneMinDuty" value="15" min="0" max="100" oninput="drawTuneGraph()" style="width:70px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:0.3rem; padding:0.2rem 0.4rem; font-family:monospace; text-align:right;">
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span style="font-size:0.8rem; color:var(--text-dim);">Cruise Duty (%)</span>
+            <input type="number" id="tuneDutyCruise" value="30" min="0" max="100" oninput="drawTuneGraph()" style="width:70px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:0.3rem; padding:0.2rem 0.4rem; font-family:monospace; text-align:right;">
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span style="font-size:0.8rem; color:var(--text-dim);">Max Duty (%)</span>
+            <input type="number" id="tuneMaxDuty" value="76" min="0" max="100" oninput="drawTuneGraph()" style="width:70px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:0.3rem; padding:0.2rem 0.4rem; font-family:monospace; text-align:right;">
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span style="font-size:0.8rem; color:var(--text-dim);">MAP Act. Threshold (kPa)</span>
+            <input type="number" id="tuneMapThr" value="40" min="0" max="250" oninput="drawTuneGraph()" style="width:70px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:0.3rem; padding:0.2rem 0.4rem; font-family:monospace; text-align:right;">
+          </div>
+        </div>
+        <div style="margin-top:1rem; text-align:center;">
+          <canvas id="tuneGraphCanvas" width="360" height="156" style="width:100%; max-width:360px; background:rgba(0,0,0,0.2); border-radius:0.5rem;"></canvas>
+        </div>
+        <div style="margin-top:0.75rem; padding-top:0.75rem; border-top:1px solid rgba(255,255,255,0.1);">
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem;">
+            <button class="ctrl-btn"
+              style="background:rgba(167,139,250,0.15); border-color:rgba(167,139,250,0.4); color:#a78bfa;"
+              onclick="sendMotorTune(false)" title="Applies to OBM RAM immediately. Resets on power cycle.">
+              APPLY (LIVE)
+            </button>
+            <button class="ctrl-btn"
+              style="background:rgba(239,68,68,0.15); border-color:rgba(239,68,68,0.4); color:#ef4444;"
+              onclick="sendMotorTune(true)" title="Burns settings to OBM EEPROM (NVS).">
+              BURN TO OBM
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Log Panel -->
+      <div class="card log-card">
+        <div class="card-label">Event Log</div>
+        <div id="log"></div>
+      </div>
+
+      <!-- OTA Firmware Update -->
+      <div class="card ota-card">
+        <div class="card-label">OTA Firmware Update</div>
+
+        <div class="ota-row">
+          <span class="ota-label">Target</span>
+          <select id="otaTarget" class="ota-select">
+            <option value="3">OBA (ESP32-C6 Gateway, 0x03)</option>
+            <option value="1">OBM (ESP32-C6 OBD Central, 0x01)</option>
+            <option value="2">PAI (CC2340R5 Motor, 0x02)</option>
+          </select>
+        </div>
+
+        <div class="ota-row">
+          <span class="ota-label">File</span>
+          <button class="ota-file-btn" onclick="document.getElementById('otaFileInput').click()">Choose .bin</button>
+          <input type="file" id="otaFileInput" accept=".bin" style="display:none" onchange="onOtaFileSelected(this)">
+          <span id="otaFileName">No file selected</span>
+        </div>
+
+        <div class="ota-row" style="align-items:center; gap:1rem;">
+          <button class="ota-start-btn" id="otaStartBtn" onclick="startOta()" disabled>FLASH</button>
+          <button class="ota-cancel-btn" id="otaCancelBtn" onclick="cancelOta()">CANCEL</button>
+          <div class="ota-progress-wrap">
+            <div class="ota-progress-bar" id="otaProgressBar"></div>
+          </div>
+          <span id="otaStatus">—</span>
+        </div>
+      </div>
+
       <div class="card green">
         <div class="card-label">Motor Control</div>
         <p id="motorPaiHint" class="motor-hint" style="display:none;">PAI (CC2340) not connected: commands cannot reach
@@ -1313,97 +1404,6 @@
               BURN EEPROM
             </button>
           </div>
-        </div>
-      </div>
-
-      <!-- Motor Tuning (Live) Panel -->
-      <div class="card purple" id="cardMotorTune">
-        <div class="card-label">Motor Tuning (Pro)</div>
-        <div style="font-size:0.75rem; color:var(--text-dim); margin-bottom:0.75rem;">
-          Configure live mapping limits and thresholds. Apply live or burn to OBM RAM/NVS.
-        </div>
-        <div style="display:flex; flex-direction:column; gap:0.6rem;">
-          <div style="display:flex; justify-content:space-between; align-items:center;">
-            <span style="font-size:0.8rem; color:var(--text-dim);">TPS Threshold (+%)</span>
-            <input type="number" id="tuneTpsThr" value="9" min="0" max="100" oninput="drawTuneGraph()" style="width:70px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:0.3rem; padding:0.2rem 0.4rem; font-family:monospace; text-align:right;">
-          </div>
-          <div style="display:flex; justify-content:space-between; align-items:center;">
-            <span style="font-size:0.8rem; color:var(--text-dim);">TPS Cruise (%)</span>
-            <input type="number" id="tuneTpsCruise" value="35" min="0" max="100" oninput="drawTuneGraph()" style="width:70px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:0.3rem; padding:0.2rem 0.4rem; font-family:monospace; text-align:right;">
-          </div>
-          <div style="display:flex; justify-content:space-between; align-items:center;">
-            <span style="font-size:0.8rem; color:var(--text-dim);">TPS Max Mapping (%)</span>
-            <input type="number" id="tuneTpsMax" value="76" min="0" max="100" oninput="drawTuneGraph()" style="width:70px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:0.3rem; padding:0.2rem 0.4rem; font-family:monospace; text-align:right;">
-          </div>
-          <div style="display:flex; justify-content:space-between; align-items:center;">
-            <span style="font-size:0.8rem; color:var(--text-dim);">Min Duty (%)</span>
-            <input type="number" id="tuneMinDuty" value="15" min="0" max="100" oninput="drawTuneGraph()" style="width:70px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:0.3rem; padding:0.2rem 0.4rem; font-family:monospace; text-align:right;">
-          </div>
-          <div style="display:flex; justify-content:space-between; align-items:center;">
-            <span style="font-size:0.8rem; color:var(--text-dim);">Cruise Duty (%)</span>
-            <input type="number" id="tuneDutyCruise" value="30" min="0" max="100" oninput="drawTuneGraph()" style="width:70px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:0.3rem; padding:0.2rem 0.4rem; font-family:monospace; text-align:right;">
-          </div>
-          <div style="display:flex; justify-content:space-between; align-items:center;">
-            <span style="font-size:0.8rem; color:var(--text-dim);">Max Duty (%)</span>
-            <input type="number" id="tuneMaxDuty" value="76" min="0" max="100" oninput="drawTuneGraph()" style="width:70px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:0.3rem; padding:0.2rem 0.4rem; font-family:monospace; text-align:right;">
-          </div>
-          <div style="display:flex; justify-content:space-between; align-items:center;">
-            <span style="font-size:0.8rem; color:var(--text-dim);">MAP Act. Threshold (kPa)</span>
-            <input type="number" id="tuneMapThr" value="40" min="0" max="250" oninput="drawTuneGraph()" style="width:70px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:0.3rem; padding:0.2rem 0.4rem; font-family:monospace; text-align:right;">
-          </div>
-        </div>
-        <div style="margin-top:1rem; text-align:center;">
-          <canvas id="tuneGraphCanvas" width="360" height="156" style="width:100%; max-width:360px; background:rgba(0,0,0,0.2); border-radius:0.5rem;"></canvas>
-        </div>
-        <div style="margin-top:0.75rem; padding-top:0.75rem; border-top:1px solid rgba(255,255,255,0.1);">
-          <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem;">
-            <button class="ctrl-btn"
-              style="background:rgba(167,139,250,0.15); border-color:rgba(167,139,250,0.4); color:#a78bfa;"
-              onclick="sendMotorTune(false)" title="Applies to OBM RAM immediately. Resets on power cycle.">
-              APPLY (LIVE)
-            </button>
-            <button class="ctrl-btn"
-              style="background:rgba(239,68,68,0.15); border-color:rgba(239,68,68,0.4); color:#ef4444;"
-              onclick="sendMotorTune(true)" title="Burns settings to OBM EEPROM (NVS).">
-              BURN TO OBM
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Log Panel -->
-      <div class="card log-card">
-        <div class="card-label">Event Log</div>
-        <div id="log"></div>
-      </div>
-
-      <!-- OTA Firmware Update -->
-      <div class="card ota-card">
-        <div class="card-label">OTA Firmware Update</div>
-
-        <div class="ota-row">
-          <span class="ota-label">Target</span>
-          <select id="otaTarget" class="ota-select">
-            <option value="3">OBA (ESP32-C6 Gateway, 0x03)</option>
-            <option value="1">OBM (ESP32-C6 OBD Central, 0x01)</option>
-            <option value="2">PAI (CC2340R5 Motor, 0x02)</option>
-          </select>
-        </div>
-
-        <div class="ota-row">
-          <span class="ota-label">File</span>
-          <button class="ota-file-btn" onclick="document.getElementById('otaFileInput').click()">Choose .bin</button>
-          <input type="file" id="otaFileInput" accept=".bin" style="display:none" onchange="onOtaFileSelected(this)">
-          <span id="otaFileName">No file selected</span>
-        </div>
-
-        <div class="ota-row" style="align-items:center; gap:1rem;">
-          <button class="ota-start-btn" id="otaStartBtn" onclick="startOta()" disabled>FLASH</button>
-          <button class="ota-cancel-btn" id="otaCancelBtn" onclick="cancelOta()">CANCEL</button>
-          <div class="ota-progress-wrap">
-            <div class="ota-progress-bar" id="otaProgressBar"></div>
-          </div>
-          <span id="otaStatus">—</span>
         </div>
       </div>
 
