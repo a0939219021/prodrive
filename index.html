@@ -1174,7 +1174,11 @@
       </div>
 
       <div class="card green">
-        <div class="card-label">Motor Control</div>
+        <div class="card-label" style="cursor:pointer; display:flex; justify-content:space-between; align-items:center;" onclick="togglePanel('motorCtrlBody', this)">
+          <span>Motor Control</span>
+          <span style="font-size:1.2rem; font-family:monospace; color:#10b981; opacity:0.8; padding:0 4px;">+</span>
+        </div>
+        <div id="motorCtrlBody" style="display:none;">
         <p id="motorPaiHint" class="motor-hint" style="display:none;">PAI (CC2340) not connected: commands cannot reach
           MCT8329A and motor status is unavailable. Ensure OBM↔PAI BLE is active.</p>
         <div class="motor-status">
@@ -1308,11 +1312,16 @@
           <div class="dir-btn active" id="dirFwd" onclick="setDir(0)">FWD</div>
           <div class="dir-btn" id="dirRev" onclick="setDir(1)">REV</div>
         </div>
+        </div>
       </div>
 
       <!-- IPD Tuning Panel -->
       <div class="card purple" id="cardIpd">
-        <div class="card-label">IPD Tuning (0x82)</div>
+        <div class="card-label" style="cursor:pointer; display:flex; justify-content:space-between; align-items:center;" onclick="togglePanel('ipdCtrlBody', this)">
+          <span>IPD Tuning (0x82)</span>
+          <span style="font-size:1.2rem; font-family:monospace; color:#a78bfa; opacity:0.8; padding:0 4px;">+</span>
+        </div>
+        <div id="ipdCtrlBody" style="display:none;">
 
         <div style="font-size:0.75rem; color:var(--text-dim); margin-bottom:0.75rem;">
           Current 0x82 (Hex): <strong id="valIpdSt1"
@@ -1405,6 +1414,7 @@
             </button>
           </div>
         </div>
+        </div>
       </div>
 
     </div>
@@ -1412,6 +1422,18 @@
   </main>
 
   <script>
+    function togglePanel(bodyId, headerEl) {
+      const body = document.getElementById(bodyId);
+      const icon = headerEl.querySelector('span:last-child');
+      if (body.style.display === 'none') {
+        body.style.display = 'block';
+        if (icon) icon.textContent = '−';
+      } else {
+        body.style.display = 'none';
+        if (icon) icon.textContent = '+';
+      }
+    }
+
     const SVC_UUID = '0000ffe0-0000-1000-8000-00805f9b34fb';
     const CHAR_DATA = '0000ffe1-0000-1000-8000-00805f9b34fb';
     const CHAR_CMD = '0000ffe2-0000-1000-8000-00805f9b34fb';
