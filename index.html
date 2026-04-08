@@ -1356,6 +1356,50 @@
         </div>
       </div>
 
+      <!-- Motor Tuning (Live) Panel -->
+      <div class="card purple" id="cardMotorTune">
+        <div class="card-label">Motor Tuning (Pro)</div>
+        <div style="font-size:0.75rem; color:var(--text-dim); margin-bottom:0.75rem;">
+          Configure live mapping limits and thresholds. Apply live or burn to OBM RAM/NVS.
+        </div>
+        <div style="display:flex; flex-direction:column; gap:0.6rem;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span style="font-size:0.8rem; color:var(--text-dim);">TPS Threshold (+%)</span>
+            <input type="number" id="tuneTpsThr" value="9" min="0" max="100" style="width:70px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:0.3rem; padding:0.2rem 0.4rem; font-family:monospace; text-align:right;">
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span style="font-size:0.8rem; color:var(--text-dim);">TPS Max Mapping (%)</span>
+            <input type="number" id="tuneTpsMax" value="76" min="0" max="100" style="width:70px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:0.3rem; padding:0.2rem 0.4rem; font-family:monospace; text-align:right;">
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span style="font-size:0.8rem; color:var(--text-dim);">Min Duty (%)</span>
+            <input type="number" id="tuneMinDuty" value="15" min="0" max="100" style="width:70px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:0.3rem; padding:0.2rem 0.4rem; font-family:monospace; text-align:right;">
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span style="font-size:0.8rem; color:var(--text-dim);">Max Duty (%)</span>
+            <input type="number" id="tuneMaxDuty" value="76" min="0" max="100" style="width:70px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:0.3rem; padding:0.2rem 0.4rem; font-family:monospace; text-align:right;">
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span style="font-size:0.8rem; color:var(--text-dim);">MAP Act. Threshold (kPa)</span>
+            <input type="number" id="tuneMapThr" value="40" min="0" max="250" style="width:70px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:0.3rem; padding:0.2rem 0.4rem; font-family:monospace; text-align:right;">
+          </div>
+        </div>
+        <div style="margin-top:0.75rem; padding-top:0.75rem; border-top:1px solid rgba(255,255,255,0.1);">
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem;">
+            <button class="ctrl-btn"
+              style="background:rgba(167,139,250,0.15); border-color:rgba(167,139,250,0.4); color:#a78bfa;"
+              onclick="sendMotorTune(false)" title="Applies to OBM RAM immediately. Resets on power cycle.">
+              APPLY (LIVE)
+            </button>
+            <button class="ctrl-btn"
+              style="background:rgba(239,68,68,0.15); border-color:rgba(239,68,68,0.4); color:#ef4444;"
+              onclick="sendMotorTune(true)" title="Burns settings to OBM EEPROM (NVS).">
+              BURN TO OBM
+            </button>
+          </div>
+        </div>
+      </div>
+
       <!-- Log Panel -->
       <div class="card log-card">
         <div class="card-label">Event Log</div>
@@ -2073,6 +2117,38 @@
         }, 100);
       } catch (e) {
         addLog('TX Clear Fault High failed: ' + e.message, 'err');
+      }
+    }
+
+    // Live tuning panel logic
+    async function sendMotorTune(burnToNvs) {
+      if (!charCmd) { addLog('Not connected', 'err'); return; }
+      
+      const vTpsThr = parseInt(document.getElementById('tuneTpsThr').value);
+      const vTpsMax = parseInt(document.getElementById('tuneTpsMax').value);
+      const vMinDuty = parseInt(document.getElementById('tuneMinDuty').value);
+      const vMaxDuty = parseInt(document.getElementById('tuneMaxDuty').value);
+      const vMapThr = parseInt(document.getElementById('tuneMapThr').value);
+
+      if (burnToNvs) {
+        if (!confirm('BURN TO OBM: This will permanently write the Motor Curve parameters to OBM NVS (EEPROM).\nProceed?')) return;
+      }
+      
+      const buf = new Uint8Array(21);
+      buf[0] = burnToNvs ? 0xC1 : 0xC0;
+      
+      const dv = new DataView(buf.buffer, 1);
+      dv.setInt32(0, vTpsThr, true);
+      dv.setInt32(4, vTpsMax, true);
+      dv.setInt32(8, vMinDuty, true);
+      dv.setInt32(12, vMaxDuty, true);
+      dv.setInt32(16, vMapThr, true);
+      
+      try {
+        await charCmd.writeValue(buf);
+        addLog('TX MotorTune (' + (burnToNvs ? 'BURN' : 'LIVE') + '): sent config.', 'tx');
+      } catch (e) {
+        addLog('TX MotorTune error: ' + e.message, 'err');
       }
     }
 
