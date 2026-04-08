@@ -1080,46 +1080,6 @@
       <span class="card-value" id="valIntake">—</span><span class="card-unit">kPa</span>
     </div>
 
-    <!-- MAF -->
-    <div class="card" id="cardMaf">
-      <div class="card-label">MAF Flow</div>
-      <span class="card-value" id="valMaf">—</span><span class="card-unit">g/s</span>
-    </div>
-
-    <!-- Secondary data row -->
-    <div class="card" id="cardIntakeTemp">
-      <div class="card-label">Intake Temp</div>
-      <span class="card-value" id="valIntakeTemp">—</span><span class="card-unit">°C</span>
-    </div>
-
-    <div class="card" id="cardAmbient">
-      <div class="card-label">Ambient Temp</div>
-      <span class="card-value" id="valAmbient">—</span><span class="card-unit">°C</span>
-    </div>
-
-    <div class="card" id="cardBaro">
-      <div class="card-label">Baro Pressure</div>
-      <span class="card-value" id="valBaro">—</span><span class="card-unit">kPa</span>
-    </div>
-
-    <div class="card green" id="cardFuel">
-      <div class="card-label">Fuel Level</div>
-      <span class="card-value" id="valFuel">—</span><span class="card-unit">%</span>
-      <div class="bar-track">
-        <div class="bar-fill" id="barFuel"></div>
-      </div>
-    </div>
-
-    <div class="card" id="cardTiming">
-      <div class="card-label">Timing Advance</div>
-      <span class="card-value" id="valTiming">—</span><span class="card-unit">°</span>
-    </div>
-
-    <div class="card purple" id="cardRuntime">
-      <div class="card-label">Engine Runtime</div>
-      <span class="card-value" id="valRuntime">—</span><span class="card-unit">sec</span>
-    </div>
-
     <!-- Motor control -->
     <div class="motor-panel">
       <div class="card green">
@@ -1384,10 +1344,6 @@
             <input type="number" id="tuneDutyCruise" value="30" min="0" max="100" oninput="drawTuneGraph()" style="width:70px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:0.3rem; padding:0.2rem 0.4rem; font-family:monospace; text-align:right;">
           </div>
           <div style="display:flex; justify-content:space-between; align-items:center;">
-            <span style="font-size:0.8rem; color:var(--text-dim);">Min Duty (%)</span>
-            <input type="number" id="tuneMinDuty" value="15" min="0" max="100" oninput="drawTuneGraph()" style="width:70px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:0.3rem; padding:0.2rem 0.4rem; font-family:monospace; text-align:right;">
-          </div>
-          <div style="display:flex; justify-content:space-between; align-items:center;">
             <span style="font-size:0.8rem; color:var(--text-dim);">Max Duty (%)</span>
             <input type="number" id="tuneMaxDuty" value="76" min="0" max="100" oninput="drawTuneGraph()" style="width:70px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:0.3rem; padding:0.2rem 0.4rem; font-family:monospace; text-align:right;">
           </div>
@@ -1397,7 +1353,7 @@
           </div>
         </div>
         <div style="margin-top:1rem; text-align:center;">
-          <canvas id="tuneGraphCanvas" width="300" height="130" style="width:100%; max-width:300px; background:rgba(0,0,0,0.2); border-radius:0.5rem;"></canvas>
+          <canvas id="tuneGraphCanvas" width="360" height="156" style="width:100%; max-width:360px; background:rgba(0,0,0,0.2); border-radius:0.5rem;"></canvas>
         </div>
         <div style="margin-top:0.75rem; padding-top:0.75rem; border-top:1px solid rgba(255,255,255,0.1);">
           <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem;">
@@ -2207,26 +2163,27 @@
       
       // Y axis (Duty 0-100)
       ctx.beginPath();
-      ctx.moveTo(25, 10); ctx.lineTo(25, h - 20); // Y axis line
-      ctx.moveTo(25, h - 20); ctx.lineTo(w - 10, h - 20); // X axis line
+      ctx.moveTo(35, 18); ctx.lineTo(35, h - 20); // Y axis line
+      ctx.moveTo(35, h - 20); ctx.lineTo(w - 10, h - 20); // X axis line
       
       // 50% line
-      ctx.moveTo(25, 10 + (h - 30) * 0.5); ctx.lineTo(w - 10, 10 + (h - 30) * 0.5);
+      ctx.moveTo(35, 18 + (h - 38) * 0.5); ctx.lineTo(w - 10, 18 + (h - 38) * 0.5);
       // 100% line
-      ctx.moveTo(25, 10); ctx.lineTo(w - 10, 10);
+      ctx.moveTo(35, 18); ctx.lineTo(w - 10, 18);
       ctx.stroke();
 
       ctx.fillStyle = 'rgba(255,255,255,0.5)';
       ctx.font = '10px monospace';
-      ctx.fillText('100', 2, 14);
-      ctx.fillText('50', 8, 14 + (h - 30) * 0.5);
-      ctx.fillText('0', 14, h - 16);
+      ctx.fillText('Motor(%)', 2, 8);
+      ctx.fillText('100', 8, 22);
+      ctx.fillText('50', 14, 22 + (h - 38) * 0.5);
+      ctx.fillText('0', 20, h - 16);
       
       ctx.fillText('TPS(%)', w - 40, h - 6);
 
       // Coordinate mapping
-      const getX = (tps) => 25 + (w - 35) * (tps / 100);
-      const getY = (duty) => (h - 20) - (h - 30) * (duty / 100);
+      const getX = (tps) => 35 + (w - 45) * (tps / 100);
+      const getY = (duty) => (h - 20) - (h - 38) * (duty / 100);
 
       // Draw the piecewise curve
       ctx.beginPath();
