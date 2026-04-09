@@ -2362,13 +2362,13 @@
       const getX = (tps) => 35 + (w - 45) * (tps / 100);
       const getY = (duty) => (h - 20) - (h - 38) * (duty / 100);
 
-      // 1. Draw digital radar grid (Sci-Fi)
+      // 1. Draw digital radar grid (Sci-Fi / Tactical)
       ctx.lineWidth = 1;
       ctx.setLineDash([2, 4]); // Dashed lines
       
       // Horizontal grid
       for (let i = 0; i <= 100; i += 25) {
-        ctx.strokeStyle = (i === 0 || i === 50 || i === 100) ? 'rgba(255, 111, 0, 0.3)' : 'rgba(255, 255, 255, 0.05)';
+        ctx.strokeStyle = (i === 0 || i === 50 || i === 100) ? 'rgba(255, 111, 0, 0.4)' : 'rgba(255, 255, 255, 0.05)';
         ctx.beginPath();
         ctx.moveTo(35, getY(i));
         ctx.lineTo(w - 10, getY(i));
@@ -2386,8 +2386,8 @@
       ctx.setLineDash([]); // Reset line dash
 
       // Axis texts
-      ctx.fillStyle = 'rgba(255, 111, 0, 0.7)'; // Cyan text
-      ctx.font = '10px "JetBrains Mono", monospace';
+      ctx.fillStyle = 'rgba(255, 111, 0, 0.8)'; // Orange text
+      ctx.font = '10px "Black Ops One", monospace';
       ctx.fillText('POWER', 2, 8);
       ctx.fillText('100', 8, getY(100) + 4);
       ctx.fillText('50', 14, getY(50) + 4);
@@ -2419,7 +2419,21 @@
         pts.push({ x: getX(100), y: pts[pts.length - 1].y });
       }
 
-      // 2. Draw Area Fill (Gradient)
+      // 1.5 Draw Drop lines for Target Nodes
+      ctx.setLineDash([3, 3]);
+      ctx.lineWidth = 1;
+      for (let i = 0; i < pts.length; i++) {
+        if (pts[i].dot) {
+          ctx.strokeStyle = 'rgba(234, 179, 8, 0.4)'; // Amber drops
+          ctx.beginPath();
+          ctx.moveTo(pts[i].x, pts[i].y);
+          ctx.lineTo(pts[i].x, getY(0));
+          ctx.stroke();
+        }
+      }
+      ctx.setLineDash([]);
+
+      // 2. Draw Area Fill (Hazard Stripes + Gradient)
       ctx.beginPath();
       ctx.moveTo(pts[0].x, getY(0)); // Start at bottom-left
       for (let i = 0; i < pts.length; i++) {
@@ -2428,19 +2442,32 @@
       ctx.lineTo(pts[pts.length - 1].x, getY(0)); // Drop down to bottom-right
       ctx.closePath();
 
-      // Create gradient Fill
+      // Create diagonal hazard stripe pattern
+      const pCvs = document.createElement('canvas');
+      pCvs.width = 16; pCvs.height = 16;
+      const pCtx = pCvs.getContext('2d');
+      pCtx.fillStyle = 'rgba(234, 179, 8, 0.15)'; // Tactical Yellow faint
+      pCtx.beginPath(); 
+      pCtx.moveTo(0,16); pCtx.lineTo(16,0); pCtx.lineTo(16,6); pCtx.lineTo(6,16); pCtx.fill();
+      pCtx.beginPath(); 
+      pCtx.moveTo(0,6); pCtx.lineTo(6,0); pCtx.lineTo(0,0); pCtx.fill();
+      const pattern = ctx.createPattern(pCvs, 'repeat');
+      ctx.fillStyle = pattern;
+      ctx.fill(); // Fill hazard stripes
+
+      // Create gradient Fill (overlay)
       let grad = ctx.createLinearGradient(0, getY(100), 0, getY(0));
-      grad.addColorStop(0, 'rgba(255, 111, 0, 0.45)'); // Purple top 
+      grad.addColorStop(0, 'rgba(255, 111, 0, 0.65)'); // Bright orange top 
       grad.addColorStop(1, 'rgba(255, 111, 0, 0.05)'); // Transparent bottom
       ctx.fillStyle = grad;
-      ctx.fill();
+      ctx.fill(); // Overlays on top of the hazard stripes
 
-      // 3. Draw the glowing line
+      // 3. Draw the glowing core line
       ctx.beginPath();
-      ctx.strokeStyle = '#ff6f00'; // Bright purple
-      ctx.lineWidth = 2.5;
-      ctx.lineJoin = 'round';
-      ctx.shadowBlur = 12; // Neon glow
+      ctx.strokeStyle = '#ff6f00'; // Bright orange
+      ctx.lineWidth = 3;
+      ctx.lineJoin = 'miter';
+      ctx.shadowBlur = 18; // Massive Neon glow
       ctx.shadowColor = '#ff6f00';
 
       ctx.moveTo(pts[0].x, pts[0].y);
@@ -2451,19 +2478,36 @@
       
       // Draw it again without shadow for solid core
       ctx.shadowBlur = 0;
-      ctx.lineWidth = 1.2;
-      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = '#fffbeb';
       ctx.stroke();
 
-      // 4. Draw data nodes
+      // 4. Draw Tactical Data Nodes
       for (let i = 0; i < pts.length; i++) {
         if (pts[i].dot) {
+          let x = pts[i].x, y = pts[i].y;
+          
+          // Outer bracket box
+          ctx.strokeStyle = '#d4c4a4'; // desert sand
+          ctx.lineWidth = 1.5;
           ctx.beginPath();
-          ctx.arc(pts[i].x, pts[i].y, 4, 0, 2*Math.PI);
-          ctx.fillStyle = '#0f172a'; // dark inside
-          ctx.fill();
-          ctx.lineWidth = 2;
-          ctx.strokeStyle = '#d4c4a4'; // Cyan ring
+          let sz = 7;
+          // TL
+          ctx.moveTo(x-sz, y-(sz-3)); ctx.lineTo(x-sz, y-sz); ctx.lineTo(x-(sz-3), y-sz);
+          // TR
+          ctx.moveTo(x+(sz-3), y-sz); ctx.lineTo(x+sz, y-sz); ctx.lineTo(x+sz, y-(sz-3));
+          // BR
+          ctx.moveTo(x+sz, y+(sz-3)); ctx.lineTo(x+sz, y+sz); ctx.lineTo(x+(sz-3), y+sz);
+          // BL
+          ctx.moveTo(x-(sz-3), y+sz); ctx.lineTo(x-sz, y+sz); ctx.lineTo(x-sz, y+(sz-3));
+          ctx.stroke();
+
+          // Inner crosshair
+          ctx.lineWidth = 1.5;
+          ctx.strokeStyle = '#eab308';
+          ctx.beginPath();
+          ctx.moveTo(x, y-3); ctx.lineTo(x, y+3);
+          ctx.moveTo(x-3, y); ctx.lineTo(x+3, y);
           ctx.stroke();
         }
       }
@@ -2473,17 +2517,25 @@
         const lx = getX(liveTps);
         const ly = getY(liveDuty);
         
-        ctx.shadowBlur = 15;
-        ctx.shadowColor = '#10b981'; // Green glow
-        ctx.fillStyle = '#10b981';
+        ctx.shadowBlur = 20;
+        ctx.shadowColor = '#ef4444'; // Aggressive Red glow for live tracker
+        ctx.fillStyle = '#ef4444';
+        
+        // Draw live pulse marker
         ctx.beginPath();
-        ctx.arc(lx, ly, 4.5, 0, 2*Math.PI);
+        ctx.arc(lx, ly, 4, 0, 2*Math.PI);
         ctx.fill();
         ctx.shadowBlur = 0;
         
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(lx, ly, 7, 0, 2*Math.PI);
+        ctx.stroke();
+        
         // Output live stats
-        ctx.fillStyle = '#10b981';
-        ctx.font = 'bold 11px "JetBrains Mono", monospace';
+        ctx.fillStyle = '#ef4444';
+        ctx.font = 'bold 11px "Black Ops One", monospace';
         ctx.fillText(`L:${Math.round(liveTps)}%, ${Math.round(liveDuty)}%`, w - 85, 16);
       }
     }
