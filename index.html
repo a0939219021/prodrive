@@ -2345,11 +2345,25 @@
     function drawTuneGraph() {
       const canvas = document.getElementById('tuneGraphCanvas');
       if (!canvas) return;
+      
+      const rect = canvas.getBoundingClientRect();
+      let cssW = rect.width;
+      let cssH = rect.height;
+      // Fallback if canvas is hidden
+      if (cssW === 0) cssW = 480;
+      if (cssH === 0) cssH = 216;
+      
+      const dpr = window.devicePixelRatio || 1;
+      // Setting canvas.width/height clears the canvas and assigns the real memory resolution
+      canvas.width = cssW * dpr;
+      canvas.height = cssH * dpr;
+      
       const ctx = canvas.getContext('2d');
-      const w = canvas.width;
-      const h = canvas.height;
-
-      ctx.clearRect(0, 0, w, h);
+      // Scale all drawing commands so 480x216 logical coordinates perfectly fill the crisp buffer
+      ctx.scale((cssW * dpr) / 480, (cssH * dpr) / 216);
+      
+      const w = 480;
+      const h = 216;
 
       const tpsThr = parseInt(document.getElementById('tuneTpsThr').value) || 0;
       const tpsMax = parseInt(document.getElementById('tuneTpsMax').value) || 0;
