@@ -2419,21 +2419,7 @@
         pts.push({ x: getX(100), y: pts[pts.length - 1].y });
       }
 
-      // 1.5 Draw Drop lines for Target Nodes
-      ctx.setLineDash([3, 3]);
-      ctx.lineWidth = 1;
-      for (let i = 0; i < pts.length; i++) {
-        if (pts[i].dot) {
-          ctx.strokeStyle = 'rgba(234, 179, 8, 0.4)'; // Amber drops
-          ctx.beginPath();
-          ctx.moveTo(pts[i].x, pts[i].y);
-          ctx.lineTo(pts[i].x, getY(0));
-          ctx.stroke();
-        }
-      }
-      ctx.setLineDash([]);
-
-      // 2. Draw Area Fill (Hazard Stripes + Gradient)
+      // 2. Draw Area Fill (Gradient)
       ctx.beginPath();
       ctx.moveTo(pts[0].x, getY(0)); // Start at bottom-left
       for (let i = 0; i < pts.length; i++) {
@@ -2442,32 +2428,19 @@
       ctx.lineTo(pts[pts.length - 1].x, getY(0)); // Drop down to bottom-right
       ctx.closePath();
 
-      // Create diagonal hazard stripe pattern
-      const pCvs = document.createElement('canvas');
-      pCvs.width = 16; pCvs.height = 16;
-      const pCtx = pCvs.getContext('2d');
-      pCtx.fillStyle = 'rgba(234, 179, 8, 0.15)'; // Tactical Yellow faint
-      pCtx.beginPath(); 
-      pCtx.moveTo(0,16); pCtx.lineTo(16,0); pCtx.lineTo(16,6); pCtx.lineTo(6,16); pCtx.fill();
-      pCtx.beginPath(); 
-      pCtx.moveTo(0,6); pCtx.lineTo(6,0); pCtx.lineTo(0,0); pCtx.fill();
-      const pattern = ctx.createPattern(pCvs, 'repeat');
-      ctx.fillStyle = pattern;
-      ctx.fill(); // Fill hazard stripes
-
-      // Create gradient Fill (overlay)
+      // Create gradient Fill
       let grad = ctx.createLinearGradient(0, getY(100), 0, getY(0));
-      grad.addColorStop(0, 'rgba(255, 111, 0, 0.65)'); // Bright orange top 
+      grad.addColorStop(0, 'rgba(255, 111, 0, 0.45)'); // Orange top 
       grad.addColorStop(1, 'rgba(255, 111, 0, 0.05)'); // Transparent bottom
       ctx.fillStyle = grad;
-      ctx.fill(); // Overlays on top of the hazard stripes
+      ctx.fill();
 
-      // 3. Draw the glowing core line
+      // 3. Draw the glowing line
       ctx.beginPath();
-      ctx.strokeStyle = '#ff6f00'; // Bright orange
-      ctx.lineWidth = 3;
-      ctx.lineJoin = 'miter';
-      ctx.shadowBlur = 18; // Massive Neon glow
+      ctx.strokeStyle = '#ff6f00'; // Bright purple
+      ctx.lineWidth = 2.5;
+      ctx.lineJoin = 'round';
+      ctx.shadowBlur = 12; // Neon glow
       ctx.shadowColor = '#ff6f00';
 
       ctx.moveTo(pts[0].x, pts[0].y);
@@ -2478,36 +2451,19 @@
       
       // Draw it again without shadow for solid core
       ctx.shadowBlur = 0;
-      ctx.lineWidth = 1.5;
-      ctx.strokeStyle = '#fffbeb';
+      ctx.lineWidth = 1.2;
+      ctx.strokeStyle = '#ffffff';
       ctx.stroke();
 
-      // 4. Draw Tactical Data Nodes
+      // 4. Draw data nodes
       for (let i = 0; i < pts.length; i++) {
         if (pts[i].dot) {
-          let x = pts[i].x, y = pts[i].y;
-          
-          // Outer bracket box
+          ctx.beginPath();
+          ctx.arc(pts[i].x, pts[i].y, 4, 0, 2*Math.PI);
+          ctx.fillStyle = '#0f172a'; // dark inside
+          ctx.fill();
+          ctx.lineWidth = 2;
           ctx.strokeStyle = '#d4c4a4'; // desert sand
-          ctx.lineWidth = 1.5;
-          ctx.beginPath();
-          let sz = 7;
-          // TL
-          ctx.moveTo(x-sz, y-(sz-3)); ctx.lineTo(x-sz, y-sz); ctx.lineTo(x-(sz-3), y-sz);
-          // TR
-          ctx.moveTo(x+(sz-3), y-sz); ctx.lineTo(x+sz, y-sz); ctx.lineTo(x+sz, y-(sz-3));
-          // BR
-          ctx.moveTo(x+sz, y+(sz-3)); ctx.lineTo(x+sz, y+sz); ctx.lineTo(x+(sz-3), y+sz);
-          // BL
-          ctx.moveTo(x-(sz-3), y+sz); ctx.lineTo(x-sz, y+sz); ctx.lineTo(x-sz, y+(sz-3));
-          ctx.stroke();
-
-          // Inner crosshair
-          ctx.lineWidth = 1.5;
-          ctx.strokeStyle = '#eab308';
-          ctx.beginPath();
-          ctx.moveTo(x, y-3); ctx.lineTo(x, y+3);
-          ctx.moveTo(x-3, y); ctx.lineTo(x+3, y);
           ctx.stroke();
         }
       }
