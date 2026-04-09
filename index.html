@@ -991,6 +991,48 @@
       color: var(--text-dim);
       min-width: 5rem;
     }
+
+    /* ─── Motor Tuning HUD Modes & Sliders ─── */
+    .mode-btn {
+      flex: 1;
+      padding: 0.5rem;
+      border: 1.5px solid var(--border);
+      border-radius: 6px;
+      background: var(--surface);
+      color: var(--text-dim);
+      font-family: 'Barlow', sans-serif;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-align: center;
+      letter-spacing: 0.1em;
+      font-size: 0.8rem;
+    }
+    .mode-btn:hover { background: rgba(167, 139, 250, 0.1); }
+    .mode-btn.eco { border-color: var(--green); color: var(--green); }
+    .mode-btn.eco.active { background: var(--green-glow); }
+    .mode-btn.street { border-color: var(--cyan); color: var(--cyan); }
+    .mode-btn.street.active { background: var(--cyan-glow); }
+    .mode-btn.sport { border-color: var(--purple); color: var(--purple); }
+    .mode-btn.sport.active { background: rgba(167, 139, 250, 0.2); }
+
+    .sci-fi-slider-lbl { 
+      display: flex; justify-content: space-between; font-size: 0.75rem; 
+      color: var(--text-dim); margin-top: 0.5rem; text-transform: uppercase; 
+      letter-spacing: 0.05em; 
+    }
+    .sci-fi-slider-val { 
+      font-family: 'JetBrains Mono', monospace; color: var(--cyan); font-weight: 600; 
+    }
+    
+    .adv-drawer-summary {
+      font-size: 0.75rem; color: var(--text-dim); cursor: pointer; 
+      display: flex; align-items: center; gap: 0.5rem; margin-top: 0.8rem; 
+      padding: 0.5rem; background: rgba(0,0,0,0.2); border-radius: 6px; 
+      border: 1px dashed rgba(255,255,255,0.1); transition: all 0.2s;
+    }
+    .adv-drawer-summary:hover { color: var(--cyan); border-color: rgba(6,182,212,0.4); }
+    .adv-drawer-list { margin-top: 0.6rem; padding-left: 0.2rem; }
   </style>
 </head>
 
@@ -1083,55 +1125,88 @@
     <!-- Motor control -->
     <div class="motor-panel">
       <!-- Motor Tuning (Live) Panel -->
-      <div class="card purple" id="cardMotorTune">
-        <div class="card-label">Motor Tuning (Pro)</div>
-        <div style="font-size:0.75rem; color:var(--text-dim); margin-bottom:0.75rem;">
-          Configure live mapping limits and thresholds. Apply live or burn to OBM RAM/NVS.
+      <div class="card purple wide" id="cardMotorTune">
+        <div class="card-label" style="display:flex; justify-content:space-between; align-items:center;">
+          <span>Motor Dynamics HUD</span>
+          <span class="mct-state-pill idle" style="font-size:0.65rem;">TELEMETRY LIVE</span>
         </div>
-        <div style="display:flex; flex-direction:column; gap:0.6rem;">
-          <div style="display:flex; justify-content:space-between; align-items:center;">
-            <span style="font-size:0.8rem; color:var(--text-dim);">TPS Threshold (+%)</span>
-            <input type="number" id="tuneTpsThr" value="9" min="0" max="100" oninput="drawTuneGraph()" style="width:70px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:0.3rem; padding:0.2rem 0.4rem; font-family:monospace; text-align:right;">
+        
+        <!-- HUD Graph First -->
+        <div style="margin:0.5rem 0; text-align:center; position:relative;">
+          <canvas id="tuneGraphCanvas" width="400" height="180" style="width:100%; max-width:400px; background:linear-gradient(180deg, rgba(15,23,42,0.6) 0%, rgba(0,0,0,0.4) 100%); border:1px solid rgba(167,139,250,0.2); border-radius:0.5rem; box-shadow: inset 0 0 20px rgba(167,139,250,0.05);"></canvas>
+        </div>
+
+        <!-- Drive Mode Selectors -->
+        <div style="display:flex; gap:0.5rem; margin-bottom:1rem;">
+          <div class="mode-btn eco" id="modeEco" onclick="setDriveMode('eco')">ECO</div>
+          <div class="mode-btn street active" id="modeStreet" onclick="setDriveMode('street')">STREET</div>
+          <div class="mode-btn sport" id="modeSport" onclick="setDriveMode('sport')">SPORT</div>
+        </div>
+
+        <!-- Intuitive Sliders -->
+        <div style="display:flex; flex-direction:column; gap:0.4rem;">
+          <div>
+            <div class="sci-fi-slider-lbl"><span>Launch Response</span> <span class="sci-fi-slider-val" id="valLaunch">NORM</span></div>
+            <input type="range" id="slLaunch" min="0" max="100" value="50" oninput="updateFromIntuitive()">
           </div>
-          <div style="display:flex; justify-content:space-between; align-items:center;">
-            <span style="font-size:0.8rem; color:var(--text-dim);">TPS Cruise (%)</span>
-            <input type="number" id="tuneTpsCruise" value="35" min="0" max="100" oninput="drawTuneGraph()" style="width:70px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:0.3rem; padding:0.2rem 0.4rem; font-family:monospace; text-align:right;">
+          <div>
+            <div class="sci-fi-slider-lbl"><span>Mid-Range Cruise</span> <span class="sci-fi-slider-val" id="valMid">NORM</span></div>
+            <input type="range" id="slMid" min="0" max="100" value="50" oninput="updateFromIntuitive()">
           </div>
-          <div style="display:flex; justify-content:space-between; align-items:center;">
-            <span style="font-size:0.8rem; color:var(--text-dim);">TPS Max Mapping (%)</span>
-            <input type="number" id="tuneTpsMax" value="76" min="0" max="100" oninput="drawTuneGraph()" style="width:70px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:0.3rem; padding:0.2rem 0.4rem; font-family:monospace; text-align:right;">
-          </div>
-          <div style="display:flex; justify-content:space-between; align-items:center;">
-            <span style="font-size:0.8rem; color:var(--text-dim);">Min Duty (%)</span>
-            <input type="number" id="tuneMinDuty" value="15" min="0" max="100" oninput="drawTuneGraph()" style="width:70px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:0.3rem; padding:0.2rem 0.4rem; font-family:monospace; text-align:right;">
-          </div>
-          <div style="display:flex; justify-content:space-between; align-items:center;">
-            <span style="font-size:0.8rem; color:var(--text-dim);">Cruise Duty (%)</span>
-            <input type="number" id="tuneDutyCruise" value="30" min="0" max="100" oninput="drawTuneGraph()" style="width:70px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:0.3rem; padding:0.2rem 0.4rem; font-family:monospace; text-align:right;">
-          </div>
-          <div style="display:flex; justify-content:space-between; align-items:center;">
-            <span style="font-size:0.8rem; color:var(--text-dim);">Max Duty (%)</span>
-            <input type="number" id="tuneMaxDuty" value="76" min="0" max="100" oninput="drawTuneGraph()" style="width:70px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:0.3rem; padding:0.2rem 0.4rem; font-family:monospace; text-align:right;">
-          </div>
-          <div style="display:flex; justify-content:space-between; align-items:center;">
-            <span style="font-size:0.8rem; color:var(--text-dim);">MAP Act. Threshold (kPa)</span>
-            <input type="number" id="tuneMapThr" value="40" min="0" max="250" oninput="drawTuneGraph()" style="width:70px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:0.3rem; padding:0.2rem 0.4rem; font-family:monospace; text-align:right;">
+          <div>
+            <div class="sci-fi-slider-lbl"><span>Peak Output Limit</span> <span class="sci-fi-slider-val" id="valPeak">76%</span></div>
+            <input type="range" id="slPeak" min="0" max="100" value="76" oninput="updateFromIntuitive()">
           </div>
         </div>
-        <div style="margin-top:1rem; text-align:center;">
-          <canvas id="tuneGraphCanvas" width="360" height="156" style="width:100%; max-width:360px; background:rgba(0,0,0,0.2); border-radius:0.5rem;"></canvas>
-        </div>
-        <div style="margin-top:0.75rem; padding-top:0.75rem; border-top:1px solid rgba(255,255,255,0.1);">
+
+        <!-- Advanced Drawer -->
+        <details>
+          <summary class="adv-drawer-summary">
+            ▶ ADVANCED ENGINEERING MAP
+          </summary>
+          <div class="adv-drawer-list" style="display:flex; flex-direction:column; gap:0.6rem;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <span style="font-size:0.8rem; color:var(--text-dim);">TPS Threshold (+%)</span>
+              <input type="number" id="tuneTpsThr" value="9" min="0" max="100" oninput="drawTuneGraph(); setCustomMode();" style="width:70px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:0.3rem; padding:0.2rem 0.4rem; font-family:monospace; text-align:right;">
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <span style="font-size:0.8rem; color:var(--text-dim);">TPS Cruise (%)</span>
+              <input type="number" id="tuneTpsCruise" value="35" min="0" max="100" oninput="drawTuneGraph(); setCustomMode();" style="width:70px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:0.3rem; padding:0.2rem 0.4rem; font-family:monospace; text-align:right;">
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <span style="font-size:0.8rem; color:var(--text-dim);">TPS Max Mapping (%)</span>
+              <input type="number" id="tuneTpsMax" value="76" min="0" max="100" oninput="drawTuneGraph(); setCustomMode();" style="width:70px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:0.3rem; padding:0.2rem 0.4rem; font-family:monospace; text-align:right;">
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <span style="font-size:0.8rem; color:var(--text-dim);">Min Duty (%)</span>
+              <input type="number" id="tuneMinDuty" value="15" min="0" max="100" oninput="drawTuneGraph(); setCustomMode();" style="width:70px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:0.3rem; padding:0.2rem 0.4rem; font-family:monospace; text-align:right;">
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <span style="font-size:0.8rem; color:var(--text-dim);">Cruise Duty (%)</span>
+              <input type="number" id="tuneDutyCruise" value="30" min="0" max="100" oninput="drawTuneGraph(); setCustomMode();" style="width:70px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:0.3rem; padding:0.2rem 0.4rem; font-family:monospace; text-align:right;">
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <span style="font-size:0.8rem; color:var(--text-dim);">Max Duty (%)</span>
+              <input type="number" id="tuneMaxDuty" value="76" min="0" max="100" oninput="drawTuneGraph(); setCustomMode();" style="width:70px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:0.3rem; padding:0.2rem 0.4rem; font-family:monospace; text-align:right;">
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <span style="font-size:0.8rem; color:var(--text-dim);">MAP Act. Threshold (kPa)</span>
+              <input type="number" id="tuneMapThr" value="40" min="0" max="250" oninput="drawTuneGraph(); setCustomMode();" style="width:70px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:0.3rem; padding:0.2rem 0.4rem; font-family:monospace; text-align:right;">
+            </div>
+          </div>
+        </details>
+
+        <div style="margin-top:1rem; padding-top:0.75rem; border-top:1px solid rgba(167,139,250,0.2);">
           <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem;">
             <button class="ctrl-btn"
-              style="background:rgba(167,139,250,0.15); border-color:rgba(167,139,250,0.4); color:#a78bfa;"
+              style="background:rgba(167,139,250,0.15); border-color:rgba(167,139,250,0.4); color:#a78bfa; font-family:'Orbitron', sans-serif; letter-spacing:0.05em;"
               onclick="sendMotorTune(false)" title="Applies to OBM RAM immediately. Resets on power cycle.">
-              APPLY (LIVE)
+              SYNC LIVE MAP
             </button>
             <button class="ctrl-btn"
-              style="background:rgba(239,68,68,0.15); border-color:rgba(239,68,68,0.4); color:#ef4444;"
+              style="background:rgba(239,68,68,0.15); border-color:rgba(239,68,68,0.4); color:#ef4444; font-family:'Orbitron', sans-serif; letter-spacing:0.05em;"
               onclick="sendMotorTune(true)" title="Burns settings to OBM EEPROM (NVS).">
-              BURN TO OBM
+              BURN TO NVS
             </button>
           </div>
         </div>
@@ -2172,6 +2247,85 @@
     // Initial dummy run to display something before device connects
     previewIpdHex();
     
+    /* ─── Motor Tuning Sci-Fi Modes ─── */
+    function setDriveMode(mode) {
+      document.getElementById('modeEco').classList.remove('active');
+      document.getElementById('modeStreet').classList.remove('active');
+      document.getElementById('modeSport').classList.remove('active');
+      
+      const setVal = (id, v) => { 
+        let el = document.getElementById(id);
+        if(el) el.value = v; 
+      };
+      
+      if (mode === 'eco') {
+        document.getElementById('modeEco').classList.add('active');
+        setVal('tuneTpsThr', 12); setVal('tuneMinDuty', 10);
+        setVal('tuneTpsCruise', 45); setVal('tuneDutyCruise', 25);
+        setVal('tuneTpsMax', 90); setVal('tuneMaxDuty', 60);
+        setVal('slLaunch', 20); setVal('slMid', 20); setVal('slPeak', 60);
+      } else if (mode === 'street') {
+        document.getElementById('modeStreet').classList.add('active');
+        setVal('tuneTpsThr', 9); setVal('tuneMinDuty', 15);
+        setVal('tuneTpsCruise', 35); setVal('tuneDutyCruise', 30);
+        setVal('tuneTpsMax', 76); setVal('tuneMaxDuty', 76);
+        setVal('slLaunch', 50); setVal('slMid', 50); setVal('slPeak', 76);
+      } else if (mode === 'sport') {
+        document.getElementById('modeSport').classList.add('active');
+        setVal('tuneTpsThr', 5); setVal('tuneMinDuty', 25);
+        setVal('tuneTpsCruise', 25); setVal('tuneDutyCruise', 40);
+        setVal('tuneTpsMax', 60); setVal('tuneMaxDuty', 100);
+        setVal('slLaunch', 80); setVal('slMid', 80); setVal('slPeak', 100);
+      }
+      
+      updateSliderLabels();
+      drawTuneGraph();
+    }
+    
+    function setCustomMode() {
+      document.getElementById('modeEco').classList.remove('active');
+      document.getElementById('modeStreet').classList.remove('active');
+      document.getElementById('modeSport').classList.remove('active');
+      document.getElementById('valLaunch').textContent = 'CUSTOM';
+      document.getElementById('valMid').textContent = 'CUSTOM';
+      document.getElementById('valPeak').textContent = 'CUSTOM';
+    }
+
+    function updateFromIntuitive() {
+      setCustomMode();
+      const launch = parseInt(document.getElementById('slLaunch').value); // 0 to 100 (0=Eco, 100=Aggressive)
+      const mid = parseInt(document.getElementById('slMid').value);       // 0 to 100
+      const peak = parseInt(document.getElementById('slPeak').value);     // 0 to 100
+      
+      updateSliderLabels();
+      
+      // Mapping logic:
+      // Launch: tpsThr maps from 15 (Eco) -> 2 (Aggr). minDuty maps from 5 -> 30.
+      document.getElementById('tuneTpsThr').value = Math.floor(15 - (13 * launch / 100));
+      document.getElementById('tuneMinDuty').value = Math.floor(5 + (25 * launch / 100));
+      
+      // Mid: tpsCruise maps from 50 -> 20. dutyCruise maps from 20 -> 50.
+      document.getElementById('tuneTpsCruise').value = Math.floor(50 - (30 * mid / 100));
+      document.getElementById('tuneDutyCruise').value = Math.floor(20 + (30 * mid / 100));
+      
+      // Peak: tpsMax maps from 100 -> 50. maxDuty maps exactly 1:1 with peak slider.
+      document.getElementById('tuneTpsMax').value = Math.floor(100 - (50 * peak / 100));
+      document.getElementById('tuneMaxDuty').value = Math.max(15, peak); // At least 15% to not stall
+      
+      drawTuneGraph();
+    }
+    
+    function updateSliderLabels() {
+      const launch = parseInt(document.getElementById('slLaunch').value);
+      const mid = parseInt(document.getElementById('slMid').value);
+      const peak = parseInt(document.getElementById('slPeak').value);
+      
+      const getLbl = (v) => v < 35 ? 'SOFT' : (v > 70 ? 'AGGR' : 'NORM');
+      document.getElementById('valLaunch').textContent = getLbl(launch);
+      document.getElementById('valMid').textContent = getLbl(mid);
+      document.getElementById('valPeak').textContent = peak + '%';
+    }
+
     // Draw motor tuning graph
     function drawTuneGraph() {
       const canvas = document.getElementById('tuneGraphCanvas');
@@ -2287,7 +2441,7 @@
     }
     
     // Initial draw
-    drawTuneGraph();
+    setDriveMode('street');
 
   </script>
 </body>
