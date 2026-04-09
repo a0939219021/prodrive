@@ -1148,7 +1148,7 @@
         
         <!-- HUD Graph First -->
         <div style="margin:0.5rem 0; text-align:center; position:relative;">
-          <canvas id="tuneGraphCanvas" width="480" height="216" style="width:100%; max-width:480px; background:linear-gradient(180deg, rgba(30,32,30,0.6) 0%, rgba(0,0,0,0.4) 100%); border:1px solid rgba(255,111,0,0.2); border-radius:0.5rem; box-shadow: inset 0 0 20px rgba(255,111,0,0.05);"></canvas>
+          <canvas id="tuneGraphCanvas" width="480" height="216" style="width:100%; max-width:100%; height:auto; aspect-ratio: 480 / 216; background:linear-gradient(180deg, rgba(30,32,30,0.6) 0%, rgba(0,0,0,0.4) 100%); border:1px solid rgba(255,111,0,0.2); border-radius:0.5rem; box-shadow: inset 0 0 20px rgba(255,111,0,0.05);"></canvas>
         </div>
 
         <!-- Drive Mode Selectors -->
@@ -2393,8 +2393,8 @@
       ctx.fillText('50', 14, getY(50) + 4);
       ctx.fillText('0', 20, getY(0) + 4);
       
-      ctx.fillText('THROTTLE', w - 60, h - 4);
-      ctx.fillText('100%', w - 28, getY(0) - 6);
+      ctx.fillText('THROTTLE', w - 85, h - 4);
+      ctx.fillText('100%', w - 28, h - 4);
 
       // Points calculation
       let pX = getX(tpsCruise);
@@ -2473,24 +2473,18 @@
         const lx = getX(liveTps);
         const ly = getY(liveDuty);
         
-        ctx.shadowBlur = 20;
-        ctx.shadowColor = '#ef4444'; // Aggressive Red glow for live tracker
-        ctx.fillStyle = '#ef4444';
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = '#10b981'; // Green glow
+        ctx.fillStyle = '#10b981';
         
         // Draw live pulse marker
         ctx.beginPath();
-        ctx.arc(lx, ly, 4, 0, 2*Math.PI);
+        ctx.arc(lx, ly, 4.5, 0, 2*Math.PI);
         ctx.fill();
         ctx.shadowBlur = 0;
         
-        ctx.lineWidth = 1.5;
-        ctx.strokeStyle = '#fff';
-        ctx.beginPath();
-        ctx.arc(lx, ly, 7, 0, 2*Math.PI);
-        ctx.stroke();
-        
         // Output live stats
-        ctx.fillStyle = '#ef4444';
+        ctx.fillStyle = '#10b981';
         ctx.font = 'bold 11px "Black Ops One", monospace';
         ctx.fillText(`L:${Math.round(liveTps)}%, ${Math.round(liveDuty)}%`, w - 85, 16);
       }
