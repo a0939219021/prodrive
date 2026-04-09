@@ -2343,100 +2343,133 @@
       const tpsCruise = parseInt(document.getElementById('tuneTpsCruise').value) || 0;
       const dutyCruise = parseInt(document.getElementById('tuneDutyCruise').value) || 0;
 
-      // Draw grid and labels
-      ctx.strokeStyle = 'rgba(255,255,255,0.1)';
-      ctx.lineWidth = 1;
-      
-      // Y axis (Duty 0-100)
-      ctx.beginPath();
-      ctx.moveTo(35, 18); ctx.lineTo(35, h - 20); // Y axis line
-      ctx.moveTo(35, h - 20); ctx.lineTo(w - 10, h - 20); // X axis line
-      
-      // 50% line
-      ctx.moveTo(35, 18 + (h - 38) * 0.5); ctx.lineTo(w - 10, 18 + (h - 38) * 0.5);
-      // 100% line
-      ctx.moveTo(35, 18); ctx.lineTo(w - 10, 18);
-      ctx.stroke();
-
-      ctx.fillStyle = 'rgba(255,255,255,0.5)';
-      ctx.font = '10px monospace';
-      ctx.fillText('Motor(%)', 2, 8);
-      ctx.fillText('100', 8, 22);
-      ctx.fillText('50', 14, 22 + (h - 38) * 0.5);
-      ctx.fillText('0', 20, h - 16);
-      
-      ctx.fillText('TPS(%)', w - 40, h - 6);
-
       // Coordinate mapping
       const getX = (tps) => 35 + (w - 45) * (tps / 100);
       const getY = (duty) => (h - 20) - (h - 38) * (duty / 100);
 
-      // Draw the piecewise curve
-      ctx.beginPath();
-      ctx.strokeStyle = '#a78bfa'; // purple
-      ctx.lineWidth = 2;
-      ctx.lineJoin = 'round';
-
-      // Start at 0, 0
-      ctx.moveTo(getX(0), getY(0));
-      // Flat until TPS Thres
-      ctx.lineTo(getX(tpsThr), getY(0));
-      // Jump to MinDuty
-      ctx.lineTo(getX(tpsThr), getY(minDuty));
+      // 1. Draw digital radar grid (Sci-Fi)
+      ctx.lineWidth = 1;
+      ctx.setLineDash([2, 4]); // Dashed lines
       
+      // Horizontal grid
+      for (let i = 0; i <= 100; i += 25) {
+        ctx.strokeStyle = (i === 0 || i === 50 || i === 100) ? 'rgba(6, 182, 212, 0.3)' : 'rgba(255, 255, 255, 0.05)';
+        ctx.beginPath();
+        ctx.moveTo(35, getY(i));
+        ctx.lineTo(w - 10, getY(i));
+        ctx.stroke();
+      }
+      
+      // Vertical grid
+      for (let i = 0; i <= 100; i += 20) {
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+        ctx.beginPath();
+        ctx.moveTo(getX(i), getY(0));
+        ctx.lineTo(getX(i), getY(100));
+        ctx.stroke();
+      }
+      ctx.setLineDash([]); // Reset line dash
+
+      // Axis texts
+      ctx.fillStyle = 'rgba(6, 182, 212, 0.7)'; // Cyan text
+      ctx.font = '10px "JetBrains Mono", monospace';
+      ctx.fillText('POWER', 2, 8);
+      ctx.fillText('100', 8, getY(100) + 4);
+      ctx.fillText('50', 14, getY(50) + 4);
+      ctx.fillText('0', 20, getY(0) + 4);
+      
+      ctx.fillText('THROTTLE', w - 55, h - 4);
+      ctx.fillText('100%', w - 28, getY(0) + 12);
+
+      // Points calculation
       let pX = getX(tpsCruise);
       let pY = getY(dutyCruise);
       let qX = getX(tpsMax);
       let qY = getY(maxDuty);
+
+      let pts = [];
+      pts.push({ x: getX(0), y: getY(0) });
+      pts.push({ x: getX(tpsThr), y: getY(0) });
+      pts.push({ x: getX(tpsThr), y: getY(minDuty), dot: true });
       
-      // If cruise makes sense (between min and max tps)
       if (tpsCruise > tpsThr && tpsCruise < tpsMax) {
-        ctx.lineTo(pX, pY);
-        ctx.lineTo(qX, qY);
+        pts.push({ x: pX, y: pY, dot: true });
+        pts.push({ x: qX, y: qY, dot: true });
       } else if (tpsMax > tpsThr) {
-        ctx.lineTo(qX, qY);
+        pts.push({ x: qX, y: qY, dot: true });
       } else {
-        ctx.lineTo(getX(tpsThr), getY(maxDuty));
+        pts.push({ x: getX(tpsThr), y: getY(maxDuty) });
       }
-      
-      // Cap at maxDuty until 100%
       if (tpsMax <= 100) {
-        ctx.lineTo(getX(100), qY);
+        pts.push({ x: getX(100), y: pts[pts.length - 1].y });
+      }
+
+      // 2. Draw Area Fill (Gradient)
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, getY(0)); // Start at bottom-left
+      for (let i = 0; i < pts.length; i++) {
+        ctx.lineTo(pts[i].x, pts[i].y);
+      }
+      ctx.lineTo(pts[pts.length - 1].x, getY(0)); // Drop down to bottom-right
+      ctx.closePath();
+
+      // Create gradient Fill
+      let grad = ctx.createLinearGradient(0, getY(100), 0, getY(0));
+      grad.addColorStop(0, 'rgba(167, 139, 250, 0.45)'); // Purple top 
+      grad.addColorStop(1, 'rgba(167, 139, 250, 0.05)'); // Transparent bottom
+      ctx.fillStyle = grad;
+      ctx.fill();
+
+      // 3. Draw the glowing line
+      ctx.beginPath();
+      ctx.strokeStyle = '#a78bfa'; // Bright purple
+      ctx.lineWidth = 2.5;
+      ctx.lineJoin = 'round';
+      ctx.shadowBlur = 12; // Neon glow
+      ctx.shadowColor = '#a78bfa';
+
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length; i++) {
+        ctx.lineTo(pts[i].x, pts[i].y);
       }
       ctx.stroke();
       
-      // Draw tuning points
-      ctx.fillStyle = '#fff';
-      if (tpsThr >= 0 && tpsThr <= 100) {
-        ctx.beginPath(); ctx.arc(getX(tpsThr), getY(minDuty), 3, 0, 2*Math.PI); ctx.fill();
-      }
-      if (tpsCruise > tpsThr && tpsCruise < tpsMax) {
-        ctx.beginPath(); ctx.arc(pX, pY, 3, 0, 2*Math.PI); ctx.fill();
-      }
-      if (tpsMax >= 0 && tpsMax <= 100) {
-        ctx.beginPath(); ctx.arc(qX, qY, 3, 0, 2*Math.PI); ctx.fill();
+      // Draw it again without shadow for solid core
+      ctx.shadowBlur = 0;
+      ctx.lineWidth = 1.2;
+      ctx.strokeStyle = '#ffffff';
+      ctx.stroke();
+
+      // 4. Draw data nodes
+      for (let i = 0; i < pts.length; i++) {
+        if (pts[i].dot) {
+          ctx.beginPath();
+          ctx.arc(pts[i].x, pts[i].y, 4, 0, 2*Math.PI);
+          ctx.fillStyle = '#0f172a'; // dark inside
+          ctx.fill();
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = '#06b6d4'; // Cyan ring
+          ctx.stroke();
+        }
       }
 
-      // Draw LIVE dot if available
+      // Update LIVE dot if available
       if (liveTps !== null && liveDuty !== null) {
         const lx = getX(liveTps);
         const ly = getY(liveDuty);
         
-        // Glow effect
-        ctx.shadowBlur = 10;
-        ctx.shadowColor = '#10b981'; // vibrant green
-        
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = '#10b981'; // Green glow
         ctx.fillStyle = '#10b981';
         ctx.beginPath();
         ctx.arc(lx, ly, 4.5, 0, 2*Math.PI);
         ctx.fill();
-
-        ctx.shadowBlur = 0; // reset
+        ctx.shadowBlur = 0;
         
         // Output live stats
         ctx.fillStyle = '#10b981';
-        ctx.font = 'bold 10px monospace';
-        ctx.fillText(`L:${Math.round(liveTps)}%, ${Math.round(liveDuty)}%`, w - 75, 14);
+        ctx.font = 'bold 11px "JetBrains Mono", monospace';
+        ctx.fillText(`L:${Math.round(liveTps)}%, ${Math.round(liveDuty)}%`, w - 85, 16);
       }
     }
     
